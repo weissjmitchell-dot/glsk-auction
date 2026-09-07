@@ -1,12 +1,12 @@
 import { createClient } from '@supabase/supabase-js';
 
-const url = import.meta.env.VITE_SUPABASE_URL;
-const key = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY;
+// Supabase's publishable key is intentionally safe to include in a browser app.
+// Authorization is enforced by the database/RPC rules, not by keeping this key secret.
+const url = 'https://vavzeyewfipswyxeqdht.supabase.co';
+const key = 'sb_publishable_vFPh7D0LYQ0n66n_jbBOKA_qTvpXsPq';
 
-export const configured = Boolean(url && key);
-export const supabase = configured
-  ? createClient(url, key, {
-      realtime: { params: { eventsPerSecond: 20 } },
-      auth: { persistSession: false },
-    })
-  : null;
+export const configured = true;
+export const supabase = createClient(url, key, {
+  realtime: { params: { eventsPerSecond: 20 } },
+  auth: { persistSession: false },
+});
