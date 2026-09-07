@@ -152,3 +152,4 @@ Do not wait until the first real nomination to do this test.
 
 ## Commissioner login update
 `Weiss Tea & Lemonade` is the commissioner team. Run `supabase/rotate-to-12-pins.sql` once after the main setup. It generates exactly 12 team PINs and makes the Weiss team PIN double as the commissioner/Czar PIN. The app automatically enables commissioner controls when Weiss joins; there is no second commissioner PIN field.
+Deployment source: GitHub
