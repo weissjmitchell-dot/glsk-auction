@@ -2071,3 +2071,275 @@
   }
 }
 
+/* League Office v6.8 — Notification Center */
+.notification-bell{
+  position:relative;
+  width:38px;
+  height:38px;
+  flex:0 0 auto;
+  border:1px solid rgba(255,255,255,.16);
+  border-radius:10px;
+  background:rgba(255,255,255,.07);
+  color:#fff;
+  display:grid;
+  place-items:center;
+  cursor:pointer;
+}
+.notification-bell:hover{background:rgba(255,255,255,.12)}
+.notification-bell-icon{
+  width:15px;
+  height:17px;
+  border:2px solid #d7e0ec;
+  border-radius:9px 9px 6px 6px;
+  display:block;
+  position:relative;
+  transform:rotate(0deg);
+  color:transparent;
+}
+.notification-bell-icon:after{
+  content:"";
+  position:absolute;
+  width:5px;
+  height:2px;
+  border-radius:999px;
+  background:#d7e0ec;
+  left:3px;
+  bottom:-5px;
+}
+.notification-bell b{
+  position:absolute;
+  right:-5px;
+  top:-6px;
+  min-width:18px;
+  height:18px;
+  padding:0 4px;
+  border-radius:999px;
+  display:grid;
+  place-items:center;
+  background:#e34943;
+  color:#fff;
+  border:2px solid #17263f;
+  font-size:7px;
+  font-weight:1000;
+}
+.notification-bell.has-unread .notification-bell-icon{
+  border-color:#fff;
+}
+
+.notifications-layout{
+  display:grid;
+  grid-template-columns:minmax(0,1.35fr) minmax(310px,.65fr);
+  gap:12px;
+  align-items:start;
+}
+.notification-feed-card{overflow:hidden}
+.notification-feed-head{
+  display:flex;
+  justify-content:space-between;
+  align-items:center;
+  gap:10px;
+  padding:12px 14px;
+  background:#17263f;
+  color:#fff;
+}
+.notification-feed-head>div{display:grid;gap:2px}
+.notification-feed-head h2{margin:0;font-size:13px}
+.notification-feed-head span{font-size:8px;color:#bdc9d9;font-weight:750}
+.notification-feed-head .btn-outline{
+  color:#fff;
+  border-color:rgba(255,255,255,.28);
+}
+.notification-feed{display:grid}
+.notification-row{
+  appearance:none;
+  width:100%;
+  display:grid;
+  grid-template-columns:40px minmax(0,1fr);
+  gap:10px;
+  align-items:start;
+  padding:11px 13px;
+  border:0;
+  border-bottom:1px solid #e8ecf1;
+  background:#fff;
+  text-align:left;
+  cursor:default;
+}
+.notification-row[data-notification-tab]{cursor:pointer}
+.notification-row[data-notification-tab]:hover{background:#f8fafc}
+.notification-row.unread{background:#f4f8fd}
+.notification-row:last-child{border-bottom:0}
+.notification-icon{
+  width:36px;
+  height:36px;
+  border-radius:10px;
+  display:grid;
+  place-items:center;
+  background:#edf2f7;
+  color:#42546d;
+  font-size:9px;
+  font-weight:1000;
+}
+.notification-roster_moves{background:#eaf6ef;color:#28704b}
+.notification-trades{background:#eef2fb;color:#365a8a}
+.notification-drafts{background:#fff5cc;color:#6d5a06}
+.notification-contracts{background:#f2edf9;color:#6a4c8d}
+.notification-message_board{background:#eaf4fb;color:#2c6483}
+.notification-matchups{background:#eaf6ef;color:#26764d}
+.notification-deadlines{background:#fff1e8;color:#93522d}
+.notification-injuries{background:#fff0ef;color:#aa3e38}
+.notification-player_availability{background:#edf7f1;color:#27744c}
+.notification-copy{min-width:0}
+.notification-title-row{
+  display:flex;
+  align-items:center;
+  gap:6px;
+}
+.notification-title-row strong{
+  color:#20334f;
+  font-size:10px;
+  font-weight:1000;
+  line-height:1.25;
+}
+.notification-unread-dot{
+  width:7px;
+  height:7px;
+  flex:0 0 auto;
+  border-radius:50%;
+  background:#2c6aa3;
+}
+.notification-copy p{
+  margin:4px 0 0;
+  color:#617087;
+  font-size:9px;
+  line-height:1.4;
+}
+.notification-meta{
+  display:flex;
+  flex-wrap:wrap;
+  gap:4px 9px;
+  margin-top:5px;
+  color:#8a95a5;
+  font-size:7px;
+  font-weight:750;
+}
+.notification-settings-column{display:grid;gap:12px}
+.notification-settings-card,
+.player-alerts-card{margin:0}
+.notification-toggle-list{display:grid}
+.notification-toggle-row{
+  display:flex;
+  justify-content:space-between;
+  align-items:center;
+  gap:10px;
+  min-height:48px;
+  padding:7px 0;
+  border-bottom:1px solid #edf0f4;
+}
+.notification-toggle-row:last-child{border-bottom:0}
+.notification-toggle-row>div{display:grid;gap:2px}
+.notification-toggle-row strong{
+  color:#31445e;
+  font-size:9px;
+}
+.notification-toggle-row span{
+  color:#8792a2;
+  font-size:7.5px;
+}
+.notification-toggle-row input{
+  width:38px;
+  height:21px;
+  accent-color:#2d6b9f;
+}
+.notification-delivery-note{
+  display:grid;
+  gap:3px;
+  margin-top:10px;
+  padding:9px 10px;
+  border-radius:9px;
+  background:#f5f8fb;
+  border:1px solid #e4e9ef;
+}
+.notification-delivery-note strong{
+  color:#3c4e67;
+  font-size:8px;
+  text-transform:uppercase;
+  letter-spacing:.05em;
+}
+.notification-delivery-note span{
+  color:#748196;
+  font-size:8px;
+  line-height:1.4;
+}
+.player-watch-form{
+  display:grid;
+  grid-template-columns:minmax(0,1fr) auto auto;
+  gap:7px;
+  align-items:center;
+}
+.player-watch-form>.input{
+  grid-column:1/-1;
+}
+.watch-check{
+  display:flex;
+  align-items:center;
+  gap:5px;
+  color:#65738a;
+  font-size:8px;
+  font-weight:850;
+  white-space:nowrap;
+}
+.watch-check input{width:16px;height:16px;accent-color:#2d6b9f}
+.watch-list{
+  display:grid;
+  gap:6px;
+  margin-top:11px;
+}
+.watch-row{
+  display:flex;
+  justify-content:space-between;
+  align-items:center;
+  gap:8px;
+  padding:8px 9px;
+  border:1px solid #e5e9ef;
+  border-radius:9px;
+  background:#fbfcfe;
+}
+.watch-row>div{display:grid;gap:2px}
+.watch-row strong{color:#2e425d;font-size:9px}
+.watch-row span{color:#7e8999;font-size:7.5px}
+.watch-scope-note{
+  margin-top:9px;
+  padding-top:9px;
+  border-top:1px solid #edf0f4;
+  color:#7a8798;
+  font-size:8px;
+  line-height:1.45;
+}
+.watch-scope-note strong{color:#53627a}
+
+@media(max-width:880px){
+  .notifications-layout{grid-template-columns:1fr}
+}
+@media(max-width:600px){
+  .notification-bell{
+    width:34px;
+    height:34px;
+    border-radius:9px;
+  }
+  .notification-row{
+    grid-template-columns:34px minmax(0,1fr);
+    padding:10px;
+  }
+  .notification-icon{
+    width:32px;
+    height:32px;
+  }
+  .player-watch-form{
+    grid-template-columns:1fr 1fr;
+  }
+  .player-watch-form>.input,
+  .player-watch-form>.btn{
+    grid-column:1/-1;
+  }
+}
+

@@ -14,6 +14,7 @@ const state = {
   lineupDataTab:'stats', lineupStatsRange:'week', lineupProjectionRange:'week', lineupBrowseWeek:null,
   matchupBrowseWeek:null, selectedMatchupId:null, scheduleTeamId:null,
   boardThreads:[], boardPosts:[], boardSelectedThread:null,
+  notifications:[], notificationPrefs:[], notificationUnread:0, playerWatches:[], notificationPlayers:[], playerStatusUpdates:[],
   session:loadSession(), tab:'home', loading:true, realtime:null, txFilters:{team:'',type:'',search:''},
   historySort:{key:'championships',dir:'desc'}, historySeason:'all',
 };
@@ -72,15 +73,40 @@ async function loadReconciliation(){
   }catch(e){console.warn('reconciliation load',e.message);}
 }
 
+
+async function loadNotifications(){
+  state.notifications=[];
+  state.notificationPrefs=[];
+  state.notificationUnread=0;
+  state.playerWatches=[];
+  const t=myTeam();
+  if(!t||state.session?.spectator)return;
+  try{
+    const {data,error}=await supabase.rpc('league_get_notifications',{
+      p_room_code:ROOM_CODE,
+      p_team_id:t.id,
+      p_pin:state.session.pin,
+      p_limit:150
+    });
+    if(error)throw error;
+    if(data?.ok===false)throw new Error(data.error||'Unable to load notifications.');
+    state.notifications=data?.events||[];
+    state.notificationPrefs=data?.preferences||[];
+    state.notificationUnread=Number(data?.unread_count||0);
+    state.playerWatches=data?.watches||[];
+  }catch(e){console.warn('notification load',e.message);}
+}
+
 async function loadData(){
   const {data:room,error:re}=await supabase.from('rooms').select('*').eq('code',ROOM_CODE).single(); if(re)throw re; state.room=room;
-  const [teams,seasons,roster,contracts,rules,distro,deadlines,statuses,options,transactions,trades,tradeAssets,futurePicks,rookieRights,extensionCosts,extensionEligibility,historySeasons,historyTeamSeasons,historyAllTime,historyFranchises,historyImportRuns,playerStats,gameSettings,lineupSlots,weekStates,schedule,lineups,weeklyScores,matchupScores,shadowStandings,scoringRules,weeklyHostSettings,playerProjections,boardThreads,boardPosts]=await Promise.all([
+  const [teams,seasons,roster,contracts,rules,distro,deadlines,statuses,options,transactions,trades,tradeAssets,futurePicks,rookieRights,extensionCosts,extensionEligibility,historySeasons,historyTeamSeasons,historyAllTime,historyFranchises,historyImportRuns,playerStats,gameSettings,lineupSlots,weekStates,schedule,lineups,weeklyScores,matchupScores,shadowStandings,scoringRules,weeklyHostSettings,playerProjections,boardThreads,boardPosts,notificationPlayers,playerStatusUpdates]=await Promise.all([
     q('teams','*',[['room_id',room.id]]),q('league_seasons','*',[['room_id',room.id]]),q('league_roster_entries','*',[['room_id',room.id]]),
     q('league_contracts','*'),q('league_rule_settings','*'),q('redistribution_rules','*'),q('league_deadlines','*'),q('league_deadline_team_status','*'),q('contract_options','*'),
     q('league_transactions','*'),q('league_trades','*'),q('league_trade_assets','*'),q('league_future_picks','*',[['room_id',room.id]]),q('league_rookie_rights','*',[['room_id',room.id]]),q('league_extension_costs','*'),q('league_contract_extension_eligibility','*'),
     q('league_history_seasons','*',[['room_id',room.id]]),q('league_history_team_seasons','*'),q('league_history_all_time','*',[['room_id',room.id]]),q('league_franchises','*',[['room_id',room.id]]),q('league_history_import_runs','*',[['room_id',room.id]]),q('league_player_stats','*',[['room_id',room.id]]),
     q('league_game_settings','*'),q('league_lineup_slots','*'),q('league_week_states','*'),q('league_schedule','*'),q('league_lineups','*'),q('league_weekly_player_scores','*'),q('league_matchup_live_scores','*'),q('league_shadow_standings','*'),q('league_scoring_rules','*'),q('league_weekly_host_settings','*'),q('league_player_projections','*',[['room_id',room.id]]),
-    q('league_message_threads','*',[['room_id',room.id]]),q('league_message_posts','*',[['room_id',room.id]])
+    q('league_message_threads','*',[['room_id',room.id]]),q('league_message_posts','*',[['room_id',room.id]]),
+    q('phase3_players','id,name,nfl_team,position,status',[['room_id',room.id]]),q('league_player_status_updates','*',[['room_id',room.id]])
   ]);
   state.teams=teams.sort((a,b)=>a.sort_order-b.sort_order); state.season=seasons.find(s=>s.is_current)||seasons.sort((a,b)=>b.season_year-a.season_year)[0]||null;
   const sid=state.season?.id; state.roster=roster; state.contracts=contracts.filter(x=>x.season_id===sid); state.rules=rules.filter(x=>x.season_id===sid).sort((a,b)=>a.sort_order-b.sort_order);
@@ -114,8 +140,11 @@ async function loadData(){
   state.boardThreads=boardThreads.filter(x=>x.season_id===sid).sort((a,b)=>(Number(b.pinned)-Number(a.pinned))||(new Date(b.last_activity_at)-new Date(a.last_activity_at)));
   state.boardPosts=boardPosts.filter(x=>x.season_id===sid&&x.status==='active').sort((a,b)=>new Date(a.created_at)-new Date(b.created_at));
   if(state.boardSelectedThread&&!state.boardThreads.some(t=>String(t.id)===String(state.boardSelectedThread)))state.boardSelectedThread=null;
+  state.notificationPlayers=notificationPlayers.slice().sort((a,b)=>String(a.name).localeCompare(String(b.name)));
+  state.playerStatusUpdates=playerStatusUpdates.filter(x=>x.season_id===sid);
   await loadFinance();
   await loadReconciliation();
+  await loadNotifications();
 }
 
 
@@ -234,7 +263,7 @@ function topBar(){
      <div class="brand"><div class="brand-kicker">${state.season?.season_year||2026} • League Office</div><div class="brand-title">${esc(LEAGUE_NAME)}</div></div>
    </button>
    <div class="office-user-area">
-     ${t?`<div class="office-user-stats"><span><b>${bidMoney(t.remaining_budget)}</b> bids</span><span><b>${rosterCount}/${limit}</b> roster</span><span><b>${cap}/100</b> cap</span></div>`:''}
+     ${t?`<div class="office-user-stats"><span><b>${bidMoney(t.remaining_budget)}</b> bids</span><span><b>${rosterCount}/${limit}</b> roster</span><span><b>${cap}/100</b> cap</span></div><button class="notification-bell ${state.notificationUnread?'has-unread':''}" data-tab="notifications" aria-label="Notifications"><span class="notification-bell-icon">♢</span>${state.notificationUnread?`<b>${state.notificationUnread>99?'99+':state.notificationUnread}</b>`:''}</button>`:''}
      <div class="user-chip"><span class="status-dot live"></span><div class="user-chip-text"><div class="user-team">${t?`${esc(t.name)}${isCommish()?' • Commissioner':''}`:state.session?.spectator?'Spectator':'League'}</div><div class="user-budget">${t?'Connected':'League view'}</div></div><button class="btn-link office-leave" data-action="leave">Leave</button></div>
    </div>
  </div></header>`;
@@ -325,6 +354,76 @@ function boardView(){
      ${me&&!state.session?.spectator&&selected.status!=='locked'?`<div class="board-reply-compose"><textarea id="board-reply-body" class="input board-textarea" maxlength="5000" placeholder="Reply as ${esc(me.name)}"></textarea><div><span>Keep the discussion going.</span><button class="btn btn-primary" data-action="board-reply" data-thread-id="${selected.id}">Post Reply</button></div></div>`:selected.status==='locked'?'<div class="board-locked-notice">This discussion has been locked by the commissioner.</div>':''}
      `:'<div class="board-empty discussion-empty"><strong>Select a discussion</strong><span>Choose a thread from the left to read and reply.</span></div>'}
    </section>
+ </div>`;
+}
+
+
+function notificationCategoryMeta(category){
+ const map={
+  roster_moves:['Roster Moves','↕'],
+  trades:['Trades','⇄'],
+  drafts:['Drafts','D'],
+  contracts:['Contracts','C'],
+  rookie_rights:['Rookie Rights','R'],
+  message_board:['Message Board','✎'],
+  matchups:['Matchups','VS'],
+  deadlines:['Deadlines','◷'],
+  injuries:['Injury Updates','+'],
+  player_availability:['Player Availability','A'],
+  other_activity:['Other League Activity','•']
+ };
+ return map[category]||[String(category||'Activity').replaceAll('_',' '),'•'];
+}
+function notificationPrefEnabled(category){
+ const p=state.notificationPrefs.find(x=>x.category===category);
+ return p?p.enabled!==false:true;
+}
+function notificationRelatedTab(e){
+ if(e.category==='message_board')return 'board';
+ if(e.category==='trades')return 'trades';
+ if(e.category==='drafts'||e.category==='roster_moves'||e.category==='contracts'||e.category==='rookie_rights')return 'transactions';
+ if(e.category==='matchups')return 'matchups';
+ if(e.category==='deadlines')return 'deadlines';
+ return null;
+}
+function notificationView(){
+ const t=myTeam();
+ if(!t)return `${pageHeading('Notifications','Owner-specific GLSK alerts.','League Activity')}<div class="card empty">Sign in as a team owner to use notifications.</div>`;
+ const categories=['roster_moves','trades','drafts','contracts','rookie_rights','message_board','matchups','deadlines','injuries','player_availability','other_activity'];
+ const rosterKeys=new Set(rosterFor(t.id).map(r=>r.player_key));
+ return `${pageHeading('Notifications','Choose what you want to hear about and follow league activity in realtime.','League Activity')}
+ <div class="notifications-layout">
+   <section class="card notification-feed-card">
+     <div class="notification-feed-head"><div><h2>Activity Feed</h2><span>${state.notificationUnread} unread</span></div>${state.notificationUnread?'<button class="btn btn-sm btn-outline" data-action="notifications-mark-read">Mark All Read</button>':''}</div>
+     <div class="notification-feed">${state.notifications.length?state.notifications.map(e=>{
+       const [label,icon]=notificationCategoryMeta(e.category),tab=notificationRelatedTab(e);
+       return `<button class="notification-row ${e.unread?'unread':''}" ${tab?`data-notification-tab="${tab}"`:''}>
+         <span class="notification-icon notification-${esc(e.category)}">${esc(icon)}</span>
+         <div class="notification-copy"><div class="notification-title-row"><strong>${esc(e.title)}</strong>${e.unread?'<span class="notification-unread-dot"></span>':''}</div>${e.body?`<p>${esc(e.body)}</p>`:''}<div class="notification-meta"><span>${esc(label)}</span><span>${fmtDate(e.created_at)}</span></div></div>
+       </button>`;
+     }).join(''):'<div class="board-empty"><strong>No notifications yet.</strong><span>New league activity will appear here automatically.</span></div>'}</div>
+   </section>
+
+   <div class="notification-settings-column">
+     <section class="card card-pad office-section notification-settings-card">
+       <div class="office-section-head"><div><h2>Notification Settings</h2><div class="section-caption">Each owner controls their own feed.</div></div></div>
+       <div class="notification-toggle-list">${categories.map(c=>{const [label]=notificationCategoryMeta(c);return `<label class="notification-toggle-row"><div><strong>${esc(label)}</strong><span>${c==='injuries'?'My roster + watched players':c==='player_availability'?'Watched players only':'League activity'}</span></div><input type="checkbox" class="notification-pref-toggle" data-notification-category="${c}" ${notificationPrefEnabled(c)?'checked':''}></label>`}).join('')}</div>
+       <div class="notification-delivery-note"><strong>Delivery</strong><span>These are realtime in-app alerts. Background phone/browser push can be added as a separate delivery layer later.</span></div>
+     </section>
+
+     <section class="card card-pad office-section player-alerts-card">
+       <div class="office-section-head"><div><h2>Player Alerts</h2><div class="section-caption">Follow specific players for injury and availability changes.</div></div></div>
+       <div class="player-watch-form">
+         <input id="notification-watch-player" class="input" list="notification-player-list" placeholder="Search player name">
+         <datalist id="notification-player-list">${state.notificationPlayers.map(p=>`<option value="${esc(p.name)}">${esc(p.nfl_team||'')} • ${esc(p.position||'')}</option>`).join('')}</datalist>
+         <label class="watch-check"><input id="watch-injury" type="checkbox" checked> Injury</label>
+         <label class="watch-check"><input id="watch-availability" type="checkbox" checked> Availability</label>
+         <button class="btn btn-primary" data-action="notification-add-watch">Watch Player</button>
+       </div>
+       <div class="watch-list">${state.playerWatches.length?state.playerWatches.map(w=>`<div class="watch-row"><div><strong>${esc(w.player_name)}</strong><span>${esc(w.nfl_team||'')} • ${esc(w.position||'')} • ${w.injury_alerts?'Injury':''}${w.injury_alerts&&w.availability_alerts?' + ':''}${w.availability_alerts?'Availability':''}</span></div><button class="btn btn-sm btn-reset" data-remove-watch="${w.id}">Remove</button></div>`).join(''):'<div class="empty-tight">No watched players yet.</div>'}</div>
+       <div class="watch-scope-note">Players already on <strong>${esc(t.name)}</strong> automatically qualify for injury alerts when Injury Updates are enabled. You only need to watch them if you also want availability alerts after they leave your roster.</div>
+     </section>
+   </div>
  </div>`;
 }
 
@@ -968,7 +1067,7 @@ function historyView(){
 
 function loginView(){const options=state.teams.map(t=>`<option value="${t.id}">${esc(t.name)}</option>`).join('');return `<div class="login-wrap"><div class="login-card"><div class="login-head"><h1>${esc(LEAGUE_NAME)}</h1><p>League Office</p></div><div class="login-body"><div class="field"><label>Your team</label><select id="join-team" class="input"><option value="">Select your team…</option>${options}</select></div><div class="field"><label>Team PIN</label><input id="team-pin" class="input pin-input" inputmode="numeric" maxlength="6" placeholder="6-digit PIN"></div><div id="join-error"></div><button class="btn btn-primary btn-block" data-action="join">Enter League Office</button><button class="btn-link btn-block" data-action="spectate">View public league dashboard</button><a class="btn-link btn-block" href="/" style="display:block;text-align:center;text-decoration:none">← Auction Room</a></div></div></div>`;}
 function setupError(){return `<div class="login-wrap"><div class="login-card"><div class="login-head"><h1>League Office Ready</h1><p>Database connection is missing.</p></div></div></div>`;}
-function render(){if(!configured){app.innerHTML=setupError();return;}if(state.loading){app.innerHTML='<div class="login-wrap"><div style="color:white;font-weight:900">Loading League Office…</div></div>';return;}if(!state.session){app.innerHTML=loginView();bind();return;}let content=state.tab==='lineup'?lineupView():state.tab==='matchups'?matchupsView():state.tab==='schedule'?scheduleView():state.tab==='standings'?standingsView():state.tab==='board'?boardView():state.tab==='teams'?teamsView():state.tab==='contracts'?contractsView():state.tab==='trades'?tradesView():state.tab==='transactions'?transactionsView():state.tab==='history'?historyView():state.tab==='rules'?rulesView():state.tab==='deadlines'?deadlinesView():state.tab==='finances'?financesView():state.tab==='reconcile'?reconcileView():dashboard();app.innerHTML=`<div class="office-shell">${topBar()}<main class="main">${content}</main>${bottomNav()}</div>`;bind();}
+function render(){if(!configured){app.innerHTML=setupError();return;}if(state.loading){app.innerHTML='<div class="login-wrap"><div style="color:white;font-weight:900">Loading League Office…</div></div>';return;}if(!state.session){app.innerHTML=loginView();bind();return;}let content=state.tab==='lineup'?lineupView():state.tab==='matchups'?matchupsView():state.tab==='schedule'?scheduleView():state.tab==='standings'?standingsView():state.tab==='board'?boardView():state.tab==='notifications'?notificationView():state.tab==='teams'?teamsView():state.tab==='contracts'?contractsView():state.tab==='trades'?tradesView():state.tab==='transactions'?transactionsView():state.tab==='history'?historyView():state.tab==='rules'?rulesView():state.tab==='deadlines'?deadlinesView():state.tab==='finances'?financesView():state.tab==='reconcile'?reconcileView():dashboard();app.innerHTML=`<div class="office-shell">${topBar()}<main class="main">${content}</main>${bottomNav()}</div>`;bind();}
 
 async function join(){const teamId=document.querySelector('#join-team')?.value,pin=document.querySelector('#team-pin')?.value.trim(),err=document.querySelector('#join-error');if(!teamId||!pin){err.innerHTML='<div class="error">Select your team and enter its PIN.</div>';return;}try{await rpc('join_room',{p_room_code:ROOM_CODE,p_team_id:teamId,p_pin:pin});const t=state.teams.find(x=>x.id===teamId);let commishPin=null;if(t?.name===COMMISH_TEAM_NAME){const valid=await rpc('commish_login',{p_room_code:ROOM_CODE,p_pin:pin});if(!valid?.valid)throw new Error('Commissioner access is not configured.');commishPin=pin;}saveSession({teamId,pin,commishPin,spectator:false});await loadFinance();render();}catch(e){err.innerHTML=`<div class="error">${esc(e.message)}</div>`;}}
 function logout(){saveSession(null);render();}
@@ -1013,6 +1112,53 @@ function bind(){
    const action=b.dataset.boardAction,id=Number(b.dataset.threadId);
    if(action==='archive'&&!confirm('Archive this discussion? It will disappear from the active message board.'))return;
    commish('league_commish_message_thread_action',{p_thread_id:id,p_action:action},`Discussion ${action}d.`);
+ }));
+ app.querySelectorAll('[data-notification-tab]').forEach(b=>b.addEventListener('click',async()=>{
+   state.tab=b.dataset.notificationTab;
+   render();
+ }));
+ app.querySelector('[data-action="notifications-mark-read"]')?.addEventListener('click',async()=>{
+   const t=myTeam();if(!t)return;
+   try{
+     await rpc('league_owner_mark_notifications_read',{p_room_code:ROOM_CODE,p_team_id:t.id,p_pin:state.session.pin});
+     await loadNotifications();render();
+   }catch(e){toast(e.message,'error');}
+ });
+ app.querySelectorAll('.notification-pref-toggle').forEach(el=>el.addEventListener('change',async()=>{
+   const t=myTeam();if(!t)return;
+   try{
+     await rpc('league_owner_set_notification_preference',{
+       p_room_code:ROOM_CODE,p_team_id:t.id,p_pin:state.session.pin,
+       p_category:el.dataset.notificationCategory,p_enabled:el.checked
+     });
+     await loadNotifications();render();
+   }catch(e){toast(e.message,'error');}
+ }));
+ app.querySelector('[data-action="notification-add-watch"]')?.addEventListener('click',async()=>{
+   const t=myTeam();if(!t)return;
+   const name=document.getElementById('notification-watch-player')?.value.trim();
+   const p=state.notificationPlayers.find(x=>String(x.name).toLowerCase()===String(name||'').toLowerCase());
+   if(!p)return toast('Choose a player from the player list.','error');
+   try{
+     await rpc('league_owner_set_player_watch',{
+       p_room_code:ROOM_CODE,p_team_id:t.id,p_pin:state.session.pin,
+       p_player_name:p.name,p_nfl_team:p.nfl_team||'',p_position:p.position||'',
+       p_injury_alerts:Boolean(document.getElementById('watch-injury')?.checked),
+       p_availability_alerts:Boolean(document.getElementById('watch-availability')?.checked)
+     });
+     toast(`${p.name} added to Player Alerts.`);
+     await loadNotifications();render();
+   }catch(e){toast(e.message,'error');}
+ });
+ app.querySelectorAll('[data-remove-watch]').forEach(b=>b.addEventListener('click',async()=>{
+   const t=myTeam();if(!t)return;
+   try{
+     await rpc('league_owner_remove_player_watch',{
+       p_room_code:ROOM_CODE,p_team_id:t.id,p_pin:state.session.pin,
+       p_watch_id:Number(b.dataset.removeWatch)
+     });
+     await loadNotifications();render();
+   }catch(e){toast(e.message,'error');}
  }));
  app.querySelector('[data-action="save-lineup-slots"]')?.addEventListener('click',()=>{
    const counts={};['QB','RB','WR','TE','FLEX','K','DST'].forEach(p=>counts[p]=Number(document.getElementById(`slot-count-${p}`)?.value||0));
@@ -1088,7 +1234,7 @@ function bind(){
  app.querySelector('[data-action="save-correction"]')?.addEventListener('click',()=>{const desc=document.getElementById('corr-desc')?.value.trim();if(!desc)return toast('Enter a correction description.','error');commish('league_commish_correction',{p_team_id:document.getElementById('corr-team')?.value||null,p_bid_delta:Number(document.getElementById('corr-bids')?.value||0),p_description:desc,p_reverse_transaction_id:document.getElementById('corr-reverse')?.value||null},'Correction recorded.');});
 }
 
-async function subscribe(){if(state.realtime)await supabase.removeChannel(state.realtime);state.realtime=supabase.channel(`league-office-${ROOM_CODE}`).on('postgres_changes',{event:'*',schema:'public',table:'league_roster_entries'},refresh).on('postgres_changes',{event:'*',schema:'public',table:'teams'},refresh).on('postgres_changes',{event:'*',schema:'public',table:'league_contracts'},refresh).on('postgres_changes',{event:'*',schema:'public',table:'league_rule_settings'},refresh).on('postgres_changes',{event:'*',schema:'public',table:'redistribution_rules'},refresh).on('postgres_changes',{event:'*',schema:'public',table:'league_deadlines'},refresh).on('postgres_changes',{event:'*',schema:'public',table:'league_deadline_team_status'},refresh).on('postgres_changes',{event:'*',schema:'public',table:'league_history_seasons'},refresh).on('postgres_changes',{event:'*',schema:'public',table:'league_history_team_seasons'},refresh).on('postgres_changes',{event:'*',schema:'public',table:'league_player_stats'},refresh).on('postgres_changes',{event:'*',schema:'public',table:'league_lineups'},refresh).on('postgres_changes',{event:'*',schema:'public',table:'league_weekly_player_scores'},refresh).on('postgres_changes',{event:'*',schema:'public',table:'league_schedule'},refresh).on('postgres_changes',{event:'*',schema:'public',table:'league_week_states'},refresh).on('postgres_changes',{event:'*',schema:'public',table:'league_scoring_rules'},refresh).on('postgres_changes',{event:'*',schema:'public',table:'league_player_projections'},refresh).on('postgres_changes',{event:'*',schema:'public',table:'league_message_threads'},refresh).on('postgres_changes',{event:'*',schema:'public',table:'league_message_posts'},refresh).subscribe();}
+async function subscribe(){if(state.realtime)await supabase.removeChannel(state.realtime);state.realtime=supabase.channel(`league-office-${ROOM_CODE}`).on('postgres_changes',{event:'*',schema:'public',table:'league_roster_entries'},refresh).on('postgres_changes',{event:'*',schema:'public',table:'teams'},refresh).on('postgres_changes',{event:'*',schema:'public',table:'league_contracts'},refresh).on('postgres_changes',{event:'*',schema:'public',table:'league_rule_settings'},refresh).on('postgres_changes',{event:'*',schema:'public',table:'redistribution_rules'},refresh).on('postgres_changes',{event:'*',schema:'public',table:'league_deadlines'},refresh).on('postgres_changes',{event:'*',schema:'public',table:'league_deadline_team_status'},refresh).on('postgres_changes',{event:'*',schema:'public',table:'league_history_seasons'},refresh).on('postgres_changes',{event:'*',schema:'public',table:'league_history_team_seasons'},refresh).on('postgres_changes',{event:'*',schema:'public',table:'league_player_stats'},refresh).on('postgres_changes',{event:'*',schema:'public',table:'league_lineups'},refresh).on('postgres_changes',{event:'*',schema:'public',table:'league_weekly_player_scores'},refresh).on('postgres_changes',{event:'*',schema:'public',table:'league_schedule'},refresh).on('postgres_changes',{event:'*',schema:'public',table:'league_week_states'},refresh).on('postgres_changes',{event:'*',schema:'public',table:'league_scoring_rules'},refresh).on('postgres_changes',{event:'*',schema:'public',table:'league_player_projections'},refresh).on('postgres_changes',{event:'*',schema:'public',table:'league_message_threads'},refresh).on('postgres_changes',{event:'*',schema:'public',table:'league_message_posts'},refresh).on('postgres_changes',{event:'*',schema:'public',table:'league_transactions'},refresh).on('postgres_changes',{event:'*',schema:'public',table:'league_trades'},refresh).on('postgres_changes',{event:'*',schema:'public',table:'league_player_status_updates'},refresh).subscribe();}
 let refreshTimer=null;function refresh(){clearTimeout(refreshTimer);refreshTimer=setTimeout(async()=>{try{await loadData();render();}catch(e){console.warn(e);}},180);}
 
 async function init(){if(!configured){state.loading=false;render();return;}try{await loadData();state.loading=false;render();await subscribe();}catch(e){state.loading=false;app.innerHTML=`<div class="login-wrap"><div class="login-card"><div class="login-head"><h1>League Office</h1><p>Database migration required.</p></div><div class="login-body"><div class="error">${esc(e.message)}</div><p class="small muted">Run the League Office v1 Supabase migration, then refresh.</p></div></div></div>`;}}
