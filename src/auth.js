@@ -100,7 +100,7 @@ async function showSignInGate(app,roomCode,leagueName){
     let verificationMessage='';
 
     const draw=()=>{
-      const unclaimed=teams.filter(t=>!t.claimed);
+      const available=teams;
       const content=mode==='signin'?`
         <div class="glsk-auth-tabs">
           <button type="button" class="active" data-auth-mode="signin">Sign In</button>
@@ -124,12 +124,12 @@ async function showSignInGate(app,roomCode,leagueName){
           <button type="button" class="active" data-auth-mode="claim">Claim Your Team</button>
         </div>
         <div class="glsk-auth-section-title">Create your owner account</div>
-        <p class="glsk-auth-copy">Use your existing team PIN one final time to link your franchise to an email and password.</p>
+        <p class="glsk-auth-copy">Use your existing team PIN one final time to link this email to your franchise. Teams may have multiple co-managers using the same team PIN.</p>
         <form id="glsk-signup-form" class="glsk-auth-form">
           <label>Your team
             <select id="glsk-claim-team" required>
               <option value="">Select your team…</option>
-              ${unclaimed.map(t=>`<option value="${t.team_id}">${esc(t.team_name)}</option>`).join('')}
+              ${available.map(t=>`<option value="${t.team_id}">${esc(t.team_name)}${t.claimed?' — co-manager access':''}</option>`).join('')}
             </select>
           </label>
           <label>Existing team PIN
@@ -144,7 +144,7 @@ async function showSignInGate(app,roomCode,leagueName){
           <button class="glsk-auth-primary" type="submit">Create Account & Claim Team</button>
         </form>
         ${verificationMessage?`<div class="glsk-auth-message success">${esc(verificationMessage)}</div>`:''}
-        ${unclaimed.length===0?'<div class="glsk-auth-message">All GLSK teams have already been claimed.</div>':''}
+        
       `;
 
       app.innerHTML=authFrame(
@@ -225,16 +225,16 @@ async function showClaimGate(app,roomCode,leagueName,user){
   const teams=await claimableTeams(roomCode);
   return new Promise(resolve=>{
     const draw=()=>{
-      const unclaimed=teams.filter(t=>!t.claimed);
+      const available=teams;
       app.innerHTML=authFrame(
         leagueName,
         `<div class="glsk-auth-section-title">Finish linking your team</div>
-         <p class="glsk-auth-copy"><strong>${esc(user?.email||'Your account')}</strong> is signed in, but it is not linked to a GLSK franchise yet.</p>
+         <p class="glsk-auth-copy"><strong>${esc(user?.email||'Your account')}</strong> is signed in, but it is not linked to a GLSK franchise yet. If another manager already claimed the team, you can still join it as a co-manager using the same team PIN.</p>
          <form id="glsk-finish-claim" class="glsk-auth-form">
            <label>Your team
              <select id="glsk-finish-team" required>
                <option value="">Select your team…</option>
-               ${unclaimed.map(t=>`<option value="${t.team_id}">${esc(t.team_name)}</option>`).join('')}
+               ${available.map(t=>`<option value="${t.team_id}">${esc(t.team_name)}${t.claimed?' — co-manager access':''}</option>`).join('')}
              </select>
            </label>
            <label>Existing team PIN
@@ -243,7 +243,7 @@ async function showClaimGate(app,roomCode,leagueName,user){
            <button class="glsk-auth-primary" type="submit">Claim Team</button>
          </form>
          <button type="button" class="glsk-auth-link" data-auth-signout>Sign out and use a different email</button>`,
-        'Your team PIN is used only to verify this one-time claim. It is not saved in your browser.'
+        'Your team PIN is used only to verify this one-time claim. Co-managers on the same franchise use the same team PIN.'
       );
 
       app.querySelector('#glsk-finish-claim')?.addEventListener('submit',async e=>{
@@ -404,13 +404,17 @@ export async function requireOwnerAccount({app,roomCode,leagueName,legacyStorage
 
     const account=await currentAccount(roomCode);
     if(account?.claimed){
-      maybePromptPush(roomCode,leagueName,account).catch(()=>{});
       return {user:session.user,account};
     }
 
     const result=await showClaimGate(app,roomCode,leagueName,session.user);
     if(result==='signed-out')continue;
   }
+}
+
+
+export async function promptOwnerPush(roomCode,leagueName,account){
+  return maybePromptPush(roomCode,leagueName,account);
 }
 
 export function legacySessionFromAccount(account,user){

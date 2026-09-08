@@ -1207,11 +1207,11 @@ function accountView(){
  return `${pageHeading('Account','Your private GLSK owner login and device access.','Owner Settings')}
  <div class="account-layout">
    <section class="card card-pad office-section account-card">
-     <div class="office-section-head"><div><h2>Owner Account</h2><div class="section-caption">This login is permanently linked to your GLSK franchise until the commissioner releases it.</div></div></div>
+     <div class="office-section-head"><div><h2>Owner Account</h2><div class="section-caption">This login is linked to your GLSK franchise. A team may have multiple manager accounts.</div></div></div>
      <div class="account-detail-list">
        <div><span>Email</span><strong>${esc(email)}</strong></div>
        <div><span>Franchise</span><strong>${esc(t?.name||state.authAccount?.team_name||'—')}</strong></div>
-       <div><span>Role</span><strong>${isCommish()?'Commissioner / Owner':'Team Owner'}</strong></div>
+       <div><span>Role</span><strong>${isCommish()?'Commissioner / Team Manager':'Team Manager'}</strong></div>
        <div><span>Session</span><strong>Stay signed in enabled</strong></div>
      </div>
      <div class="account-actions">

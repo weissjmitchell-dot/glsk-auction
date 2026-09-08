@@ -152,3 +152,7 @@
   .glsk-push-actions{flex-direction:column}
   .glsk-push-actions>*{width:100%}
 }
+
+
+/* GLSK v7.0.4 — co-manager onboarding */
+.glsk-auth-form select{text-overflow:ellipsis}
