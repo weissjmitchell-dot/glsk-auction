@@ -12,6 +12,7 @@ const state = {
   historySeasons:[], historyTeamSeasons:[], historyAllTime:[], historyFranchises:[], historyImportRuns:[], playerStats:[],
   gameSettings:null, lineupSlots:[], weekStates:[], schedule:[], lineups:[], weeklyScores:[], matchupScores:[], shadowStandings:[], reconciliation:[], scoringRules:[], weeklyHostSettings:null, playerProjections:[],
   lineupDataTab:'stats', lineupStatsRange:'week', lineupProjectionRange:'week', lineupBrowseWeek:null,
+  matchupBrowseWeek:null, selectedMatchupId:null, scheduleTeamId:null,
   session:loadSession(), tab:'home', loading:true, realtime:null, txFilters:{team:'',type:'',search:''},
   historySort:{key:'championships',dir:'desc'}, historySeason:'all',
 };
@@ -106,6 +107,8 @@ async function loadData(){
   state.weeklyHostSettings=weeklyHostSettings.find(x=>x.season_id===sid)||null;
   state.playerProjections=playerProjections.filter(x=>x.season_id===sid).sort((a,b)=>a.week-b.week||String(a.player_name).localeCompare(String(b.player_name)));
   if(state.lineupBrowseWeek==null)state.lineupBrowseWeek=Number(state.gameSettings?.current_week||1);
+  if(state.matchupBrowseWeek==null)state.matchupBrowseWeek=Number(state.gameSettings?.current_week||1);
+  if(state.scheduleTeamId==null&&myTeam())state.scheduleTeamId=myTeam().id;
   await loadFinance();
   await loadReconciliation();
 }
@@ -232,7 +235,7 @@ function topBar(){
  </div></header>`;
 }
 function bottomNav(){
- const items=[['home','⌂','Home'],['lineup','☑','Lineup'],['matchups','VS','Matchups'],['standings','≡','Standings'],['teams','♟','Teams'],['contracts','▤','Contracts'],['trades','⇄','Trades'],['transactions','☷','Transactions'],['history','★','History'],['rules','⚙','Rules'],['deadlines','◷','Deadlines'],['finances','$','Finances']];
+ const items=[['home','⌂','Home'],['lineup','☑','Lineup'],['matchups','VS','Matchups'],['schedule','◫','Schedule'],['standings','≡','Standings'],['teams','♟','Teams'],['contracts','▤','Contracts'],['trades','⇄','Trades'],['transactions','☷','Transactions'],['history','★','History'],['rules','⚙','Rules'],['deadlines','◷','Deadlines'],['finances','$','Finances']];
  if(isCommish())items.push(['reconcile','✓','Reconcile']);
  return `<nav class="bottom-nav office-bottom-nav"><div class="bottom-nav-inner">${items.map(([t,i,l])=>`<button class="nav-btn ${state.tab===t?'active':''}" data-tab="${t}"><span>${i}</span>${l}</button>`).join('')}</div></nav>`;
 }
@@ -591,6 +594,52 @@ function lineupView(){
  ${dataTab==='projected'&&!state.playerProjections.length?'<div class="notice lineup-feed-notice">Projection layout is ready. Values will populate when the projection feed is connected.</div>':''}
  ${isCommish()&&slots.length?lineupSetupPanel():''}`;
 }
+
+function matchupBrowseWeek(){return Math.max(1,Math.min(18,Number(state.matchupBrowseWeek||currentWeek())));}
+function matchupRowsForWeek(week=matchupBrowseWeek()){
+  return state.matchupScores.filter(m=>Number(m.week)===Number(week)).sort((a,b)=>Number(a.matchup_no)-Number(b.matchup_no));
+}
+function scheduleRowsForWeek(week){
+  return state.schedule.filter(s=>Number(s.week)===Number(week)).sort((a,b)=>Number(a.matchup_no)-Number(b.matchup_no));
+}
+function teamRecord(teamId){
+  const r=state.shadowStandings.find(x=>x.team_id===teamId);
+  return r?`${r.wins}-${r.losses}${Number(r.ties)?`-${r.ties}`:''}`:'0-0';
+}
+function projectedStarterTotal(teamId,week){
+  return lineupFor(teamId,week).reduce((sum,l)=>sum+Number(projectionBundle(l.player_key,'week',week)?.projected_fantasy_points||0),0);
+}
+function matchupStatusLabel(m){
+  if(m?.week_status==='final')return 'Final';
+  if(m?.week_status==='live')return 'Live';
+  return 'Not started';
+}
+function matchupWinnerClass(m,teamId){
+  if(m?.week_status!=='final')return '';
+  const mine=Number(m.home_team_id===teamId?m.home_score:m.away_score);
+  const opp=Number(m.home_team_id===teamId?m.away_score:m.home_score);
+  return mine>opp?'winner':mine<opp?'loser':'tie';
+}
+function selectedMatchupForWeek(week=matchupBrowseWeek()){
+  const rows=matchupRowsForWeek(week);
+  let selected=rows.find(m=>String(m.schedule_id)===String(state.selectedMatchupId));
+  const me=myTeam();
+  if(!selected&&me)selected=rows.find(m=>m.home_team_id===me.id||m.away_team_id===me.id);
+  return selected||rows[0]||null;
+}
+function matchupPlayerRows(teamId,week){
+  const slots=state.lineupSlots;
+  const rows=lineupFor(teamId,week);
+  return slots.map(slot=>{
+    const l=rows.find(x=>x.slot_code===slot.slot_code);
+    const rp=l?rosterFor(teamId).find(r=>r.player_key===l.player_key):null;
+    const actual=l?scoreFor(l.player_key,week):null;
+    const proj=l?projectionBundle(l.player_key,'week',week):null;
+    const game=l?lineupGameLabel(l.player_key,week):{main:'—',sub:''};
+    return {slot,l,rp,actual,proj,game};
+  });
+}
+
 function scheduleSetupPanel(){
  if(!isCommish())return '';
  const week=currentWeek(),existing=state.schedule.filter(s=>Number(s.week)===week).sort((a,b)=>a.matchup_no-b.matchup_no);
@@ -598,17 +647,121 @@ function scheduleSetupPanel(){
  <div class="schedule-editor">${Array.from({length:6},(_,i)=>{const row=existing[i];return `<div class="schedule-edit-row"><span>#${i+1}</span><select class="input schedule-home" data-matchup="${i+1}"><option value="">Home team</option>${state.teams.map(t=>`<option value="${t.id}" ${row?.home_team_id===t.id?'selected':''}>${esc(t.name)}</option>`).join('')}</select><strong>vs</strong><select class="input schedule-away" data-matchup="${i+1}"><option value="">Away team</option>${state.teams.map(t=>`<option value="${t.id}" ${row?.away_team_id===t.id?'selected':''}>${esc(t.name)}</option>`).join('')}</select></div>`}).join('')}</div>
  <div class="inline-actions"><select id="schedule-phase" class="input"><option value="regular">Regular season</option><option value="playoffs">Playoffs</option><option value="championship">Championship</option><option value="consolation">Consolation</option></select><button class="btn btn-primary" data-action="save-week-schedule">Save Week ${week} Matchups</button></div></section>`;
 }
-function matchupTeamLine(teamId,week){
- const slots=state.lineupSlots,rows=lineupFor(teamId,week);
- return `<div class="matchup-lineup">${slots.map(slot=>{const l=rows.find(x=>x.slot_code===slot.slot_code);return `<div class="matchup-player"><span class="matchup-slot">${esc(slot.label)}</span><span class="matchup-player-name">${l?esc(l.player_name):'—'}</span>${l?weeklyPlayerLine(l.player_key,week):'<span class="weekly-player-score pending">—</span>'}</div>`}).join('')}</div>`;
+function matchupTeamLine(teamId,week,side='home'){
+ const rows=matchupPlayerRows(teamId,week);
+ return `<div class="matchup-detail-lineup">${rows.map(({slot,l,rp,actual,proj,game})=>`<div class="matchup-detail-player ${side}">
+   <span class="matchup-detail-slot">${esc(slot.label)}</span>
+   <div class="matchup-detail-player-info"><strong>${l?esc(l.player_name):'Open Starter'}</strong>${rp?`<small>${esc(rp.nfl_team||'')} • ${esc(rp.position||'')} • ${esc(game.main)}</small>`:'<small>—</small>'}</div>
+   <span class="matchup-detail-proj">${proj?.projected_fantasy_points!=null?Number(proj.projected_fantasy_points).toFixed(2):'—'}</span>
+   <span class="matchup-detail-actual">${actual?Number(actual.fantasy_points||0).toFixed(2):'—'}</span>
+ </div>`).join('')}</div>`;
 }
+
 function matchupsView(){
- const week=currentWeek(),matches=state.matchupScores.filter(m=>Number(m.week)===week).sort((a,b)=>a.matchup_no-b.matchup_no),ws=weekState(week);
- return `${pageHeading('Matchups',`Week ${week} • ${ws?.status||'scheduled'} scoring.`,`Weekly Play`)}${scheduleSetupPanel()}
- ${!state.lineupSlots.length?'<div class="notice">Starting lineup slots must be configured before weekly matchup scoring can be tested.</div>':''}
- <div class="matchup-grid">${matches.length?matches.map(m=>{const h=teamById(m.home_team_id),a=teamById(m.away_team_id);return `<section class="card matchup-card"><div class="matchup-scoreboard"><div class="matchup-team"><strong>${esc(h?.name||'Home')}</strong><span>${Number(m.home_score||0).toFixed(2)}</span></div><div class="matchup-vs">VS</div><div class="matchup-team away"><strong>${esc(a?.name||'Away')}</strong><span>${Number(m.away_score||0).toFixed(2)}</span></div></div><div class="matchup-rosters"><div>${matchupTeamLine(m.home_team_id,week)}</div><div>${matchupTeamLine(m.away_team_id,week)}</div></div><div class="matchup-footer"><span>${m.week_status==='final'?'FINAL':`${Number(m.home_players_remaining||0)} / ${Number(m.away_players_remaining||0)} players remaining`}</span></div></section>`}).join(''):'<div class="card empty">No Week '+week+' matchups have been entered yet.</div>'}</div>
+ const week=matchupBrowseWeek(),matches=matchupRowsForWeek(week),selected=selectedMatchupForWeek(week),ws=weekState(week),me=myTeam();
+ if(selected&&!state.selectedMatchupId)state.selectedMatchupId=selected.schedule_id;
+ const home=selected?teamById(selected.home_team_id):null,away=selected?teamById(selected.away_team_id):null;
+ const homeProj=selected?projectedStarterTotal(selected.home_team_id,week):0,awayProj=selected?projectedStarterTotal(selected.away_team_id,week):0;
+ const status=selected?matchupStatusLabel(selected):(ws?.status||'scheduled');
+ return `${pageHeading('Matchups',`Browse every GLSK matchup and open any head-to-head detail.`,`Weekly Play`)}
+ <section class="matchup-topbar">
+   <div class="lineup-week-nav matchup-week-nav">
+     <button class="week-arrow" data-matchup-week="${Math.max(1,week-1)}" ${week<=1?'disabled':''}>‹</button>
+     <strong>Week ${week}</strong>
+     <button class="week-arrow" data-matchup-week="${Math.min(18,week+1)}" ${week>=18?'disabled':''}>›</button>
+   </div>
+   <div class="matchup-week-status ${status.toLowerCase().replaceAll(' ','-')}">${esc(status)}</div>
+ </section>
+
+ ${scheduleSetupPanel()}
+
+ ${selected?`<section class="card matchup-feature-card">
+   <div class="matchup-feature-head">
+     <div class="matchup-feature-team ${matchupWinnerClass(selected,selected.home_team_id)}">
+       <span class="matchup-side-label">${me?.id===selected.home_team_id?'YOUR TEAM':'HOME'}</span>
+       <strong>${esc(home?.name||'Home')}</strong>
+       <small>${teamRecord(selected.home_team_id)}</small>
+     </div>
+     <div class="matchup-feature-score">
+       <div><strong>${Number(selected.home_score||0).toFixed(2)}</strong><span>${homeProj?homeProj.toFixed(2):'—'} proj</span></div>
+       <b>VS</b>
+       <div><strong>${Number(selected.away_score||0).toFixed(2)}</strong><span>${awayProj?awayProj.toFixed(2):'—'} proj</span></div>
+     </div>
+     <div class="matchup-feature-team away ${matchupWinnerClass(selected,selected.away_team_id)}">
+       <span class="matchup-side-label">${me?.id===selected.away_team_id?'YOUR TEAM':'AWAY'}</span>
+       <strong>${esc(away?.name||'Away')}</strong>
+       <small>${teamRecord(selected.away_team_id)}</small>
+     </div>
+   </div>
+   <div class="matchup-progress-row"><span>${Number(selected.home_players_remaining||0)} players remaining</span><strong>${esc(status)}</strong><span>${Number(selected.away_players_remaining||0)} players remaining</span></div>
+   <div class="matchup-detail-head">
+     <span>Player</span><span>Proj</span><span>Fan Pts</span><span class="matchup-detail-center">Pos</span><span>Fan Pts</span><span>Proj</span><span>Player</span>
+   </div>
+   <div class="matchup-detail-grid">
+     <div>${matchupTeamLine(selected.home_team_id,week,'home')}</div>
+     <div class="matchup-detail-position-column">${state.lineupSlots.map(s=>`<span>${esc(s.label)}</span>`).join('')}</div>
+     <div>${matchupTeamLine(selected.away_team_id,week,'away')}</div>
+   </div>
+ </section>`:'<div class="card empty">No Week '+week+' matchup has been scheduled yet.</div>'}
+
+ <section class="office-section all-matchups-section">
+   <div class="office-section-head"><div><h2>Week ${week} • League Matchups</h2><div class="section-caption">Select any matchup to open the full head-to-head view</div></div><span class="trade-count">${matches.length}</span></div>
+   <div class="league-matchup-list">${matches.length?matches.map(m=>{
+     const h=teamById(m.home_team_id),a=teamById(m.away_team_id),active=String(selected?.schedule_id)===String(m.schedule_id);
+     const hp=projectedStarterTotal(m.home_team_id,week),ap=projectedStarterTotal(m.away_team_id,week);
+     return `<button class="league-matchup-row ${active?'active':''}" data-select-matchup="${m.schedule_id}">
+       <div class="league-matchup-team home"><strong>${esc(h?.name||'Home')}</strong><small>${teamRecord(m.home_team_id)}</small></div>
+       <div class="league-matchup-score"><strong>${Number(m.home_score||0).toFixed(2)}</strong><span>${hp?`${hp.toFixed(2)} proj`:'— proj'}</span></div>
+       <div class="league-matchup-vs">vs</div>
+       <div class="league-matchup-score"><strong>${Number(m.away_score||0).toFixed(2)}</strong><span>${ap?`${ap.toFixed(2)} proj`:'— proj'}</span></div>
+       <div class="league-matchup-team away"><strong>${esc(a?.name||'Away')}</strong><small>${teamRecord(m.away_team_id)}</small></div>
+     </button>`;
+   }).join(''):'<div class="card empty">No Week '+week+' matchups have been entered yet.</div>'}</div>
+ </section>
+
  ${isCommish()&&matches.length&&ws?.status!=='final'?`<div class="weekly-finalize"><button class="btn btn-reset" data-action="finalize-week">Finalize Week ${week}</button><span>Finalized weeks feed the GLSK standings.</span></div>`:''}`;
 }
+
+function scheduleView(){
+ const me=myTeam();
+ const selectedTeamId=state.scheduleTeamId&&state.teams.some(t=>t.id===state.scheduleTeamId)?state.scheduleTeamId:(me?.id||state.teams[0]?.id);
+ const team=teamById(selectedTeamId);
+ const weeks=Array.from({length:Number(state.gameSettings?.regular_season_weeks||14)},(_,i)=>i+1);
+ const playoffWeeks=state.weeklyHostSettings?.playoff_weeks||[15,16,17];
+ const allWeeks=[...weeks,...playoffWeeks.filter(w=>!weeks.includes(Number(w))).map(Number)].sort((a,b)=>a-b);
+ const scheduleRows=allWeeks.map(week=>{
+   const s=scheduleRowsForWeek(week).find(x=>x.home_team_id===selectedTeamId||x.away_team_id===selectedTeamId);
+   const m=state.matchupScores.find(x=>x.schedule_id===s?.id);
+   if(!s)return {week,s:null,m:null,opp:null};
+   const oppId=s.home_team_id===selectedTeamId?s.away_team_id:s.home_team_id;
+   return {week,s,m,opp:teamById(oppId)};
+ });
+ return `${pageHeading('Schedule','View a team’s complete regular-season and playoff schedule.','Weekly Play')}
+ <section class="schedule-toolbar card">
+   <div><span>Team Schedule</span><strong>${esc(team?.name||'Team')}</strong></div>
+   <select id="schedule-team-select" class="input">${state.teams.map(t=>`<option value="${t.id}" ${t.id===selectedTeamId?'selected':''}>${esc(t.name)}</option>`).join('')}</select>
+ </section>
+ <section class="card schedule-card">
+   <div class="schedule-table-head"><span>Week</span><span>Opponent</span><span>Result</span><span>Score</span><span>Proj</span></div>
+   <div class="schedule-table-body">${scheduleRows.map(({week,s,m,opp})=>{
+     const phase=s?.phase||((playoffWeeks||[]).map(Number).includes(week)?'playoffs':'regular');
+     const isHome=s?.home_team_id===selectedTeamId;
+     const myScore=m?Number(isHome?m.home_score:m.away_score):0,oppScore=m?Number(isHome?m.away_score:m.home_score):0;
+     const final=m?.week_status==='final';
+     const result=final?(myScore>oppScore?'W':myScore<oppScore?'L':'T'):'—';
+     const proj=s?projectedStarterTotal(selectedTeamId,week):0;
+     return `<div class="schedule-table-row ${week===currentWeek()?'current':''} ${phase!=='regular'?'playoff-week':''}">
+       <div class="schedule-week-cell"><strong>${week}</strong>${phase!=='regular'?'<small>PLAYOFF</small>':''}</div>
+       <div class="schedule-opponent">${s?`<span>${isHome?'vs':'@'}</span><strong>${esc(opp?.name||'Opponent')}</strong>`:'<span>—</span><strong>Not scheduled</strong>'}</div>
+       <div class="schedule-result ${result==='W'?'win':result==='L'?'loss':''}">${result}</div>
+       <div class="schedule-score">${m?`${myScore.toFixed(2)} – ${oppScore.toFixed(2)}`:'—'}</div>
+       <div class="schedule-proj">${proj?proj.toFixed(2):'—'}</div>
+     </div>`;
+   }).join('')}</div>
+ </section>
+ <div class="schedule-note">Weeks without an opponent will populate as the GLSK schedule is entered or imported.</div>`;
+}
+
 function standingsView(){
  const playoffTeams=Number(state.weeklyHostSettings?.playoff_teams||6);
  const finalizedWeeks=state.weekStates.filter(w=>w.phase==='regular'&&w.status==='final').length;
@@ -757,7 +910,7 @@ function historyView(){
 
 function loginView(){const options=state.teams.map(t=>`<option value="${t.id}">${esc(t.name)}</option>`).join('');return `<div class="login-wrap"><div class="login-card"><div class="login-head"><h1>${esc(LEAGUE_NAME)}</h1><p>League Office</p></div><div class="login-body"><div class="field"><label>Your team</label><select id="join-team" class="input"><option value="">Select your team…</option>${options}</select></div><div class="field"><label>Team PIN</label><input id="team-pin" class="input pin-input" inputmode="numeric" maxlength="6" placeholder="6-digit PIN"></div><div id="join-error"></div><button class="btn btn-primary btn-block" data-action="join">Enter League Office</button><button class="btn-link btn-block" data-action="spectate">View public league dashboard</button><a class="btn-link btn-block" href="/" style="display:block;text-align:center;text-decoration:none">← Auction Room</a></div></div></div>`;}
 function setupError(){return `<div class="login-wrap"><div class="login-card"><div class="login-head"><h1>League Office Ready</h1><p>Database connection is missing.</p></div></div></div>`;}
-function render(){if(!configured){app.innerHTML=setupError();return;}if(state.loading){app.innerHTML='<div class="login-wrap"><div style="color:white;font-weight:900">Loading League Office…</div></div>';return;}if(!state.session){app.innerHTML=loginView();bind();return;}let content=state.tab==='lineup'?lineupView():state.tab==='matchups'?matchupsView():state.tab==='standings'?standingsView():state.tab==='teams'?teamsView():state.tab==='contracts'?contractsView():state.tab==='trades'?tradesView():state.tab==='transactions'?transactionsView():state.tab==='history'?historyView():state.tab==='rules'?rulesView():state.tab==='deadlines'?deadlinesView():state.tab==='finances'?financesView():state.tab==='reconcile'?reconcileView():dashboard();app.innerHTML=`<div class="office-shell">${topBar()}<main class="main">${content}</main>${bottomNav()}</div>`;bind();}
+function render(){if(!configured){app.innerHTML=setupError();return;}if(state.loading){app.innerHTML='<div class="login-wrap"><div style="color:white;font-weight:900">Loading League Office…</div></div>';return;}if(!state.session){app.innerHTML=loginView();bind();return;}let content=state.tab==='lineup'?lineupView():state.tab==='matchups'?matchupsView():state.tab==='schedule'?scheduleView():state.tab==='standings'?standingsView():state.tab==='teams'?teamsView():state.tab==='contracts'?contractsView():state.tab==='trades'?tradesView():state.tab==='transactions'?transactionsView():state.tab==='history'?historyView():state.tab==='rules'?rulesView():state.tab==='deadlines'?deadlinesView():state.tab==='finances'?financesView():state.tab==='reconcile'?reconcileView():dashboard();app.innerHTML=`<div class="office-shell">${topBar()}<main class="main">${content}</main>${bottomNav()}</div>`;bind();}
 
 async function join(){const teamId=document.querySelector('#join-team')?.value,pin=document.querySelector('#team-pin')?.value.trim(),err=document.querySelector('#join-error');if(!teamId||!pin){err.innerHTML='<div class="error">Select your team and enter its PIN.</div>';return;}try{await rpc('join_room',{p_room_code:ROOM_CODE,p_team_id:teamId,p_pin:pin});const t=state.teams.find(x=>x.id===teamId);let commishPin=null;if(t?.name===COMMISH_TEAM_NAME){const valid=await rpc('commish_login',{p_room_code:ROOM_CODE,p_pin:pin});if(!valid?.valid)throw new Error('Commissioner access is not configured.');commishPin=pin;}saveSession({teamId,pin,commishPin,spectator:false});await loadFinance();render();}catch(e){err.innerHTML=`<div class="error">${esc(e.message)}</div>`;}}
 function logout(){saveSession(null);render();}
@@ -773,6 +926,9 @@ function bind(){
    else state.lineupStatsRange=b.dataset.lineupRange;
    render();
  }));
+ app.querySelectorAll('[data-matchup-week]').forEach(b=>b.addEventListener('click',()=>{state.matchupBrowseWeek=Number(b.dataset.matchupWeek);state.selectedMatchupId=null;render();}));
+ app.querySelectorAll('[data-select-matchup]').forEach(b=>b.addEventListener('click',()=>{state.selectedMatchupId=b.dataset.selectMatchup;render();}));
+ app.querySelector('#schedule-team-select')?.addEventListener('change',e=>{state.scheduleTeamId=e.target.value;render();});
  app.querySelector('[data-action="save-lineup-slots"]')?.addEventListener('click',()=>{
    const counts={};['QB','RB','WR','TE','FLEX','K','DST'].forEach(p=>counts[p]=Number(document.getElementById(`slot-count-${p}`)?.value||0));
    const slots=[];let order=1;
@@ -792,7 +948,7 @@ function bind(){
    if(rows.length!==6)return toast('Enter all six weekly matchups.','error');
    commish('league_commish_set_week_schedule',{p_week:currentWeek(),p_phase:document.getElementById('schedule-phase')?.value||'regular',p_matchups:rows},`Week ${currentWeek()} schedule saved.`);
  });
- app.querySelector('[data-action="finalize-week"]')?.addEventListener('click',()=>{if(confirm(`Finalize Week ${currentWeek()}? This will post the week to GLSK standings.`))commish('league_commish_finalize_week',{p_week:currentWeek()},`Week ${currentWeek()} finalized.`);});
+ app.querySelector('[data-action="finalize-week"]')?.addEventListener('click',()=>{if(confirm(`Finalize Week ${matchupBrowseWeek()}? This will post the week to GLSK standings.`))commish('league_commish_finalize_week',{p_week:matchupBrowseWeek()},`Week ${matchupBrowseWeek()} finalized.`);});
  app.querySelector('[data-action="save-reconciliation"]')?.addEventListener('click',async()=>{
    const rows=[...document.querySelectorAll('[data-reconcile-row]')].map(el=>({schedule_id:Number(el.dataset.reconcileRow),yahoo_home_score:el.querySelector('.yahoo-home-score')?.value||null,yahoo_away_score:el.querySelector('.yahoo-away-score')?.value||null}));
    try{await rpc('league_commish_save_reconciliation_matchups',{p_room_code:ROOM_CODE,p_commish_pin:state.session.commishPin,p_week:currentWeek(),p_rows:rows});toast('Reconciliation saved.');await loadData();render();}catch(e){toast(e.message,'error');}
