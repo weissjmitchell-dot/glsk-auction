@@ -10,6 +10,7 @@ const state = {
   room:null, teams:[], season:null, roster:[], contracts:[], rules:[], distro:[], deadlines:[], deadlineStatus:[], finance:[], contractOptions:[],
   transactions:[], trades:[], tradeAssets:[], futurePicks:[], rookieRights:[], extensionCosts:[], extensionEligibility:[],
   historySeasons:[], historyTeamSeasons:[], historyAllTime:[], historyFranchises:[], historyImportRuns:[], playerStats:[],
+  gameSettings:null, lineupSlots:[], weekStates:[], schedule:[], lineups:[], weeklyScores:[], matchupScores:[], shadowStandings:[], reconciliation:[],
   session:loadSession(), tab:'home', loading:true, realtime:null, txFilters:{team:'',type:'',search:''},
   historySort:{key:'championships',dir:'desc'}, historySeason:'all',
 };
@@ -53,13 +54,29 @@ async function loadFinance(){
   }catch(e){console.warn('finance load',e.message);}
 }
 
+
+async function loadReconciliation(){
+  state.reconciliation=[];
+  if(!isCommish()||!state.gameSettings)return;
+  try{
+    const {data,error}=await supabase.rpc('league_get_reconciliation_matchups',{
+      p_room_code:ROOM_CODE,
+      p_commish_pin:state.session.commishPin,
+      p_week:Number(state.gameSettings.current_week||1)
+    });
+    if(error)throw error;
+    state.reconciliation=data||[];
+  }catch(e){console.warn('reconciliation load',e.message);}
+}
+
 async function loadData(){
   const {data:room,error:re}=await supabase.from('rooms').select('*').eq('code',ROOM_CODE).single(); if(re)throw re; state.room=room;
-  const [teams,seasons,roster,contracts,rules,distro,deadlines,statuses,options,transactions,trades,tradeAssets,futurePicks,rookieRights,extensionCosts,extensionEligibility,historySeasons,historyTeamSeasons,historyAllTime,historyFranchises,historyImportRuns,playerStats]=await Promise.all([
+  const [teams,seasons,roster,contracts,rules,distro,deadlines,statuses,options,transactions,trades,tradeAssets,futurePicks,rookieRights,extensionCosts,extensionEligibility,historySeasons,historyTeamSeasons,historyAllTime,historyFranchises,historyImportRuns,playerStats,gameSettings,lineupSlots,weekStates,schedule,lineups,weeklyScores,matchupScores,shadowStandings]=await Promise.all([
     q('teams','*',[['room_id',room.id]]),q('league_seasons','*',[['room_id',room.id]]),q('league_roster_entries','*',[['room_id',room.id]]),
     q('league_contracts','*'),q('league_rule_settings','*'),q('redistribution_rules','*'),q('league_deadlines','*'),q('league_deadline_team_status','*'),q('contract_options','*'),
     q('league_transactions','*'),q('league_trades','*'),q('league_trade_assets','*'),q('league_future_picks','*',[['room_id',room.id]]),q('league_rookie_rights','*',[['room_id',room.id]]),q('league_extension_costs','*'),q('league_contract_extension_eligibility','*'),
-    q('league_history_seasons','*',[['room_id',room.id]]),q('league_history_team_seasons','*'),q('league_history_all_time','*',[['room_id',room.id]]),q('league_franchises','*',[['room_id',room.id]]),q('league_history_import_runs','*',[['room_id',room.id]]),q('league_player_stats','*',[['room_id',room.id]])
+    q('league_history_seasons','*',[['room_id',room.id]]),q('league_history_team_seasons','*'),q('league_history_all_time','*',[['room_id',room.id]]),q('league_franchises','*',[['room_id',room.id]]),q('league_history_import_runs','*',[['room_id',room.id]]),q('league_player_stats','*',[['room_id',room.id]]),
+    q('league_game_settings','*'),q('league_lineup_slots','*'),q('league_week_states','*'),q('league_schedule','*'),q('league_lineups','*'),q('league_weekly_player_scores','*'),q('league_matchup_live_scores','*'),q('league_shadow_standings','*')
   ]);
   state.teams=teams.sort((a,b)=>a.sort_order-b.sort_order); state.season=seasons.find(s=>s.is_current)||seasons.sort((a,b)=>b.season_year-a.season_year)[0]||null;
   const sid=state.season?.id; state.roster=roster; state.contracts=contracts.filter(x=>x.season_id===sid); state.rules=rules.filter(x=>x.season_id===sid).sort((a,b)=>a.sort_order-b.sort_order);
@@ -76,7 +93,16 @@ async function loadData(){
   state.historyFranchises=historyFranchises.sort((a,b)=>a.display_name.localeCompare(b.display_name));
   state.historyImportRuns=historyImportRuns.sort((a,b)=>new Date(b.started_at)-new Date(a.started_at));
   state.playerStats=playerStats.filter(x=>x.season_id===sid);
+  state.gameSettings=gameSettings.find(x=>x.season_id===sid)||null;
+  state.lineupSlots=lineupSlots.filter(x=>x.season_id===sid&&x.active).sort((a,b)=>a.slot_order-b.slot_order);
+  state.weekStates=weekStates.filter(x=>x.season_id===sid);
+  state.schedule=schedule.filter(x=>x.season_id===sid).sort((a,b)=>a.week-b.week||a.matchup_no-b.matchup_no);
+  state.lineups=lineups.filter(x=>x.season_id===sid);
+  state.weeklyScores=weeklyScores.filter(x=>x.season_id===sid);
+  state.matchupScores=matchupScores.filter(x=>x.season_id===sid);
+  state.shadowStandings=shadowStandings.filter(x=>x.season_id===sid).sort((a,b)=>Number(b.win_pct)-Number(a.win_pct)||Number(b.points_for)-Number(a.points_for));
   await loadFinance();
+  await loadReconciliation();
 }
 
 
@@ -104,6 +130,24 @@ function playerStatLine(r,compact=false){
  return `<div class="player-stat-line"><span>${core.join(' • ')||'Season stats'}</span>${detail.length?`<span class="player-stat-detail">${detail.slice(0,4).join(' • ')}</span>`:''}</div>`;
 }
 
+
+function currentWeek(){return Number(state.gameSettings?.current_week||1);}
+function weekState(week=currentWeek()){return state.weekStates.find(w=>Number(w.week)===Number(week))||null;}
+function scoreFor(playerKey,week=currentWeek()){return state.weeklyScores.find(s=>Number(s.week)===Number(week)&&s.player_key===playerKey)||null;}
+function lineupFor(teamId,week=currentWeek()){return state.lineups.filter(l=>Number(l.week)===Number(week)&&l.team_id===teamId);}
+function matchupForTeam(teamId,week=currentWeek()){return state.matchupScores.find(m=>Number(m.week)===Number(week)&&(m.home_team_id===teamId||m.away_team_id===teamId))||null;}
+function weeklyScore(teamId,week=currentWeek()){const m=matchupForTeam(teamId,week);if(!m)return 0;return Number(m.home_team_id===teamId?m.home_score:m.away_score)||0;}
+function weeklyPlayerLine(playerKey,week=currentWeek()){
+  const s=scoreFor(playerKey,week);
+  if(!s)return '<span class="weekly-player-score pending">—</span>';
+  const st=s.game_final?'FINAL':s.game_started?(s.nfl_game_status||'LIVE'):'UPCOMING';
+  return `<span class="weekly-player-score ${s.game_final?'final':s.game_started?'live':'upcoming'}"><b>${Number(s.fantasy_points||0).toFixed(2)}</b><small>${esc(st)}</small></span>`;
+}
+function slotEligibleRoster(slot,teamId){
+  return rosterFor(teamId).filter(r=>(slot.allowed_positions||[]).includes(String(r.position||'').toUpperCase())).sort((a,b)=>a.player_name.localeCompare(b.player_name));
+}
+function lineupSlotCounts(){const c={QB:0,RB:0,WR:0,TE:0,FLEX:0,K:0,DST:0};for(const s of state.lineupSlots){const code=String(s.slot_code||'').replace(/[0-9]+$/,'');if(code.startsWith('FLEX'))c.FLEX++;else if(c[code]!=null)c[code]++;}return c;}
+
 function topBar(){
  const t=myTeam(),rosterCount=t?rosterFor(t.id).length:0,limit=state.season?.roster_limit||18,cap=t?capUsed(t.id):0;
  return `<header class="topbar office-topbar"><div class="topbar-inner office-topbar-inner">
@@ -117,7 +161,11 @@ function topBar(){
    </div>
  </div></header>`;
 }
-function bottomNav(){const items=[['home','⌂','Home'],['teams','♟','Teams'],['contracts','▤','Contracts'],['trades','⇄','Trades'],['transactions','☷','Transactions'],['history','★','History'],['rules','⚙','Rules'],['deadlines','◷','Deadlines'],['finances','$','Finances']];return `<nav class="bottom-nav office-bottom-nav"><div class="bottom-nav-inner">${items.map(([t,i,l])=>`<button class="nav-btn ${state.tab===t?'active':''}" data-tab="${t}"><span>${i}</span>${l}</button>`).join('')}</div></nav>`;}
+function bottomNav(){
+ const items=[['home','⌂','Home'],['lineup','☑','Lineup'],['matchups','VS','Matchups'],['standings','≡','Standings'],['teams','♟','Teams'],['contracts','▤','Contracts'],['trades','⇄','Trades'],['transactions','☷','Transactions'],['history','★','History'],['rules','⚙','Rules'],['deadlines','◷','Deadlines'],['finances','$','Finances']];
+ if(isCommish())items.push(['reconcile','✓','Reconcile']);
+ return `<nav class="bottom-nav office-bottom-nav"><div class="bottom-nav-inner">${items.map(([t,i,l])=>`<button class="nav-btn ${state.tab===t?'active':''}" data-tab="${t}"><span>${i}</span>${l}</button>`).join('')}</div></nav>`;
+}
 
 function dashboard(){
  const rosterLimit=state.season?.roster_limit||18,full=state.teams.filter(t=>rosterFor(t.id).length>=rosterLimit).length,totalBids=state.teams.reduce((s,t)=>s+Number(t.remaining_budget||0),0),open=state.deadlines.filter(d=>d.status==='open').length;
@@ -319,6 +367,65 @@ function financesView(){const sumDue=state.finance.filter(x=>x.status==='due').r
 function financeForm(){return `<section class="card office-form office-section"><div class="section-title">Commissioner • Add Finance Entry</div><div class="form-grid"><div class="field"><label>Team</label><select id="finance-team" class="input"><option value="">League-wide</option>${state.teams.map(t=>`<option value="${t.id}">${esc(t.name)}</option>`).join('')}</select></div><div class="field"><label>Category</label><select id="finance-category" class="input"><option value="dues">Dues</option><option value="prize">Prize</option><option value="expense">Expense</option><option value="adjustment">Adjustment</option><option value="other">Other</option></select></div><div class="field"><label>Amount ($)</label><input id="finance-amount" type="number" step="0.01" class="input" placeholder="100.00"></div><div class="field"><label>Due date</label><input id="finance-due" type="date" class="input"></div></div><div class="field"><label>Description</label><input id="finance-desc" class="input" placeholder="2026 league dues"></div><button class="btn btn-primary" data-action="add-finance">Add Entry</button></section>`;}
 
 
+
+function lineupSetupPanel(){
+ if(!isCommish())return '';
+ const counts=lineupSlotCounts();
+ return `<section class="card card-pad office-section weekly-setup-card">
+   <div class="office-section-head"><div><h2>Commissioner • Starting Lineup Setup</h2><div class="small muted">Enter the official GLSK starter counts. FLEX is RB/WR/TE in this first build.</div></div></div>
+   <div class="lineup-count-grid">${['QB','RB','WR','TE','FLEX','K','DST'].map(p=>`<label><span>${p}</span><input id="slot-count-${p}" class="input" type="number" min="0" max="5" value="${counts[p]||0}"></label>`).join('')}</div>
+   <button class="btn btn-primary" data-action="save-lineup-slots">Save Starting Lineup</button>
+ </section>`;
+}
+function lineupView(){
+ const t=myTeam(),week=currentWeek(),slots=state.lineupSlots;
+ if(!t)return `${pageHeading('Set Lineup',`Week ${week} starting lineup.`,`Weekly Play`)}<div class="card empty">Sign in as a team owner to manage a lineup.</div>`;
+ const current=lineupFor(t.id,week);
+ return `${pageHeading('Set Lineup',`Week ${week} • players lock individually when their NFL game starts.`,`Weekly Play`)}
+ ${!slots.length?lineupSetupPanel():''}
+ ${slots.length?`<section class="card lineup-card">
+   <div class="lineup-card-head"><div><strong>${esc(t.name)}</strong><span>${current.length}/${slots.length} starters filled</span></div><div class="lineup-total">${weeklyScore(t.id,week).toFixed(2)}<span>PTS</span></div></div>
+   <div class="lineup-editor">${slots.map(slot=>{
+     const cur=current.find(l=>l.slot_code===slot.slot_code),curScore=cur?scoreFor(cur.player_key,week):null,locked=Boolean(curScore?.game_started);
+     const options=slotEligibleRoster(slot,t.id);
+     return `<div class="lineup-slot-row"><div class="lineup-slot-label">${esc(slot.label)}</div><div class="lineup-slot-select"><select class="input lineup-select" data-slot-code="${esc(slot.slot_code)}" ${locked?'disabled':''}><option value="">— Select player —</option>${options.map(r=>`<option value="${esc(r.player_key)}" ${cur?.player_key===r.player_key?'selected':''}>${esc(r.player_name)} • ${esc(r.nfl_team||'')} • ${esc(r.position||'')}</option>`).join('')}</select>${locked?'<span class="lineup-lock">LOCKED</span>':''}</div>${cur?weeklyPlayerLine(cur.player_key,week):'<span class="weekly-player-score pending">—</span>'}</div>`;
+   }).join('')}</div>
+   <div class="lineup-save-row"><div class="small muted">Started NFL players cannot be moved after kickoff.</div><button class="btn btn-primary" data-action="save-lineup">Save Week ${week} Lineup</button></div>
+ </section>`:''}
+ ${isCommish()&&slots.length?lineupSetupPanel():''}`;
+}
+function scheduleSetupPanel(){
+ if(!isCommish())return '';
+ const week=currentWeek(),existing=state.schedule.filter(s=>Number(s.week)===week).sort((a,b)=>a.matchup_no-b.matchup_no);
+ return `<section class="card card-pad office-section weekly-setup-card"><div class="office-section-head"><div><h2>Commissioner • Week Setup</h2><div class="small muted">Use this while Yahoo import is unavailable. Each team may appear once.</div></div><div class="week-control"><label>Current Week</label><input id="current-week-input" class="input" type="number" min="1" max="25" value="${week}"><button class="btn btn-sm btn-outline" data-action="set-current-week">Set</button></div></div>
+ <div class="schedule-editor">${Array.from({length:6},(_,i)=>{const row=existing[i];return `<div class="schedule-edit-row"><span>#${i+1}</span><select class="input schedule-home" data-matchup="${i+1}"><option value="">Home team</option>${state.teams.map(t=>`<option value="${t.id}" ${row?.home_team_id===t.id?'selected':''}>${esc(t.name)}</option>`).join('')}</select><strong>vs</strong><select class="input schedule-away" data-matchup="${i+1}"><option value="">Away team</option>${state.teams.map(t=>`<option value="${t.id}" ${row?.away_team_id===t.id?'selected':''}>${esc(t.name)}</option>`).join('')}</select></div>`}).join('')}</div>
+ <div class="inline-actions"><select id="schedule-phase" class="input"><option value="regular">Regular season</option><option value="playoffs">Playoffs</option><option value="championship">Championship</option><option value="consolation">Consolation</option></select><button class="btn btn-primary" data-action="save-week-schedule">Save Week ${week} Matchups</button></div></section>`;
+}
+function matchupTeamLine(teamId,week){
+ const slots=state.lineupSlots,rows=lineupFor(teamId,week);
+ return `<div class="matchup-lineup">${slots.map(slot=>{const l=rows.find(x=>x.slot_code===slot.slot_code);return `<div class="matchup-player"><span class="matchup-slot">${esc(slot.label)}</span><span class="matchup-player-name">${l?esc(l.player_name):'—'}</span>${l?weeklyPlayerLine(l.player_key,week):'<span class="weekly-player-score pending">—</span>'}</div>`}).join('')}</div>`;
+}
+function matchupsView(){
+ const week=currentWeek(),matches=state.matchupScores.filter(m=>Number(m.week)===week).sort((a,b)=>a.matchup_no-b.matchup_no),ws=weekState(week);
+ return `${pageHeading('Matchups',`Week ${week} • ${ws?.status||'scheduled'} scoring.`,`Weekly Play`)}${scheduleSetupPanel()}
+ ${!state.lineupSlots.length?'<div class="notice">Starting lineup slots must be configured before weekly matchup scoring can be tested.</div>':''}
+ <div class="matchup-grid">${matches.length?matches.map(m=>{const h=teamById(m.home_team_id),a=teamById(m.away_team_id);return `<section class="card matchup-card"><div class="matchup-scoreboard"><div class="matchup-team"><strong>${esc(h?.name||'Home')}</strong><span>${Number(m.home_score||0).toFixed(2)}</span></div><div class="matchup-vs">VS</div><div class="matchup-team away"><strong>${esc(a?.name||'Away')}</strong><span>${Number(m.away_score||0).toFixed(2)}</span></div></div><div class="matchup-rosters"><div>${matchupTeamLine(m.home_team_id,week)}</div><div>${matchupTeamLine(m.away_team_id,week)}</div></div><div class="matchup-footer"><span>${m.week_status==='final'?'FINAL':`${Number(m.home_players_remaining||0)} / ${Number(m.away_players_remaining||0)} players remaining`}</span></div></section>`}).join(''):'<div class="card empty">No Week '+week+' matchups have been entered yet.</div>'}</div>
+ ${isCommish()&&matches.length&&ws?.status!=='final'?`<div class="weekly-finalize"><button class="btn btn-reset" data-action="finalize-week">Finalize Week ${week}</button><span>Finalized weeks feed the GLSK standings.</span></div>`:''}`;
+}
+function standingsView(){
+ return `${pageHeading('Standings','GLSK shadow standings use finalized regular-season matchup results.','Weekly Play')}<section class="card standings-card"><div class="table-scroll"><table class="office-table standings-table"><thead><tr><th>Rank</th><th>Team</th><th>W</th><th>L</th><th>T</th><th>PCT</th><th>PF</th><th>PA</th></tr></thead><tbody>${state.shadowStandings.map((r,i)=>`<tr><td><strong>${i+1}</strong></td><td><strong>${esc(r.team_name)}</strong></td><td>${r.wins}</td><td>${r.losses}</td><td>${r.ties}</td><td>${Number(r.win_pct||0).toFixed(3)}</td><td>${Number(r.points_for||0).toFixed(2)}</td><td>${Number(r.points_against||0).toFixed(2)}</td></tr>`).join('')}</tbody></table></div></section>`;
+}
+function reconcileView(){
+ if(!isCommish())return '<div class="card empty">Commissioner only.</div>';
+ const week=currentWeek(),rows=state.reconciliation;
+ return `${pageHeading('Reconciliation',`Week ${week} private commissioner comparison.`,`Commissioner Only`)}
+ <div class="reconcile-kpis"><div class="card kpi"><div class="kpi-label">Matchups</div><div class="kpi-value">${rows.length}</div><div class="kpi-sub">GLSK vs Yahoo</div></div><div class="card kpi"><div class="kpi-label">Roster Audit</div><div class="kpi-value">—</div><div class="kpi-sub">Yahoo OAuth pending</div></div><div class="card kpi"><div class="kpi-label">Lineup Audit</div><div class="kpi-value">—</div><div class="kpi-sub">Yahoo OAuth pending</div></div><div class="card kpi"><div class="kpi-label">Standings Audit</div><div class="kpi-value">—</div><div class="kpi-sub">Yahoo OAuth pending</div></div></div>
+ <section class="card card-pad office-section"><div class="office-section-head"><div><h2>Weekly Score Check</h2><div class="small muted">Until Yahoo OAuth is connected, you can manually enter Yahoo totals here after games.</div></div></div>
+ <div class="reconcile-list">${rows.length?rows.map(r=>{const h=teamById(r.home_team_id),a=teamById(r.away_team_id),hm=r.yahoo_home_score!=null&&Math.abs(Number(r.yahoo_home_score)-Number(r.glsk_home_score))<.011,am=r.yahoo_away_score!=null&&Math.abs(Number(r.yahoo_away_score)-Number(r.glsk_away_score))<.011;return `<div class="reconcile-row" data-reconcile-row="${r.schedule_id}"><div class="reconcile-team"><strong>${esc(h?.name||'Home')}</strong><span>GLSK ${Number(r.glsk_home_score||0).toFixed(2)}</span></div><input class="input yahoo-home-score" type="number" step="0.01" placeholder="Yahoo score" value="${r.yahoo_home_score??''}"><span class="reconcile-status ${r.yahoo_home_score==null?'pending':hm?'match':'diff'}">${r.yahoo_home_score==null?'—':hm?'✓':'!'}</span><div class="reconcile-team"><strong>${esc(a?.name||'Away')}</strong><span>GLSK ${Number(r.glsk_away_score||0).toFixed(2)}</span></div><input class="input yahoo-away-score" type="number" step="0.01" placeholder="Yahoo score" value="${r.yahoo_away_score??''}"><span class="reconcile-status ${r.yahoo_away_score==null?'pending':am?'match':'diff'}">${r.yahoo_away_score==null?'—':am?'✓':'!'}</span></div>`}).join(''):'<div class="empty-tight">No current-week schedule to reconcile.</div>'}</div>
+ ${rows.length?'<button class="btn btn-primary" data-action="save-reconciliation">Save Yahoo Comparison</button>':''}</section>`;
+}
+
+
 function pct(v){return v==null?'—':`${Number(v).toFixed(1)}%`;}
 function historySeasonById(id){return state.historySeasons.find(s=>s.id===id);}
 function historyRows(){
@@ -421,7 +528,7 @@ function historyView(){
 
 function loginView(){const options=state.teams.map(t=>`<option value="${t.id}">${esc(t.name)}</option>`).join('');return `<div class="login-wrap"><div class="login-card"><div class="login-head"><h1>${esc(LEAGUE_NAME)}</h1><p>League Office</p></div><div class="login-body"><div class="field"><label>Your team</label><select id="join-team" class="input"><option value="">Select your team…</option>${options}</select></div><div class="field"><label>Team PIN</label><input id="team-pin" class="input pin-input" inputmode="numeric" maxlength="6" placeholder="6-digit PIN"></div><div id="join-error"></div><button class="btn btn-primary btn-block" data-action="join">Enter League Office</button><button class="btn-link btn-block" data-action="spectate">View public league dashboard</button><a class="btn-link btn-block" href="/" style="display:block;text-align:center;text-decoration:none">← Auction Room</a></div></div></div>`;}
 function setupError(){return `<div class="login-wrap"><div class="login-card"><div class="login-head"><h1>League Office Ready</h1><p>Database connection is missing.</p></div></div></div>`;}
-function render(){if(!configured){app.innerHTML=setupError();return;}if(state.loading){app.innerHTML='<div class="login-wrap"><div style="color:white;font-weight:900">Loading League Office…</div></div>';return;}if(!state.session){app.innerHTML=loginView();bind();return;}let content=state.tab==='teams'?teamsView():state.tab==='contracts'?contractsView():state.tab==='trades'?tradesView():state.tab==='transactions'?transactionsView():state.tab==='history'?historyView():state.tab==='rules'?rulesView():state.tab==='deadlines'?deadlinesView():state.tab==='finances'?financesView():dashboard();app.innerHTML=`<div class="office-shell">${topBar()}<main class="main">${content}</main>${bottomNav()}</div>`;bind();}
+function render(){if(!configured){app.innerHTML=setupError();return;}if(state.loading){app.innerHTML='<div class="login-wrap"><div style="color:white;font-weight:900">Loading League Office…</div></div>';return;}if(!state.session){app.innerHTML=loginView();bind();return;}let content=state.tab==='lineup'?lineupView():state.tab==='matchups'?matchupsView():state.tab==='standings'?standingsView():state.tab==='teams'?teamsView():state.tab==='contracts'?contractsView():state.tab==='trades'?tradesView():state.tab==='transactions'?transactionsView():state.tab==='history'?historyView():state.tab==='rules'?rulesView():state.tab==='deadlines'?deadlinesView():state.tab==='finances'?financesView():state.tab==='reconcile'?reconcileView():dashboard();app.innerHTML=`<div class="office-shell">${topBar()}<main class="main">${content}</main>${bottomNav()}</div>`;bind();}
 
 async function join(){const teamId=document.querySelector('#join-team')?.value,pin=document.querySelector('#team-pin')?.value.trim(),err=document.querySelector('#join-error');if(!teamId||!pin){err.innerHTML='<div class="error">Select your team and enter its PIN.</div>';return;}try{await rpc('join_room',{p_room_code:ROOM_CODE,p_team_id:teamId,p_pin:pin});const t=state.teams.find(x=>x.id===teamId);let commishPin=null;if(t?.name===COMMISH_TEAM_NAME){const valid=await rpc('commish_login',{p_room_code:ROOM_CODE,p_pin:pin});if(!valid?.valid)throw new Error('Commissioner access is not configured.');commishPin=pin;}saveSession({teamId,pin,commishPin,spectator:false});await loadFinance();render();}catch(e){err.innerHTML=`<div class="error">${esc(e.message)}</div>`;}}
 function logout(){saveSession(null);render();}
@@ -430,6 +537,30 @@ async function commish(name,args={},msg='Saved.'){try{await rpc(name,{p_room_cod
 function bind(){
  app.querySelectorAll('[data-tab]').forEach(b=>b.addEventListener('click',()=>{state.tab=b.dataset.tab;render();}));
  app.querySelector('#history-season')?.addEventListener('change',e=>{state.historySeason=e.target.value;render();});
+ app.querySelector('[data-action="save-lineup-slots"]')?.addEventListener('click',()=>{
+   const counts={};['QB','RB','WR','TE','FLEX','K','DST'].forEach(p=>counts[p]=Number(document.getElementById(`slot-count-${p}`)?.value||0));
+   const slots=[];let order=1;
+   const add=(code,label,allowed,count)=>{for(let i=1;i<=count;i++)slots.push({slot_code:`${code}${i}`,label:count>1?`${label}${i}`:label,slot_order:order++,allowed_positions:allowed});};
+   add('QB','QB',['QB'],counts.QB);add('RB','RB',['RB'],counts.RB);add('WR','WR',['WR'],counts.WR);add('TE','TE',['TE'],counts.TE);add('FLEX','FLEX',['RB','WR','TE'],counts.FLEX);add('K','K',['K'],counts.K);add('DST','D/ST',['DST'],counts.DST);
+   if(!slots.length)return toast('Add at least one starting slot.','error');
+   commish('league_commish_set_lineup_slots',{p_slots:slots},'Starting lineup configuration saved.');
+ });
+ app.querySelector('[data-action="save-lineup"]')?.addEventListener('click',async()=>{
+   const t=myTeam();if(!t)return;
+   const entries=[...document.querySelectorAll('.lineup-select')].map(s=>({slot_code:s.dataset.slotCode,player_key:s.value||null}));
+   try{await rpc('league_owner_save_lineup',{p_room_code:ROOM_CODE,p_team_id:t.id,p_pin:state.session.pin,p_week:currentWeek(),p_entries:entries});toast(`Week ${currentWeek()} lineup saved.`);await loadData();render();}catch(e){toast(e.message,'error');}
+ });
+ app.querySelector('[data-action="set-current-week"]')?.addEventListener('click',()=>{const w=Number(document.getElementById('current-week-input')?.value);commish('league_commish_set_current_week',{p_week:w},`Current week set to ${w}.`);});
+ app.querySelector('[data-action="save-week-schedule"]')?.addEventListener('click',()=>{
+   const rows=[];for(let i=1;i<=6;i++){const h=document.querySelector(`.schedule-home[data-matchup="${i}"]`)?.value,a=document.querySelector(`.schedule-away[data-matchup="${i}"]`)?.value;if(h&&a)rows.push({matchup_no:i,home_team_id:h,away_team_id:a});}
+   if(rows.length!==6)return toast('Enter all six weekly matchups.','error');
+   commish('league_commish_set_week_schedule',{p_week:currentWeek(),p_phase:document.getElementById('schedule-phase')?.value||'regular',p_matchups:rows},`Week ${currentWeek()} schedule saved.`);
+ });
+ app.querySelector('[data-action="finalize-week"]')?.addEventListener('click',()=>{if(confirm(`Finalize Week ${currentWeek()}? This will post the week to GLSK standings.`))commish('league_commish_finalize_week',{p_week:currentWeek()},`Week ${currentWeek()} finalized.`);});
+ app.querySelector('[data-action="save-reconciliation"]')?.addEventListener('click',async()=>{
+   const rows=[...document.querySelectorAll('[data-reconcile-row]')].map(el=>({schedule_id:Number(el.dataset.reconcileRow),yahoo_home_score:el.querySelector('.yahoo-home-score')?.value||null,yahoo_away_score:el.querySelector('.yahoo-away-score')?.value||null}));
+   try{await rpc('league_commish_save_reconciliation_matchups',{p_room_code:ROOM_CODE,p_commish_pin:state.session.commishPin,p_week:currentWeek(),p_rows:rows});toast('Reconciliation saved.');await loadData();render();}catch(e){toast(e.message,'error');}
+ });
  app.querySelectorAll('[data-history-sort]').forEach(b=>b.addEventListener('click',()=>{const key=b.dataset.historySort;if(state.historySort.key===key)state.historySort.dir=state.historySort.dir==='asc'?'desc':'asc';else state.historySort={key,dir:key==='display_name'?'asc':'desc'};render();}));
  document.querySelectorAll('[data-history-map]').forEach(b=>b.addEventListener('click',()=>{const id=Number(b.dataset.historyMap),select=document.querySelector(`[data-history-map-select="${id}"]`),fid=select?.value;if(!fid)return toast('Choose a franchise.','error');commish('league_commish_map_history_team',{p_history_team_season_id:id,p_franchise_id:fid},'Historical franchise mapped.');}));
  app.querySelector('[data-action="history-create-franchise"]')?.addEventListener('click',()=>{const name=document.getElementById('history-new-franchise')?.value.trim();if(!name)return toast('Enter a franchise name.','error');commish('league_commish_create_history_franchise',{p_display_name:name},'Historical franchise created.');});
@@ -480,7 +611,7 @@ function bind(){
  app.querySelector('[data-action="save-correction"]')?.addEventListener('click',()=>{const desc=document.getElementById('corr-desc')?.value.trim();if(!desc)return toast('Enter a correction description.','error');commish('league_commish_correction',{p_team_id:document.getElementById('corr-team')?.value||null,p_bid_delta:Number(document.getElementById('corr-bids')?.value||0),p_description:desc,p_reverse_transaction_id:document.getElementById('corr-reverse')?.value||null},'Correction recorded.');});
 }
 
-async function subscribe(){if(state.realtime)await supabase.removeChannel(state.realtime);state.realtime=supabase.channel(`league-office-${ROOM_CODE}`).on('postgres_changes',{event:'*',schema:'public',table:'league_roster_entries'},refresh).on('postgres_changes',{event:'*',schema:'public',table:'teams'},refresh).on('postgres_changes',{event:'*',schema:'public',table:'league_contracts'},refresh).on('postgres_changes',{event:'*',schema:'public',table:'league_rule_settings'},refresh).on('postgres_changes',{event:'*',schema:'public',table:'redistribution_rules'},refresh).on('postgres_changes',{event:'*',schema:'public',table:'league_deadlines'},refresh).on('postgres_changes',{event:'*',schema:'public',table:'league_deadline_team_status'},refresh).on('postgres_changes',{event:'*',schema:'public',table:'league_history_seasons'},refresh).on('postgres_changes',{event:'*',schema:'public',table:'league_history_team_seasons'},refresh).on('postgres_changes',{event:'*',schema:'public',table:'league_player_stats'},refresh).subscribe();}
+async function subscribe(){if(state.realtime)await supabase.removeChannel(state.realtime);state.realtime=supabase.channel(`league-office-${ROOM_CODE}`).on('postgres_changes',{event:'*',schema:'public',table:'league_roster_entries'},refresh).on('postgres_changes',{event:'*',schema:'public',table:'teams'},refresh).on('postgres_changes',{event:'*',schema:'public',table:'league_contracts'},refresh).on('postgres_changes',{event:'*',schema:'public',table:'league_rule_settings'},refresh).on('postgres_changes',{event:'*',schema:'public',table:'redistribution_rules'},refresh).on('postgres_changes',{event:'*',schema:'public',table:'league_deadlines'},refresh).on('postgres_changes',{event:'*',schema:'public',table:'league_deadline_team_status'},refresh).on('postgres_changes',{event:'*',schema:'public',table:'league_history_seasons'},refresh).on('postgres_changes',{event:'*',schema:'public',table:'league_history_team_seasons'},refresh).on('postgres_changes',{event:'*',schema:'public',table:'league_player_stats'},refresh).on('postgres_changes',{event:'*',schema:'public',table:'league_lineups'},refresh).on('postgres_changes',{event:'*',schema:'public',table:'league_weekly_player_scores'},refresh).on('postgres_changes',{event:'*',schema:'public',table:'league_schedule'},refresh).on('postgres_changes',{event:'*',schema:'public',table:'league_week_states'},refresh).subscribe();}
 let refreshTimer=null;function refresh(){clearTimeout(refreshTimer);refreshTimer=setTimeout(async()=>{try{await loadData();render();}catch(e){console.warn(e);}},180);}
 
 async function init(){if(!configured){state.loading=false;render();return;}try{await loadData();state.loading=false;render();await subscribe();}catch(e){state.loading=false;app.innerHTML=`<div class="login-wrap"><div class="login-card"><div class="login-head"><h1>League Office</h1><p>Database migration required.</p></div><div class="login-body"><div class="error">${esc(e.message)}</div><p class="small muted">Run the League Office v1 Supabase migration, then refresh.</p></div></div></div>`;}}
