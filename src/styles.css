@@ -334,8 +334,8 @@ button:disabled { cursor: not-allowed; opacity: .5; }
 
 @media (max-width: 620px) {
   .phase-link.phase1-link::after { content: 'P1'; }
-  .phase-link.phase2-link::after { content: 'P2'; }
-  .phase-link.phase3-link::after { content: 'P3'; }
+  .phase-link.phase2-link::after { content: 'Supplemental'; }
+  .phase-link.phase3-link::after { content: 'Snake'; }
 }
 
 
@@ -379,6 +379,32 @@ button:disabled { cursor: not-allowed; opacity: .5; }
   .phase-link.league-link::after{
     content:'Office';
     font-size:10px;
+    font-weight:1000;
+  }
+}
+
+/* GLSK v7.0.6 — rename Phase 3 navigation to Snake */
+@media (max-width:620px){
+  .phase-link.phase3-link{
+    width:52px;
+    padding:0 5px;
+  }
+  .phase-link.phase3-link::after{
+    content:'Snake';
+    font-size:10px;
+    font-weight:1000;
+  }
+}
+
+/* GLSK v7.0.7 — rename Phase 2 navigation to Supplemental */
+@media (max-width:620px){
+  .phase-link.phase2-link{
+    width:82px;
+    padding:0 6px;
+  }
+  .phase-link.phase2-link::after{
+    content:'Supplemental';
+    font-size:9px;
     font-weight:1000;
   }
 }

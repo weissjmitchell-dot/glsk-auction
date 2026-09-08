@@ -307,7 +307,7 @@ function topBar() {
             <div class="user-team">${t ? escapeHtml(t.name) : 'Account required'}${isCommish() ? ' • Czar' : ''}</div>
             <div class="user-budget">${t ? `${money(t.remaining_budget)} remaining` : escapeHtml(state.room?.status || '')}</div>
           </div>
-          <a class="phase-link league-link" href="/league" title="Open League Office">League Office</a><a class="phase-link phase2-link" href="/supplemental" title="Open Supplemental Draft">Phase 2</a><a class="phase-link phase3-link" href="/phase3" title="Open Phase 3 Roster-Fill Draft">Phase 3</a>
+          <a class="phase-link league-link" href="/league" title="Open League Office">League Office</a><a class="phase-link phase2-link" href="/supplemental" title="Open Supplemental Draft">Supplemental</a><a class="phase-link phase3-link" href="/phase3" title="Open Snake Draft">Snake</a>
           <button class="sound-toggle" data-action="toggle-sound" aria-pressed="${audioState.enabled}" title="Toggle auction sound effects">${audioState.enabled ? '🔊' : '🔇'}<span>${audioState.enabled ? 'Sound' : 'Muted'}</span></button>
           <button class="btn-link" data-action="logout" aria-label="Sign out">Sign Out</button>
         </div>
