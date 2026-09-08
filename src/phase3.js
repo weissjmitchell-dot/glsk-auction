@@ -228,12 +228,46 @@ function orderView(){
   return `<div class="row between gap-12 wrap" style="margin-bottom:12px"><h2 class="section-title">Phase 3 Order & Rosters</h2><div class="small muted">${openTotal} roster spots remaining</div></div><section class="card" style="padding:13px;margin-bottom:13px"><h3 style="margin:0 0 10px">Round 1 order</h3><div class="supp-order-grid">${ordered.map((o,i)=>{const t=teamById(o.team_id),r=rosterByTeam(o.team_id);return `<div class="order-row"><div class="order-slot">${o.slot}</div><div class="order-team">${escapeHtml(t?.name||'—')}<div class="small muted">${r?`${r.roster_count}/${r.max_roster_size} rostered • ${openSpots(t.id)} open`:''}</div></div>${isCommish()?`<div class="order-actions"><button class="btn btn-sm btn-outline" data-order-move="up" data-slot="${o.slot}" ${i===0?'disabled':''}>↑</button><button class="btn btn-sm btn-outline" data-order-move="down" data-slot="${o.slot}" ${i===ordered.length-1?'disabled':''}>↓</button></div>`:''}</div>`;}).join('')}</div><h3 style="margin:17px 0 10px">Round 2 reverses automatically</h3><div class="supp-order-grid">${round2.map((o,i)=>`<div class="order-row"><div class="order-slot">${13+i}</div><div class="order-team">${escapeHtml(teamById(o.team_id)?.name||'—')}</div><div class="small muted">R2</div></div>`).join('')}</div></section>${isCommish()?`<section class="commish-panel"><div class="commish-head">Pick Timer</div><div class="commish-body"><div class="timer-grid phase3-single-timer"><div class="timer-setting"><label>Pick clock</label><input id="p3-pick-seconds" type="number" min="5" max="600" value="${state.settings.pick_seconds}"></div></div><button class="btn btn-primary" data-action="save-timer">Save Timer</button><div class="small muted">Teams are skipped automatically once their roster reaches ${state.settings.max_roster_size} players.</div></div></section>`:''}`;
 }
 
+
+function boardView(){
+  const ordered=[...state.order].sort((a,b)=>a.slot-b.slot);
+  const initialOpen=state.rosterState.map(r=>{
+    const teamPicks=state.picks.filter(pk=>pk.team_id===r.team_id).length;
+    const starting=Number.isFinite(Number(r.initial_count))?Number(r.initial_count):Math.max(0,Number(r.roster_count||0)-teamPicks);
+    return Math.max(0,Number(r.max_roster_size||18)-starting);
+  });
+  const rounds=Math.max(1,...initialOpen,roundForTurn(state.settings?.current_turn_no||1),...state.picks.map(pk=>Number(pk.round||1)));
+  const currentRound=roundForTurn(state.settings?.current_turn_no||1);
+  const currentSlot=slotForTurn(state.settings?.current_turn_no||1);
+  const currentTurn=Number(state.settings?.current_turn_no||1);
+  const turnFor=(round,slot)=>{
+    const pos=round%2===1?slot:13-slot;
+    return (round-1)*12+pos;
+  };
+  const cellFor=(round,o)=>{
+    const t=teamById(o.team_id);
+    const pk=state.picks.find(x=>Number(x.round)===round&&x.team_id===o.team_id);
+    const turn=turnFor(round,o.slot);
+    const current=state.settings?.status!=='setup'&&round===currentRound&&o.slot===currentSlot;
+    if(pk){
+      const p=playerById(pk.player_id);
+      const pos=p?.position||'';
+      return `<div class="draft-board-cell drafted ${pos?`board-${pos}`:''}"><div class="board-pick-no">#${pk.pick_no}</div><div class="board-player">${escapeHtml(p?.name||'—')}</div><div class="board-meta">${escapeHtml(pos)}${p?.nfl_team?` • ${escapeHtml(p.nfl_team)}`:''}</div></div>`;
+    }
+    if(current)return `<div class="draft-board-cell on-clock-cell"><div class="board-pick-no">ON CLOCK</div><div class="board-player">${escapeHtml(t?.name||'—')}</div><div class="board-meta">R${round} • turn ${turn}</div></div>`;
+    if(turn<currentTurn)return `<div class="draft-board-cell skipped"><div class="board-pick-no">${isFull(o.team_id)?'FULL':'SKIP'}</div><div class="board-meta">No selection</div></div>`;
+    if(isFull(o.team_id))return `<div class="draft-board-cell full-cell"><div class="board-pick-no">FULL</div><div class="board-meta">18/18</div></div>`;
+    return `<div class="draft-board-cell empty-cell"><div class="board-pick-no">R${round}</div><div class="board-meta">Waiting</div></div>`;
+  };
+  return `<div class="row between gap-12 wrap board-title-row"><div><h2 class="section-title">Live Draft Board</h2><div class="small muted">Every Phase 3 pick appears here instantly for all owners.</div></div><div class="board-legend"><span><i class="legend-dot rb"></i>RB</span><span><i class="legend-dot wr"></i>WR</span><span><i class="legend-dot qb"></i>QB</span><span><i class="legend-dot te"></i>TE</span></div></div><div class="draft-board-scroll"><div class="draft-board" style="--board-cols:${ordered.length}"><div class="board-corner">ROUND</div>${ordered.map(o=>`<div class="board-team-head"><div>${escapeHtml(teamById(o.team_id)?.name||'—')}</div><span>Slot ${o.slot}</span></div>`).join('')}${Array.from({length:rounds},(_,i)=>i+1).map(round=>`<div class="board-round-head"><strong>R${round}</strong><span>${round%2===1?'→':'←'}</span></div>${ordered.map(o=>cellFor(round,o)).join('')}`).join('')}</div></div>`;
+}
+
 function resultsView(){
   const rows=[...state.picks].sort((a,b)=>a.pick_no-b.pick_no);
   return `<div class="row between gap-12 wrap" style="margin-bottom:12px"><h2 class="section-title">Phase 3 Results</h2><button class="btn btn-sm btn-outline" data-action="export-p3">Export CSV</button></div><div class="list-stack">${rows.map(pk=>{const p=playerById(pk.player_id),t=teamById(pk.team_id);return `<div class="log-row"><div><div class="log-name">#${pk.pick_no} ${escapeHtml(p?.name||'—')}</div><div class="small muted">${escapeHtml(p?.nfl_team||'')} • ${escapeHtml(p?.position||'')} • ${escapeHtml(t?.name||'—')} • Snake R${pk.round}</div></div><div class="tag tag-queued">PICK</div></div>`;}).join('')||'<div class="card empty">No Phase 3 picks yet.</div>'}</div>`;
 }
 
-function bottomNav(){return `<nav class="bottom-nav"><div class="bottom-nav-inner"><button class="nav-btn ${state.tab==='draft'?'active':''}" data-tab="draft"><span>⚡</span>Draft</button><button class="nav-btn ${state.tab==='players'?'active':''}" data-tab="players"><span>☰</span>Players</button><button class="nav-btn ${state.tab==='order'?'active':''}" data-tab="order"><span>↕</span>Order</button><button class="nav-btn ${state.tab==='results'?'active':''}" data-tab="results"><span>▤</span>Results</button><button class="nav-btn ${state.tab==='myteam'?'active':''}" data-tab="myteam"><span>♜</span>My Team</button></div></nav>`;}
+function bottomNav(){return `<nav class="bottom-nav phase3-bottom-nav"><div class="bottom-nav-inner"><button class="nav-btn ${state.tab==='draft'?'active':''}" data-tab="draft"><span>⚡</span>Draft</button><button class="nav-btn ${state.tab==='players'?'active':''}" data-tab="players"><span>☰</span>Players</button><button class="nav-btn ${state.tab==='order'?'active':''}" data-tab="order"><span>↕</span>Order</button><button class="nav-btn ${state.tab==='board'?'active':''}" data-tab="board"><span>▦</span>Board</button><button class="nav-btn ${state.tab==='results'?'active':''}" data-tab="results"><span>▤</span>Results</button><button class="nav-btn ${state.tab==='myteam'?'active':''}" data-tab="myteam"><span>♜</span>My Team</button></div></nav>`;}
 function loginView(){const opts=state.teams.map(t=>`<option value="${t.id}">${escapeHtml(t.name)}</option>`).join('');return `<div class="login-wrap"><div class="login-card"><div class="login-head"><h1>${escapeHtml(LEAGUE_NAME)}</h1><p>2026 Phase 3 • Roster-Fill Snake Draft</p></div><div class="login-body"><div class="field"><label>Your team</label><select id="join-team" class="input"><option value="">Select your team…</option>${opts}</select></div><div class="field"><label>Team PIN</label><input id="team-pin" class="input pin-input" inputmode="numeric" maxlength="6" placeholder="6-digit PIN"></div><div id="join-error"></div><button class="btn btn-primary btn-block" data-action="join">Enter Phase 3 Room</button><button class="btn-link btn-block" data-action="spectate">View as spectator</button><a class="btn-link btn-block" href="/supplemental" style="display:block;text-align:center;text-decoration:none">← Back to Supplemental</a></div></div></div>`;}
 function migrationView(){return `<div class="login-wrap"><div class="login-card"><div class="login-head"><h1>Phase 3 App Ready</h1><p>The Phase 3 database migration still needs to be installed.</p></div><div class="login-body"><div class="notice">Run <strong>supabase/phase3.sql</strong> in the GLSK Supabase SQL Editor, then refresh this page.</div><a class="btn-link btn-block" href="/supplemental" style="display:block;text-align:center;text-decoration:none">← Supplemental room</a></div></div></div>`;}
 function connectionView(e){return `<div class="login-wrap"><div class="login-card"><div class="login-head"><h1>Connection Error</h1><p>Phase 3 room could not load.</p></div><div class="login-body"><div class="error">${escapeHtml(e.message)}</div></div></div></div>`;}
@@ -243,7 +277,7 @@ function render(){
   if(state.loading){app.innerHTML='<div class="login-wrap"><div style="color:white;font-weight:900">Loading Phase 3…</div></div>';return;}
   if(state.migrationMissing){app.innerHTML=migrationView();return;}
   if(!state.session){app.innerHTML=loginView();bindEvents();return;}
-  const content=state.tab==='players'?playersView():state.tab==='order'?orderView():state.tab==='results'?resultsView():state.tab==='myteam'?myTeamView():draftView();
+  const content=state.tab==='players'?playersView():state.tab==='order'?orderView():state.tab==='board'?boardView():state.tab==='results'?resultsView():state.tab==='myteam'?myTeamView():draftView();
   app.innerHTML=`<div class="app-shell">${topBar()}<main class="main">${content}</main>${bottomNav()}</div>`;bindEvents();updateCountdown();
 }
 
