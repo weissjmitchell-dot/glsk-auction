@@ -270,6 +270,7 @@ function topBar() {
             <div class="user-team">${t ? escapeHtml(t.name) : state.session?.spectator ? 'Spectator' : 'Not joined'}${isCommish() ? ' • Czar' : ''}</div>
             <div class="user-budget">${t ? `${money(t.remaining_budget)} remaining` : escapeHtml(state.room?.status || '')}</div>
           </div>
+          <a class="phase-link" href="/supplemental.html" title="Open Supplemental Draft">Phase 2</a>
           <button class="sound-toggle" data-action="toggle-sound" aria-pressed="${audioState.enabled}" title="Toggle auction sound effects">${audioState.enabled ? '🔊' : '🔇'}<span>${audioState.enabled ? 'Sound' : 'Muted'}</span></button>
           <button class="btn-link" data-action="logout" aria-label="Leave room">Leave</button>
         </div>
@@ -403,11 +404,12 @@ function teamsView() {
 
 function logView() {
   return `
-    <div class="row between gap-12 wrap" style="margin-bottom:12px"><h2 class="section-title">Auction Results</h2><button class="btn btn-sm btn-outline" data-action="export">Export CSV</button></div>
+    <div class="row between gap-12 wrap" style="margin-bottom:12px"><h2 class="section-title">Auction Results</h2><div class="row gap-8 wrap"><a class="btn btn-sm btn-primary phase-button" href="/supplemental.html">Open Supplemental Draft →</a><button class="btn btn-sm btn-outline" data-action="export">Export CSV</button></div></div>
     <div class="list-stack">
       ${state.sales.length ? state.sales.map(s => {
-        const p = playerById(s.player_id); const t = teamById(s.team_id);
-        return `<div class="log-row"><div><div class="log-name">${escapeHtml(p?.name || 'Player')}</div><div class="small muted">${escapeHtml(p?.position || '')} ${escapeHtml(p?.nfl_team || '')} → ${escapeHtml(t?.name || 'Team')}</div></div><div class="log-price">${money(s.price)}</div></div>`;
+        const p = playerById(s.player_id); const t = teamById(s.team_id); const rights = p?.rights_team_id ? teamById(p.rights_team_id) : null;
+        const canClaim = Boolean(isCommish() && rights && t && rights.id !== t.id);
+        return `<div class="log-row rights-log-row"><div><div class="log-name">${escapeHtml(p?.name || 'Player')}</div><div class="small muted">${escapeHtml(p?.position || '')} ${escapeHtml(p?.nfl_team || '')} → ${escapeHtml(t?.name || 'Team')}</div>${rights ? `<div class="rights-note">Rookie rights: ${escapeHtml(rights.name)}${rights.id===t?.id ? ' • claimed' : ''}</div>` : ''}${canClaim ? `<button class="btn btn-sm btn-rights" data-rights-transfer="${p.id}" data-player-name="${escapeHtml(p.name)}" data-rights-name="${escapeHtml(rights.name)}" data-price="${s.price}">Transfer to rights holder for ${money(s.price)}</button>` : ''}</div><div class="log-price">${money(s.price)}</div></div>`;
       }).join('') : '<div class="card empty">No completed sales yet.</div>'}
     </div>`;
 }
@@ -504,6 +506,16 @@ async function resetDraft() {
   await commishCall('commish_reset_draft', {}, 'Draft reset. All budgets and 40 players restored.');
 }
 
+async function transferRookieRights(button) {
+  if (!isCommish()) return;
+  const playerName = button.dataset.playerName || 'this player';
+  const rightsName = button.dataset.rightsName || 'the rights holder';
+  const price = Number(button.dataset.price || 0);
+  const confirmed = window.confirm(`Transfer ${playerName} to ${rightsName} for the same ${price} bid dollars?\n\nThe original auction winner will be refunded ${price}; ${rightsName} will be charged ${price}.`);
+  if (!confirmed) return;
+  await commishCall('commish_transfer_rookie_rights', { p_player_id: button.dataset.rightsTransfer }, `${playerName} transferred to ${rightsName} for ${price} bids.`);
+}
+
 async function exportCsv() {
   const rows = [['Rank','Player','NFL Team','Position','Fantasy Team','Price']];
   for (const s of [...state.sales].reverse()) {
@@ -535,6 +547,7 @@ function bindEvents() {
     commishCall('commish_force_sale', { p_team_id: teamId, p_price: price }, 'Manual sale completed.');
   });
   app.querySelector('[data-action="export"]')?.addEventListener('click', exportCsv);
+  app.querySelectorAll('[data-rights-transfer]').forEach(b => b.addEventListener('click', () => transferRookieRights(b)));
 
   app.querySelectorAll('[data-queue]').forEach(b => b.addEventListener('click', () => commishCall('commish_queue_player', { p_player_id: b.dataset.queue }, 'Player queued.')));
   app.querySelectorAll('[data-unqueue]').forEach(b => b.addEventListener('click', () => commishCall('commish_unqueue_player', { p_player_id: b.dataset.unqueue }, 'Player removed from queue.')));
