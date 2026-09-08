@@ -1,39 +1,32 @@
-# Great Lake State Keepers Draft Tool — v9
+# GLSK League Office v1
 
-This build keeps the working Phase 1 live auction and adds Phase 2 Supplemental Draft.
+This patch adds a new `/league` route to the existing Great Lake State Keepers Vercel/Supabase app.
 
-## Phase 1 additions
-- Commissioner-only rookie-rights transfer after an auction sale.
-- Original winner is refunded the exact sale price.
-- Rights holder is charged the exact sale price.
-- Player and active sale ownership move to the rights holder in one database transaction.
+## What v1 includes
+- League dashboard with live roster counts, bid balances, contract cap usage and deadlines
+- Team/roster pages backed by the shared live roster table
+- Contract & salary-cap dashboard, with commissioner add/update/void controls
+- Season-versioned rule settings
+- Commissioner-editable bid-dollar redistribution with a required 100% total
+- Deadline manager with per-team submission tracking and optional automatic lock at the due time
+- PIN-validated finance ledger (finance rows are not publicly selectable from Supabase)
+- Links to Auction, Supplemental and Phase 3 draft rooms
+- Audit log foundation for commissioner changes
 
-## Phase 2 Supplemental Draft
-- Same team PINs and same remaining bid-dollar balances as Phase 1.
-- 2-round snake draft.
-- Preloaded Round 1 order, automatic Round 2 reverse.
-- Commissioner can adjust order and timers.
-- Defaults: 45-second pick / 10-second challenge / 30-second challenge auction.
-- Unchallenged selection costs $0.
-- Normal challenge opens at 6 bids and becomes an open auction.
-- Restricted rookie-rights holder can open a two-team auction at 2 bids.
-- A third team can convert the rookie-rights auction to open bidding at at least 6 bids.
-- If the original selector loses an auction, the Supplemental pick is still used.
-- Challenge winner retains their normal snake pick.
-- Undo and Reset Supplemental refund only Supplemental bid spending, preserving Phase 1 results.
-- All positions included: QB, RB, WR, TE, K, D/ST.
-- Yahoo Sports Half-PPR Top 300 ordering with Yahoo Sports-hosted raw projection stats where available.
-- Player pool excludes contracted players, all 40 auction players, and the 24 players from the 2026 rookie draft.
+## Current seeded rules/data
+- 2026 season, roster limit 18, salary cap 100 points
+- Contract options: 2yr/15, 3yr/25, 4yr/45
+- 2026 contract import from the workbook, corrected so Slim Charles has Chase Brown under contract and AJ Brown is a free agent
+- 2026 redistribution snapshot imported from the workbook (editable)
+- Draft defaults already agreed for Auction/Supplemental/Phase 3
+- Rookie-rights lifecycle rules stored as league settings
 
 ## Install
-1. **Run `supabase/phase2.sql` in the existing GLSK Supabase project using Run without RLS.**
-   - It does not reset the Phase 1 auction, PINs, budgets, bids, or sales.
-2. Upload/commit all files in this folder to the existing `glsk-auction` GitHub repo `main` branch.
-3. Vercel will redeploy automatically.
-4. Phase 1 remains at `/`.
-5. Phase 2 is at `/supplemental.html` (and `/supplemental`).
+1. Run `supabase/league-office-v1.sql` once in Supabase SQL Editor using **Run without RLS**.
+2. At the GitHub repository root, upload `league.html`, `vite.config.js`, and `vercel.json`.
+3. Inside the existing GitHub `src` folder, upload `league.js` and `league.css`.
+4. Optionally store the SQL file in the existing GitHub `supabase` folder.
+5. Commit to `main`; Vercel should deploy automatically.
+6. Open `https://glsk-auction.vercel.app/league`.
 
-## Data notes
-- AJ Brown is treated as a free agent in the Top 40 auction.
-- Chase Brown is treated as contracted and is excluded from Supplemental.
-- Tyler Warren rookie rights belong to Reggie Kush.
+The same team PIN/session used by the draft rooms works in League Office. Weiss Tea & Lemonade receives commissioner controls with its existing PIN.
