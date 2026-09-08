@@ -255,6 +255,15 @@ function positionBadge(pos) {
   return `<span class="pos-badge pos-${escapeHtml(pos)}">${escapeHtml(pos)}</span>`;
 }
 
+function rightsHolder(player) {
+  return player?.rights_team_id ? teamById(player.rights_team_id) : null;
+}
+
+function rightsBadge(player, prefix = 'Rookie rights') {
+  const rights = rightsHolder(player);
+  return rights ? `<span class="rights-badge">${escapeHtml(prefix)}: ${escapeHtml(rights.name)}</span>` : '';
+}
+
 function topBar() {
   const t = myTeam();
   return `
@@ -299,6 +308,7 @@ function actionView() {
           <div class="player-main">
             <div class="player-name">${escapeHtml(p.name)}</div>
             <div class="player-meta">${escapeHtml(p.nfl_team)}${p.note ? ` • ${escapeHtml(p.note)}` : ''}</div>
+            ${rightsBadge(p)}
           </div>
         </div>
         <div class="bid-area">
@@ -327,7 +337,7 @@ function actionView() {
         <div class="player-row">
           <div class="rank">#${x.rank}</div>
           ${positionBadge(x.position)}
-          <div class="player-row-name">${escapeHtml(x.name)}<div class="player-row-sub">${escapeHtml(x.nfl_team)}</div></div>
+          <div class="player-row-name">${escapeHtml(x.name)}<div class="player-row-sub">${escapeHtml(x.nfl_team)}</div>${rightsBadge(x)}</div>
           <span class="tag ${i === 0 ? 'tag-next' : 'tag-queued'}">${i === 0 ? 'Up next' : 'Queued'}</span>
         </div>`).join('') : `<div class="empty">No players are queued.</div>`}
     </div>`;
@@ -373,8 +383,8 @@ function playersView() {
   const queueHtml = `
     <section class="card" style="margin-bottom:14px;overflow:hidden">
       <div class="queue-title">Nomination Queue</div>
-      ${p ? `<div class="player-row"><div class="rank">#${p.rank}</div>${positionBadge(p.position)}<div class="player-row-name">${escapeHtml(p.name)}<div class="player-row-sub">${escapeHtml(p.nfl_team)}</div></div><span class="tag tag-block">On block</span></div>` : ''}
-      ${q.map((x,i) => `<div class="player-row"><div class="rank">#${x.rank}</div>${positionBadge(x.position)}<div class="player-row-name">${escapeHtml(x.name)}<div class="player-row-sub">${escapeHtml(x.nfl_team)}</div></div>${isCommish() ? `<button class="btn btn-sm btn-outline" data-unqueue="${x.id}">Remove</button>` : `<span class="tag ${i===0?'tag-next':'tag-queued'}">${i===0?'Up next':'Queued'}</span>`}</div>`).join('') || (!p ? '<div class="empty">Queue is empty.</div>' : '')}
+      ${p ? `<div class="player-row"><div class="rank">#${p.rank}</div>${positionBadge(p.position)}<div class="player-row-name">${escapeHtml(p.name)}<div class="player-row-sub">${escapeHtml(p.nfl_team)}</div>${rightsBadge(p)}</div><span class="tag tag-block">On block</span></div>` : ''}
+      ${q.map((x,i) => `<div class="player-row"><div class="rank">#${x.rank}</div>${positionBadge(x.position)}<div class="player-row-name">${escapeHtml(x.name)}<div class="player-row-sub">${escapeHtml(x.nfl_team)}</div>${rightsBadge(x)}</div>${isCommish() ? `<button class="btn btn-sm btn-outline" data-unqueue="${x.id}">Remove</button>` : `<span class="tag ${i===0?'tag-next':'tag-queued'}">${i===0?'Up next':'Queued'}</span>`}</div>`).join('') || (!p ? '<div class="empty">Queue is empty.</div>' : '')}
     </section>`;
 
   const availableHtml = `
@@ -382,7 +392,7 @@ function playersView() {
       <div class="row between gap-12 wrap" style="margin-bottom:10px"><h2 class="section-title">Undrafted</h2><div class="small muted">${avail.length} available • ${soldPlayers().length} sold</div></div>
       <div class="searchbar"><input id="player-search" class="input" placeholder="Search players" value="${escapeHtml(state.search)}" /></div>
       <div class="list-stack">
-        ${avail.map(x => `<div class="available-row"><div class="rank">#${x.rank}</div>${positionBadge(x.position)}<div class="available-row-main"><div class="available-name">${escapeHtml(x.name)}</div><div class="player-row-sub">${escapeHtml(x.nfl_team)}${x.note ? ` • ${escapeHtml(x.note)}` : ''}</div></div>${isCommish() ? `<button class="btn btn-sm btn-primary" data-queue="${x.id}">Queue</button>` : ''}</div>`).join('') || '<div class="card empty">No matching undrafted players.</div>'}
+        ${avail.map(x => `<div class="available-row"><div class="rank">#${x.rank}</div>${positionBadge(x.position)}<div class="available-row-main"><div class="available-name">${escapeHtml(x.name)}</div><div class="player-row-sub">${escapeHtml(x.nfl_team)}${x.note ? ` • ${escapeHtml(x.note)}` : ''}</div>${rightsBadge(x)}</div>${isCommish() ? `<button class="btn btn-sm btn-primary" data-queue="${x.id}">Queue</button>` : ''}</div>`).join('') || '<div class="card empty">No matching undrafted players.</div>'}
       </div>
     </section>`;
 
