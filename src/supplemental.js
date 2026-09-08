@@ -2,7 +2,7 @@ import './styles.css';
 import './auth.css';
 import { supabase, configured } from './supabase.js';
 import { ROOM_CODE, LEAGUE_NAME } from './config.js';
-import { requireOwnerAccount, legacySessionFromAccount, signOutOwner } from './auth.js';
+import { requireOwnerAccount, legacySessionFromAccount, signOutOwner, promptOwnerPush } from './auth.js';
 
 const app = document.querySelector('#app');
 const STORAGE_KEY = `glsk-auction-session-${ROOM_CODE}`;
@@ -154,7 +154,7 @@ function playerRow(p,showButton=true){
   return `<div class="supp-player-card"><div class="rank">#${p.yahoo_rank}</div>${positionBadge(p.position)}<div class="supp-player-info"><div class="supp-player-name">${escapeHtml(p.name)}</div><div class="supp-player-meta">${escapeHtml(p.nfl_team)} • ${escapeHtml(p.position)}${p.pos_rank?String(p.pos_rank).padStart(2,'0'):''} • Bye ${p.bye??'—'}</div>${projectionSummary(p)?`<div class="proj-line">${escapeHtml(projectionSummary(p))}</div>`:''}${rights?`<span class="rights-badge">Rookie rights: ${escapeHtml(rights.name)}</span>`:''}</div>${can?`<button class="btn btn-sm btn-primary" data-select-player="${p.id}">Select</button>`:''}</div>`;
 }
 
-function topBar(){const t=myTeam();return `<header class="topbar"><div class="topbar-inner"><div class="brand"><div class="brand-kicker">Phase 2 • Supplemental</div><div class="brand-title">${escapeHtml(LEAGUE_NAME)}</div></div><div class="user-chip"><div class="status-dot ${state.settings?.status==='live'?'live':''}"></div><div class="user-chip-text"><div class="user-team">${t?escapeHtml(t.name):'Account required'}${isCommish()?' • Czar':''}</div><div class="user-budget">${t?`${money(t.remaining_budget)} remaining`:escapeHtml(state.settings?.status||'')}</div></div><a class="phase-link phase1-link" href="/">Auction</a><a class="phase-link phase3-link" href="/phase3">Phase 3</a><button class="sound-toggle" data-action="toggle-sound">${audioState.enabled?'🔊':'🔇'}<span>${audioState.enabled?'Sound':'Muted'}</span></button><button class="btn-link" data-action="logout">Sign Out</button></div></div></header>`;}
+function topBar(){const t=myTeam();return `<header class="topbar"><div class="topbar-inner"><div class="brand"><div class="brand-kicker">Phase 2 • Supplemental</div><div class="brand-title">${escapeHtml(LEAGUE_NAME)}</div></div><div class="user-chip"><div class="status-dot ${state.settings?.status==='live'?'live':''}"></div><div class="user-chip-text"><div class="user-team">${t?escapeHtml(t.name):'Account required'}${isCommish()?' • Czar':''}</div><div class="user-budget">${t?`${money(t.remaining_budget)} remaining`:escapeHtml(state.settings?.status||'')}</div></div><a class="phase-link league-link" href="/league" title="Open League Office">League Office</a><a class="phase-link phase1-link" href="/">Auction</a><a class="phase-link phase3-link" href="/phase3">Phase 3</a><button class="sound-toggle" data-action="toggle-sound">${audioState.enabled?'🔊':'🔇'}<span>${audioState.enabled?'Sound':'Muted'}</span></button><button class="btn-link" data-action="logout">Sign Out</button></div></div></header>`;}
 
 function pickStrip(){
   if(!state.settings||state.order.length<12)return '';
@@ -259,7 +259,7 @@ async function finalizeExpired(){if(state.finalizing||state.settings?.status!=='
 async function boot(){if(!configured){state.loading=false;render();return;}try{
   const auth=await requireOwnerAccount({app,roomCode:ROOM_CODE,leagueName:LEAGUE_NAME,legacyStorageKey:STORAGE_KEY});
   saveSession(legacySessionFromAccount(auth.account,auth.user));
-  await loadData();subscribeRealtime();render();setInterval(updateCountdown,250);
+  await loadData();subscribeRealtime();render();promptOwnerPush(ROOM_CODE,LEAGUE_NAME,auth.account).catch(()=>{});setInterval(updateCountdown,250);
 }catch(e){state.loading=false;app.innerHTML=connectionView(e);}}
 document.addEventListener('pointerdown',unlockAudio,{once:true,passive:true});
 boot();

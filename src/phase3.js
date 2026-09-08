@@ -3,7 +3,7 @@ import './auth.css';
 import './phase3.css';
 import { supabase, configured } from './supabase.js';
 import { ROOM_CODE, LEAGUE_NAME } from './config.js';
-import { requireOwnerAccount, legacySessionFromAccount, signOutOwner } from './auth.js';
+import { requireOwnerAccount, legacySessionFromAccount, signOutOwner, promptOwnerPush } from './auth.js';
 
 const app = document.querySelector('#app');
 const STORAGE_KEY = `glsk-auction-session-${ROOM_CODE}`;
@@ -167,7 +167,7 @@ function playerRow(p,showButton=true){
 
 function topBar(){
   const t=myTeam(),rs=t?rosterByTeam(t.id):null;
-  return `<header class="topbar"><div class="topbar-inner"><div class="brand"><div class="brand-kicker">Phase 3 • Roster Fill</div><div class="brand-title">${escapeHtml(LEAGUE_NAME)}</div></div><div class="user-chip"><div class="status-dot ${state.settings?.status==='live'?'live':''}"></div><div class="user-chip-text"><div class="user-team">${t?escapeHtml(t.name):'Account required'}${isCommish()?' • Czar':''}</div><div class="user-budget">${rs?`${rs.roster_count}/${rs.max_roster_size} rostered • ${openSpots(t.id)} open`:escapeHtml(state.settings?.status||'')}</div></div><a class="phase-link league-link" href="/league">League Office</a><a class="phase-link phase1-link" href="/">Auction</a><a class="phase-link phase2-link" href="/supplemental">Phase 2</a><button class="sound-toggle" data-action="toggle-sound">${audioState.enabled?'🔊':'🔇'}<span>${audioState.enabled?'Sound':'Muted'}</span></button><button class="btn-link" data-action="logout">Sign Out</button></div></div></header>`;
+  return `<header class="topbar"><div class="topbar-inner"><div class="brand"><div class="brand-kicker">Phase 3 • Roster Fill</div><div class="brand-title">${escapeHtml(LEAGUE_NAME)}</div></div><div class="user-chip"><div class="status-dot ${state.settings?.status==='live'?'live':''}"></div><div class="user-chip-text"><div class="user-team">${t?escapeHtml(t.name):'Account required'}${isCommish()?' • Czar':''}</div><div class="user-budget">${rs?`${rs.roster_count}/${rs.max_roster_size} rostered • ${openSpots(t.id)} open`:escapeHtml(state.settings?.status||'')}</div></div><a class="phase-link league-link" href="/league" title="Open League Office">League Office</a><a class="phase-link phase1-link" href="/">Auction</a><a class="phase-link phase2-link" href="/supplemental">Phase 2</a><button class="sound-toggle" data-action="toggle-sound">${audioState.enabled?'🔊':'🔇'}<span>${audioState.enabled?'Sound':'Muted'}</span></button><button class="btn-link" data-action="logout">Sign Out</button></div></div></header>`;
 }
 
 function predictedUpcoming(limit=24){
@@ -348,7 +348,7 @@ async function boot(){
   try{
     const auth=await requireOwnerAccount({app,roomCode:ROOM_CODE,leagueName:LEAGUE_NAME,legacyStorageKey:STORAGE_KEY});
     saveSession(legacySessionFromAccount(auth.account,auth.user));
-    await loadData();subscribeRealtime();render();setInterval(updateCountdown,250);
+    await loadData();subscribeRealtime();render();promptOwnerPush(ROOM_CODE,LEAGUE_NAME,auth.account).catch(()=>{});setInterval(updateCountdown,250);
   }catch(e){state.loading=false;app.innerHTML=connectionView(e);}
 }
 document.addEventListener('pointerdown',unlockAudio,{once:true,passive:true});
