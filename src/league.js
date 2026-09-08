@@ -13,6 +13,7 @@ const state = {
   gameSettings:null, lineupSlots:[], weekStates:[], schedule:[], lineups:[], weeklyScores:[], matchupScores:[], shadowStandings:[], reconciliation:[], scoringRules:[], weeklyHostSettings:null, playerProjections:[],
   lineupDataTab:'stats', lineupStatsRange:'week', lineupProjectionRange:'week', lineupBrowseWeek:null,
   matchupBrowseWeek:null, selectedMatchupId:null, scheduleTeamId:null,
+  boardThreads:[], boardPosts:[], boardSelectedThread:null,
   session:loadSession(), tab:'home', loading:true, realtime:null, txFilters:{team:'',type:'',search:''},
   historySort:{key:'championships',dir:'desc'}, historySeason:'all',
 };
@@ -73,12 +74,13 @@ async function loadReconciliation(){
 
 async function loadData(){
   const {data:room,error:re}=await supabase.from('rooms').select('*').eq('code',ROOM_CODE).single(); if(re)throw re; state.room=room;
-  const [teams,seasons,roster,contracts,rules,distro,deadlines,statuses,options,transactions,trades,tradeAssets,futurePicks,rookieRights,extensionCosts,extensionEligibility,historySeasons,historyTeamSeasons,historyAllTime,historyFranchises,historyImportRuns,playerStats,gameSettings,lineupSlots,weekStates,schedule,lineups,weeklyScores,matchupScores,shadowStandings,scoringRules,weeklyHostSettings,playerProjections]=await Promise.all([
+  const [teams,seasons,roster,contracts,rules,distro,deadlines,statuses,options,transactions,trades,tradeAssets,futurePicks,rookieRights,extensionCosts,extensionEligibility,historySeasons,historyTeamSeasons,historyAllTime,historyFranchises,historyImportRuns,playerStats,gameSettings,lineupSlots,weekStates,schedule,lineups,weeklyScores,matchupScores,shadowStandings,scoringRules,weeklyHostSettings,playerProjections,boardThreads,boardPosts]=await Promise.all([
     q('teams','*',[['room_id',room.id]]),q('league_seasons','*',[['room_id',room.id]]),q('league_roster_entries','*',[['room_id',room.id]]),
     q('league_contracts','*'),q('league_rule_settings','*'),q('redistribution_rules','*'),q('league_deadlines','*'),q('league_deadline_team_status','*'),q('contract_options','*'),
     q('league_transactions','*'),q('league_trades','*'),q('league_trade_assets','*'),q('league_future_picks','*',[['room_id',room.id]]),q('league_rookie_rights','*',[['room_id',room.id]]),q('league_extension_costs','*'),q('league_contract_extension_eligibility','*'),
     q('league_history_seasons','*',[['room_id',room.id]]),q('league_history_team_seasons','*'),q('league_history_all_time','*',[['room_id',room.id]]),q('league_franchises','*',[['room_id',room.id]]),q('league_history_import_runs','*',[['room_id',room.id]]),q('league_player_stats','*',[['room_id',room.id]]),
-    q('league_game_settings','*'),q('league_lineup_slots','*'),q('league_week_states','*'),q('league_schedule','*'),q('league_lineups','*'),q('league_weekly_player_scores','*'),q('league_matchup_live_scores','*'),q('league_shadow_standings','*'),q('league_scoring_rules','*'),q('league_weekly_host_settings','*'),q('league_player_projections','*',[['room_id',room.id]])
+    q('league_game_settings','*'),q('league_lineup_slots','*'),q('league_week_states','*'),q('league_schedule','*'),q('league_lineups','*'),q('league_weekly_player_scores','*'),q('league_matchup_live_scores','*'),q('league_shadow_standings','*'),q('league_scoring_rules','*'),q('league_weekly_host_settings','*'),q('league_player_projections','*',[['room_id',room.id]]),
+    q('league_message_threads','*',[['room_id',room.id]]),q('league_message_posts','*',[['room_id',room.id]])
   ]);
   state.teams=teams.sort((a,b)=>a.sort_order-b.sort_order); state.season=seasons.find(s=>s.is_current)||seasons.sort((a,b)=>b.season_year-a.season_year)[0]||null;
   const sid=state.season?.id; state.roster=roster; state.contracts=contracts.filter(x=>x.season_id===sid); state.rules=rules.filter(x=>x.season_id===sid).sort((a,b)=>a.sort_order-b.sort_order);
@@ -109,6 +111,9 @@ async function loadData(){
   if(state.lineupBrowseWeek==null)state.lineupBrowseWeek=Number(state.gameSettings?.current_week||1);
   if(state.matchupBrowseWeek==null)state.matchupBrowseWeek=Number(state.gameSettings?.current_week||1);
   if(state.scheduleTeamId==null&&myTeam())state.scheduleTeamId=myTeam().id;
+  state.boardThreads=boardThreads.filter(x=>x.season_id===sid).sort((a,b)=>(Number(b.pinned)-Number(a.pinned))||(new Date(b.last_activity_at)-new Date(a.last_activity_at)));
+  state.boardPosts=boardPosts.filter(x=>x.season_id===sid&&x.status==='active').sort((a,b)=>new Date(a.created_at)-new Date(b.created_at));
+  if(state.boardSelectedThread&&!state.boardThreads.some(t=>String(t.id)===String(state.boardSelectedThread)))state.boardSelectedThread=null;
   await loadFinance();
   await loadReconciliation();
 }
@@ -235,7 +240,7 @@ function topBar(){
  </div></header>`;
 }
 function bottomNav(){
- const items=[['home','⌂','Home'],['lineup','☑','Lineup'],['matchups','VS','Matchups'],['schedule','◫','Schedule'],['standings','≡','Standings'],['teams','♟','Teams'],['contracts','▤','Contracts'],['trades','⇄','Trades'],['transactions','☷','Transactions'],['history','★','History'],['rules','⚙','Rules'],['deadlines','◷','Deadlines'],['finances','$','Finances']];
+ const items=[['home','⌂','Home'],['lineup','☑','Lineup'],['matchups','VS','Matchups'],['schedule','◫','Schedule'],['standings','≡','Standings'],['board','✎','Board'],['teams','♟','Teams'],['contracts','▤','Contracts'],['trades','⇄','Trades'],['transactions','☷','Transactions'],['history','★','History'],['rules','⚙','Rules'],['deadlines','◷','Deadlines'],['finances','$','Finances']];
  if(isCommish())items.push(['reconcile','✓','Reconcile']);
  return `<nav class="bottom-nav office-bottom-nav"><div class="bottom-nav-inner">${items.map(([t,i,l])=>`<button class="nav-btn ${state.tab===t?'active':''}" data-tab="${t}"><span>${i}</span>${l}</button>`).join('')}</div></nav>`;
 }
@@ -268,6 +273,59 @@ function commissionerAddPlayerForm(){
    </div>
    <button class="btn btn-primary" data-action="commish-add-player">Add to Roster</button>
  </section>`;
+}
+
+
+function boardThreadById(id){return state.boardThreads.find(t=>String(t.id)===String(id))||null;}
+function boardPostsFor(threadId){return state.boardPosts.filter(p=>String(p.thread_id)===String(threadId));}
+function boardView(){
+ const me=myTeam();
+ const threads=state.boardThreads;
+ const selected=boardThreadById(state.boardSelectedThread)||threads[0]||null;
+ if(selected&&!state.boardSelectedThread)state.boardSelectedThread=selected.id;
+ const posts=selected?boardPostsFor(selected.id):[];
+ const author=selected?teamById(selected.author_team_id):null;
+
+ return `${pageHeading('Message Board','League discussions, announcements and trash talk in one place.','League Community')}
+ ${me&&!state.session?.spectator?`<section class="card card-pad office-section board-compose-card">
+   <div class="office-section-head"><div><h2>Start a Discussion</h2><div class="section-caption">Posting as ${esc(me.name)}</div></div></div>
+   <div class="board-compose-grid">
+     <input id="board-thread-title" class="input" maxlength="120" placeholder="Discussion title">
+     <textarea id="board-thread-body" class="input board-textarea" maxlength="5000" placeholder="What do you want to talk about?"></textarea>
+     <div class="board-compose-actions"><span>Team name and timestamp will be shown with your post.</span><button class="btn btn-primary" data-action="board-create-thread">Post Discussion</button></div>
+   </div>
+ </section>`:''}
+
+ <div class="board-layout">
+   <section class="card board-thread-list">
+     <div class="board-list-head"><div><strong>Discussions</strong><span>${threads.length} active thread${threads.length===1?'':'s'}</span></div></div>
+     <div class="board-thread-items">${threads.length?threads.map(t=>{
+       const team=teamById(t.author_team_id);
+       const active=selected&&String(selected.id)===String(t.id);
+       return `<button class="board-thread-item ${active?'active':''}" data-board-thread="${t.id}">
+         <div class="board-thread-title-row"><strong>${t.pinned?'📌 ':''}${esc(t.title)}</strong>${t.status==='locked'?'<span class="board-status-chip">LOCKED</span>':''}</div>
+         <div class="board-thread-preview">${esc(t.body.length>115?t.body.slice(0,115)+'…':t.body)}</div>
+         <div class="board-thread-meta"><span>${esc(team?.name||'League')}</span><span>${Number(t.reply_count||0)} repl${Number(t.reply_count||0)===1?'y':'ies'}</span><span>${fmtDate(t.last_activity_at)}</span></div>
+       </button>`;
+     }).join(''):'<div class="board-empty"><strong>No discussions yet.</strong><span>Start the first GLSK message-board thread.</span></div>'}</div>
+   </section>
+
+   <section class="card board-discussion">
+     ${selected?`<div class="board-discussion-head">
+       <div><div class="board-thread-flags">${selected.pinned?'<span>PINNED</span>':''}${selected.status==='locked'?'<span>LOCKED</span>':''}</div><h2>${esc(selected.title)}</h2><div class="board-discussion-meta">Started by <strong>${esc(author?.name||'League')}</strong> • ${fmtDate(selected.created_at)}</div></div>
+       ${isCommish()?`<div class="board-mod-actions">
+         <button class="btn btn-sm btn-outline" data-board-action="${selected.pinned?'unpin':'pin'}" data-thread-id="${selected.id}">${selected.pinned?'Unpin':'Pin'}</button>
+         <button class="btn btn-sm btn-outline" data-board-action="${selected.status==='locked'?'unlock':'lock'}" data-thread-id="${selected.id}">${selected.status==='locked'?'Unlock':'Lock'}</button>
+         <button class="btn btn-sm btn-reset" data-board-action="archive" data-thread-id="${selected.id}">Archive</button>
+       </div>`:''}
+     </div>
+     <article class="board-root-post"><div class="board-avatar">${esc((author?.name||'GL').split(/\s+/).map(x=>x[0]).join('').slice(0,2).toUpperCase())}</div><div><div class="board-post-author"><strong>${esc(author?.name||'League')}</strong><span>${fmtDate(selected.created_at)}</span></div><div class="board-post-body">${esc(selected.body).replaceAll('\n','<br>')}</div></div></article>
+     <div class="board-replies-head"><strong>${posts.length} ${posts.length===1?'Reply':'Replies'}</strong></div>
+     <div class="board-replies">${posts.map(p=>{const team=teamById(p.author_team_id);return `<article class="board-reply"><div class="board-avatar">${esc((team?.name||'GL').split(/\s+/).map(x=>x[0]).join('').slice(0,2).toUpperCase())}</div><div><div class="board-post-author"><strong>${esc(team?.name||'League')}</strong><span>${fmtDate(p.created_at)}</span></div><div class="board-post-body">${esc(p.body).replaceAll('\n','<br>')}</div></div></article>`;}).join('')||'<div class="board-no-replies">No replies yet.</div>'}</div>
+     ${me&&!state.session?.spectator&&selected.status!=='locked'?`<div class="board-reply-compose"><textarea id="board-reply-body" class="input board-textarea" maxlength="5000" placeholder="Reply as ${esc(me.name)}"></textarea><div><span>Keep the discussion going.</span><button class="btn btn-primary" data-action="board-reply" data-thread-id="${selected.id}">Post Reply</button></div></div>`:selected.status==='locked'?'<div class="board-locked-notice">This discussion has been locked by the commissioner.</div>':''}
+     `:'<div class="board-empty discussion-empty"><strong>Select a discussion</strong><span>Choose a thread from the left to read and reply.</span></div>'}
+   </section>
+ </div>`;
 }
 
 function teamsView(){
@@ -910,7 +968,7 @@ function historyView(){
 
 function loginView(){const options=state.teams.map(t=>`<option value="${t.id}">${esc(t.name)}</option>`).join('');return `<div class="login-wrap"><div class="login-card"><div class="login-head"><h1>${esc(LEAGUE_NAME)}</h1><p>League Office</p></div><div class="login-body"><div class="field"><label>Your team</label><select id="join-team" class="input"><option value="">Select your team…</option>${options}</select></div><div class="field"><label>Team PIN</label><input id="team-pin" class="input pin-input" inputmode="numeric" maxlength="6" placeholder="6-digit PIN"></div><div id="join-error"></div><button class="btn btn-primary btn-block" data-action="join">Enter League Office</button><button class="btn-link btn-block" data-action="spectate">View public league dashboard</button><a class="btn-link btn-block" href="/" style="display:block;text-align:center;text-decoration:none">← Auction Room</a></div></div></div>`;}
 function setupError(){return `<div class="login-wrap"><div class="login-card"><div class="login-head"><h1>League Office Ready</h1><p>Database connection is missing.</p></div></div></div>`;}
-function render(){if(!configured){app.innerHTML=setupError();return;}if(state.loading){app.innerHTML='<div class="login-wrap"><div style="color:white;font-weight:900">Loading League Office…</div></div>';return;}if(!state.session){app.innerHTML=loginView();bind();return;}let content=state.tab==='lineup'?lineupView():state.tab==='matchups'?matchupsView():state.tab==='schedule'?scheduleView():state.tab==='standings'?standingsView():state.tab==='teams'?teamsView():state.tab==='contracts'?contractsView():state.tab==='trades'?tradesView():state.tab==='transactions'?transactionsView():state.tab==='history'?historyView():state.tab==='rules'?rulesView():state.tab==='deadlines'?deadlinesView():state.tab==='finances'?financesView():state.tab==='reconcile'?reconcileView():dashboard();app.innerHTML=`<div class="office-shell">${topBar()}<main class="main">${content}</main>${bottomNav()}</div>`;bind();}
+function render(){if(!configured){app.innerHTML=setupError();return;}if(state.loading){app.innerHTML='<div class="login-wrap"><div style="color:white;font-weight:900">Loading League Office…</div></div>';return;}if(!state.session){app.innerHTML=loginView();bind();return;}let content=state.tab==='lineup'?lineupView():state.tab==='matchups'?matchupsView():state.tab==='schedule'?scheduleView():state.tab==='standings'?standingsView():state.tab==='board'?boardView():state.tab==='teams'?teamsView():state.tab==='contracts'?contractsView():state.tab==='trades'?tradesView():state.tab==='transactions'?transactionsView():state.tab==='history'?historyView():state.tab==='rules'?rulesView():state.tab==='deadlines'?deadlinesView():state.tab==='finances'?financesView():state.tab==='reconcile'?reconcileView():dashboard();app.innerHTML=`<div class="office-shell">${topBar()}<main class="main">${content}</main>${bottomNav()}</div>`;bind();}
 
 async function join(){const teamId=document.querySelector('#join-team')?.value,pin=document.querySelector('#team-pin')?.value.trim(),err=document.querySelector('#join-error');if(!teamId||!pin){err.innerHTML='<div class="error">Select your team and enter its PIN.</div>';return;}try{await rpc('join_room',{p_room_code:ROOM_CODE,p_team_id:teamId,p_pin:pin});const t=state.teams.find(x=>x.id===teamId);let commishPin=null;if(t?.name===COMMISH_TEAM_NAME){const valid=await rpc('commish_login',{p_room_code:ROOM_CODE,p_pin:pin});if(!valid?.valid)throw new Error('Commissioner access is not configured.');commishPin=pin;}saveSession({teamId,pin,commishPin,spectator:false});await loadFinance();render();}catch(e){err.innerHTML=`<div class="error">${esc(e.message)}</div>`;}}
 function logout(){saveSession(null);render();}
@@ -929,6 +987,33 @@ function bind(){
  app.querySelectorAll('[data-matchup-week]').forEach(b=>b.addEventListener('click',()=>{state.matchupBrowseWeek=Number(b.dataset.matchupWeek);state.selectedMatchupId=null;render();}));
  app.querySelectorAll('[data-select-matchup]').forEach(b=>b.addEventListener('click',()=>{state.selectedMatchupId=b.dataset.selectMatchup;render();}));
  app.querySelector('#schedule-team-select')?.addEventListener('change',e=>{state.scheduleTeamId=e.target.value;render();});
+ app.querySelectorAll('[data-board-thread]').forEach(b=>b.addEventListener('click',()=>{state.boardSelectedThread=b.dataset.boardThread;render();}));
+ app.querySelector('[data-action="board-create-thread"]')?.addEventListener('click',async()=>{
+   const t=myTeam(),title=document.getElementById('board-thread-title')?.value.trim(),body=document.getElementById('board-thread-body')?.value.trim();
+   if(!t)return;
+   if(!title||title.length<3)return toast('Enter a discussion title.','error');
+   if(!body)return toast('Enter a message.','error');
+   try{
+     const d=await rpc('league_owner_create_message_thread',{p_room_code:ROOM_CODE,p_team_id:t.id,p_pin:state.session.pin,p_title:title,p_body:body});
+     state.boardSelectedThread=d.thread_id;
+     toast('Discussion posted.');
+     await loadData();render();
+   }catch(e){toast(e.message,'error');}
+ });
+ app.querySelector('[data-action="board-reply"]')?.addEventListener('click',async b=>{
+   const t=myTeam(),body=document.getElementById('board-reply-body')?.value.trim();
+   if(!t||!body)return toast('Enter a reply.','error');
+   try{
+     await rpc('league_owner_reply_message_thread',{p_room_code:ROOM_CODE,p_team_id:t.id,p_pin:state.session.pin,p_thread_id:Number(b.currentTarget.dataset.threadId),p_body:body});
+     toast('Reply posted.');
+     await loadData();render();
+   }catch(e){toast(e.message,'error');}
+ });
+ app.querySelectorAll('[data-board-action]').forEach(b=>b.addEventListener('click',()=>{
+   const action=b.dataset.boardAction,id=Number(b.dataset.threadId);
+   if(action==='archive'&&!confirm('Archive this discussion? It will disappear from the active message board.'))return;
+   commish('league_commish_message_thread_action',{p_thread_id:id,p_action:action},`Discussion ${action}d.`);
+ }));
  app.querySelector('[data-action="save-lineup-slots"]')?.addEventListener('click',()=>{
    const counts={};['QB','RB','WR','TE','FLEX','K','DST'].forEach(p=>counts[p]=Number(document.getElementById(`slot-count-${p}`)?.value||0));
    const slots=[];let order=1;
@@ -1003,7 +1088,7 @@ function bind(){
  app.querySelector('[data-action="save-correction"]')?.addEventListener('click',()=>{const desc=document.getElementById('corr-desc')?.value.trim();if(!desc)return toast('Enter a correction description.','error');commish('league_commish_correction',{p_team_id:document.getElementById('corr-team')?.value||null,p_bid_delta:Number(document.getElementById('corr-bids')?.value||0),p_description:desc,p_reverse_transaction_id:document.getElementById('corr-reverse')?.value||null},'Correction recorded.');});
 }
 
-async function subscribe(){if(state.realtime)await supabase.removeChannel(state.realtime);state.realtime=supabase.channel(`league-office-${ROOM_CODE}`).on('postgres_changes',{event:'*',schema:'public',table:'league_roster_entries'},refresh).on('postgres_changes',{event:'*',schema:'public',table:'teams'},refresh).on('postgres_changes',{event:'*',schema:'public',table:'league_contracts'},refresh).on('postgres_changes',{event:'*',schema:'public',table:'league_rule_settings'},refresh).on('postgres_changes',{event:'*',schema:'public',table:'redistribution_rules'},refresh).on('postgres_changes',{event:'*',schema:'public',table:'league_deadlines'},refresh).on('postgres_changes',{event:'*',schema:'public',table:'league_deadline_team_status'},refresh).on('postgres_changes',{event:'*',schema:'public',table:'league_history_seasons'},refresh).on('postgres_changes',{event:'*',schema:'public',table:'league_history_team_seasons'},refresh).on('postgres_changes',{event:'*',schema:'public',table:'league_player_stats'},refresh).on('postgres_changes',{event:'*',schema:'public',table:'league_lineups'},refresh).on('postgres_changes',{event:'*',schema:'public',table:'league_weekly_player_scores'},refresh).on('postgres_changes',{event:'*',schema:'public',table:'league_schedule'},refresh).on('postgres_changes',{event:'*',schema:'public',table:'league_week_states'},refresh).on('postgres_changes',{event:'*',schema:'public',table:'league_scoring_rules'},refresh).on('postgres_changes',{event:'*',schema:'public',table:'league_player_projections'},refresh).subscribe();}
+async function subscribe(){if(state.realtime)await supabase.removeChannel(state.realtime);state.realtime=supabase.channel(`league-office-${ROOM_CODE}`).on('postgres_changes',{event:'*',schema:'public',table:'league_roster_entries'},refresh).on('postgres_changes',{event:'*',schema:'public',table:'teams'},refresh).on('postgres_changes',{event:'*',schema:'public',table:'league_contracts'},refresh).on('postgres_changes',{event:'*',schema:'public',table:'league_rule_settings'},refresh).on('postgres_changes',{event:'*',schema:'public',table:'redistribution_rules'},refresh).on('postgres_changes',{event:'*',schema:'public',table:'league_deadlines'},refresh).on('postgres_changes',{event:'*',schema:'public',table:'league_deadline_team_status'},refresh).on('postgres_changes',{event:'*',schema:'public',table:'league_history_seasons'},refresh).on('postgres_changes',{event:'*',schema:'public',table:'league_history_team_seasons'},refresh).on('postgres_changes',{event:'*',schema:'public',table:'league_player_stats'},refresh).on('postgres_changes',{event:'*',schema:'public',table:'league_lineups'},refresh).on('postgres_changes',{event:'*',schema:'public',table:'league_weekly_player_scores'},refresh).on('postgres_changes',{event:'*',schema:'public',table:'league_schedule'},refresh).on('postgres_changes',{event:'*',schema:'public',table:'league_week_states'},refresh).on('postgres_changes',{event:'*',schema:'public',table:'league_scoring_rules'},refresh).on('postgres_changes',{event:'*',schema:'public',table:'league_player_projections'},refresh).on('postgres_changes',{event:'*',schema:'public',table:'league_message_threads'},refresh).on('postgres_changes',{event:'*',schema:'public',table:'league_message_posts'},refresh).subscribe();}
 let refreshTimer=null;function refresh(){clearTimeout(refreshTimer);refreshTimer=setTimeout(async()=>{try{await loadData();render();}catch(e){console.warn(e);}},180);}
 
 async function init(){if(!configured){state.loading=false;render();return;}try{await loadData();state.loading=false;render();await subscribe();}catch(e){state.loading=false;app.innerHTML=`<div class="login-wrap"><div class="login-card"><div class="login-head"><h1>League Office</h1><p>Database migration required.</p></div><div class="login-body"><div class="error">${esc(e.message)}</div><p class="small muted">Run the League Office v1 Supabase migration, then refresh.</p></div></div></div>`;}}
