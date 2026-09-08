@@ -515,3 +515,114 @@
   .rookie-only-picks{grid-template-columns:1fr}
 }
 
+/* League Office v5.4 — player stats + clearer extension reference */
+.player-stat-line{
+  display:flex;
+  flex-wrap:wrap;
+  gap:4px 9px;
+  align-items:center;
+  margin-top:4px;
+  font-size:9px;
+  line-height:1.25;
+  color:#44556f;
+  font-weight:850;
+}
+.player-stat-line strong{color:#152944}
+.player-stat-detail{color:#7a8798;font-weight:750}
+.stats-pending{color:#98a2af;font-style:italic;font-weight:700}
+.trade-player-stats{
+  display:block;
+  margin-top:3px;
+  color:#425675;
+  font-size:8px;
+  font-weight:900;
+  line-height:1.2;
+}
+.extension-reference-card{overflow:hidden}
+.extension-cost-scroll{overflow-x:auto;border:1px solid #dfe5ed;border-radius:11px}
+.extension-cost-grid{
+  min-width:780px;
+  display:grid;
+  grid-template-columns:90px minmax(170px,1.1fr) 120px minmax(175px,1fr) minmax(175px,1fr);
+  background:#fff;
+}
+.extension-cost-grid>div{
+  min-height:52px;
+  display:flex;
+  align-items:center;
+  padding:10px 12px;
+  border-right:1px solid #e7ebf0;
+  border-bottom:1px solid #e7ebf0;
+}
+.extension-cost-grid>div:nth-child(5n){border-right:0}
+.extension-grid-head{
+  background:#f2f5f9;
+  color:#53627a;
+  font-size:9px;
+  font-weight:1000;
+  text-transform:uppercase;
+  letter-spacing:.04em;
+  flex-direction:column;
+  align-items:flex-start!important;
+  justify-content:center;
+  line-height:1.15;
+}
+.extension-grid-head strong{
+  color:#263954;
+  font-size:10px;
+  text-transform:none;
+  letter-spacing:0;
+}
+.extension-grid-head span{
+  color:#7e8a9b;
+  font-size:8px;
+  text-transform:none;
+  letter-spacing:0;
+  margin-top:3px;
+}
+.extension-pos{
+  font-size:14px;
+  font-weight:1000;
+  color:#172b48;
+  background:#fbfcfe;
+}
+.extension-bids{
+  color:#354963;
+  font-size:11px;
+  font-weight:900;
+}
+.extension-average{
+  font-size:12px;
+  color:#334862;
+  font-weight:950;
+}
+.extension-cost-value{
+  gap:5px;
+  align-items:baseline!important;
+  background:#fffdf3;
+}
+.extension-cost-value strong{
+  font-size:17px;
+  color:#152944;
+}
+.extension-cost-value span{
+  font-size:9px;
+  color:#6c788a;
+  font-weight:800;
+}
+.extension-rule-note{
+  margin-top:9px;
+  padding:9px 11px;
+  border-radius:9px;
+  background:#f7f9fc;
+  border:1px solid #e5e9ef;
+  color:#66758a;
+  font-size:9px;
+  line-height:1.4;
+}
+.extension-rule-note strong{color:#31445f}
+@media(max-width:600px){
+  .player-stat-line{font-size:8px}
+  .trade-player-stats{font-size:7.5px}
+}
+

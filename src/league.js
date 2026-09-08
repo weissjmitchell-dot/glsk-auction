@@ -9,7 +9,7 @@ const COMMISH_TEAM_NAME = 'Weiss Tea & Lemonade';
 const state = {
   room:null, teams:[], season:null, roster:[], contracts:[], rules:[], distro:[], deadlines:[], deadlineStatus:[], finance:[], contractOptions:[],
   transactions:[], trades:[], tradeAssets:[], futurePicks:[], rookieRights:[], extensionCosts:[], extensionEligibility:[],
-  historySeasons:[], historyTeamSeasons:[], historyAllTime:[], historyFranchises:[], historyImportRuns:[],
+  historySeasons:[], historyTeamSeasons:[], historyAllTime:[], historyFranchises:[], historyImportRuns:[], playerStats:[],
   session:loadSession(), tab:'home', loading:true, realtime:null, txFilters:{team:'',type:'',search:''},
   historySort:{key:'championships',dir:'desc'}, historySeason:'all',
 };
@@ -55,11 +55,11 @@ async function loadFinance(){
 
 async function loadData(){
   const {data:room,error:re}=await supabase.from('rooms').select('*').eq('code',ROOM_CODE).single(); if(re)throw re; state.room=room;
-  const [teams,seasons,roster,contracts,rules,distro,deadlines,statuses,options,transactions,trades,tradeAssets,futurePicks,rookieRights,extensionCosts,extensionEligibility,historySeasons,historyTeamSeasons,historyAllTime,historyFranchises,historyImportRuns]=await Promise.all([
+  const [teams,seasons,roster,contracts,rules,distro,deadlines,statuses,options,transactions,trades,tradeAssets,futurePicks,rookieRights,extensionCosts,extensionEligibility,historySeasons,historyTeamSeasons,historyAllTime,historyFranchises,historyImportRuns,playerStats]=await Promise.all([
     q('teams','*',[['room_id',room.id]]),q('league_seasons','*',[['room_id',room.id]]),q('league_roster_entries','*',[['room_id',room.id]]),
     q('league_contracts','*'),q('league_rule_settings','*'),q('redistribution_rules','*'),q('league_deadlines','*'),q('league_deadline_team_status','*'),q('contract_options','*'),
     q('league_transactions','*'),q('league_trades','*'),q('league_trade_assets','*'),q('league_future_picks','*',[['room_id',room.id]]),q('league_rookie_rights','*',[['room_id',room.id]]),q('league_extension_costs','*'),q('league_contract_extension_eligibility','*'),
-    q('league_history_seasons','*',[['room_id',room.id]]),q('league_history_team_seasons','*'),q('league_history_all_time','*',[['room_id',room.id]]),q('league_franchises','*',[['room_id',room.id]]),q('league_history_import_runs','*',[['room_id',room.id]])
+    q('league_history_seasons','*',[['room_id',room.id]]),q('league_history_team_seasons','*'),q('league_history_all_time','*',[['room_id',room.id]]),q('league_franchises','*',[['room_id',room.id]]),q('league_history_import_runs','*',[['room_id',room.id]]),q('league_player_stats','*',[['room_id',room.id]])
   ]);
   state.teams=teams.sort((a,b)=>a.sort_order-b.sort_order); state.season=seasons.find(s=>s.is_current)||seasons.sort((a,b)=>b.season_year-a.season_year)[0]||null;
   const sid=state.season?.id; state.roster=roster; state.contracts=contracts.filter(x=>x.season_id===sid); state.rules=rules.filter(x=>x.season_id===sid).sort((a,b)=>a.sort_order-b.sort_order);
@@ -75,6 +75,7 @@ async function loadData(){
   state.historyAllTime=historyAllTime;
   state.historyFranchises=historyFranchises.sort((a,b)=>a.display_name.localeCompare(b.display_name));
   state.historyImportRuns=historyImportRuns.sort((a,b)=>new Date(b.started_at)-new Date(a.started_at));
+  state.playerStats=playerStats.filter(x=>x.season_id===sid);
   await loadFinance();
 }
 
@@ -84,6 +85,24 @@ function pageHeading(title,subtitle='',eyebrow=''){
 }
 function rosterPositionClass(pos){const p=String(pos||'').toUpperCase();return ['QB','RB','WR','TE','K','DST'].includes(p)?`roster-pos roster-pos-${p}`:'roster-pos';}
 function acquisitionLabel(v){return String(v||'current_roster').replaceAll('_',' ').replace(/\b\w/g,c=>c.toUpperCase());}
+function statForPlayer(playerKey){return state.playerStats.find(s=>s.player_key===playerKey);}
+function playerStatLine(r,compact=false){
+ const s=statForPlayer(r.player_key);
+ if(!s)return compact?'':'<div class="player-stat-line stats-pending">Season stats sync pending</div>';
+ const actual=Number(s.games_played||0)>0||s.fantasy_points!=null||s.position_rank!=null||s.season_rank!=null;
+ if(!actual)return compact?'':'<div class="player-stat-line stats-pending">Season stats sync pending Yahoo connection</div>';
+ const core=[];
+ if(s.fantasy_points!=null)core.push(`<strong>${Number(s.fantasy_points).toFixed(1)}</strong> FPTS`);
+ if(Number(s.games_played||0)>0)core.push(`${Number(s.games_played)} GP`);
+ if(s.position_rank!=null)core.push(`${esc(s.position||r.position||'')}#${Number(s.position_rank)}`);
+ else if(s.season_rank!=null)core.push(`#${Number(s.season_rank)} overall`);
+ const pos=String(s.position||r.position||'').toUpperCase(),detail=[];
+ if(pos==='QB'){if(s.passing_yards!=null)detail.push(`${Number(s.passing_yards)} PYD`);if(s.passing_td!=null)detail.push(`${Number(s.passing_td)} PTD`);if(s.interceptions!=null)detail.push(`${Number(s.interceptions)} INT`);}
+ if(['QB','RB','WR','TE'].includes(pos)){if(s.rushing_yards!=null&&Number(s.rushing_yards)>0)detail.push(`${Number(s.rushing_yards)} RYD`);if(s.rushing_td!=null&&Number(s.rushing_td)>0)detail.push(`${Number(s.rushing_td)} RTD`);}
+ if(['RB','WR','TE'].includes(pos)){if(s.receptions!=null)detail.push(`${Number(s.receptions)} REC`);if(s.receiving_yards!=null)detail.push(`${Number(s.receiving_yards)} REYD`);if(s.receiving_td!=null)detail.push(`${Number(s.receiving_td)} RETD`);}
+ if(compact)return `<span class="trade-player-stats">${core.join(' • ')}</span>`;
+ return `<div class="player-stat-line"><span>${core.join(' • ')||'Season stats'}</span>${detail.length?`<span class="player-stat-detail">${detail.slice(0,4).join(' • ')}</span>`:''}</div>`;
+}
 
 function topBar(){
  const t=myTeam(),rosterCount=t?rosterFor(t.id).length:0,limit=state.season?.roster_limit||18,cap=t?capUsed(t.id):0;
@@ -139,14 +158,32 @@ function teamsView(){
      const c=contractForPlayer(t.id,r.player_key);
      const canDrop=myTeam()?.id===t.id&&!state.session?.spectator;
      const penalty=c?(contractYear(c)===1?Number(c.cap_cost||0)*2:({2:5,3:10,4:20}[Number(c.length_years)]||0)):0;
-     return `<div class="roster-player-row"><span class="${rosterPositionClass(r.position)}">${esc(r.position||'—')}</span><div class="roster-player-main"><div class="contract-player">${esc(r.player_name)}</div><div class="roster-player-meta">${esc(r.nfl_team||'')} <span>•</span> ${esc(acquisitionLabel(r.acquisition_type))}</div>${c?`<div class="contract-detail contract-active">${esc(contractLabel(c))}${penalty?` <span>• Drop fine ${penalty}</span>`:''}</div>`:'<div class="contract-detail contract-none">No active contract</div>'}</div><div class="roster-player-actions">${c?'<span class="status-chip contract-chip">Contract</span>':''}${canDrop?`<button class="btn btn-sm btn-reset" data-drop-player="${esc(r.player_key)}" data-drop-name="${esc(r.player_name)}" data-drop-penalty="${penalty}">Drop</button>`:''}${isCommish()?`<button class="btn btn-sm btn-outline" data-exception-drop="${esc(r.player_key)}" data-exception-team="${t.id}" data-drop-name="${esc(r.player_name)}">Retire/Ban</button>`:''}</div></div>`;
+     return `<div class="roster-player-row"><span class="${rosterPositionClass(r.position)}">${esc(r.position||'—')}</span><div class="roster-player-main"><div class="contract-player">${esc(r.player_name)}</div><div class="roster-player-meta">${esc(r.nfl_team||'')} <span>•</span> ${esc(acquisitionLabel(r.acquisition_type))}</div>${playerStatLine(r)}${c?`<div class="contract-detail contract-active">${esc(contractLabel(c))}${penalty?` <span>• Drop fine ${penalty}</span>`:''}</div>`:'<div class="contract-detail contract-none">No active contract</div>'}</div><div class="roster-player-actions">${c?'<span class="status-chip contract-chip">Contract</span>':''}${canDrop?`<button class="btn btn-sm btn-reset" data-drop-player="${esc(r.player_key)}" data-drop-name="${esc(r.player_name)}" data-drop-penalty="${penalty}">Drop</button>`:''}${isCommish()?`<button class="btn btn-sm btn-outline" data-exception-drop="${esc(r.player_key)}" data-exception-team="${t.id}" data-drop-name="${esc(r.player_name)}">Retire/Ban</button>`:''}</div></div>`;
    }).join('')||'<div class="empty-tight">No roster entries.</div>'}</div></details>`;
  }).join('')}</div>`;
 }
 
 function extensionCostReference(){
  const positions=['QB','RB','WR','TE'];
- return `<section class="card card-pad office-section extension-reference-card"><div class="office-section-head"><div><h2>Extension Cost Reference</h2><div class="small muted">Actual top-3 Free Agent Auction bids • 2yr→3yr = 25% avg • 3yr→4yr = 40% avg</div></div>${isCommish()?'<button class="btn btn-sm btn-outline" data-action="refresh-extension-costs">Refresh</button>':''}</div><div class="table-scroll"><table class="office-table"><thead><tr><th>Pos</th><th>Top 3 bids</th><th>Avg</th><th>2→3</th><th>3→4</th></tr></thead><tbody>${positions.map(pos=>{const c=state.extensionCosts.find(x=>x.position===pos);return `<tr><td><strong>${pos}</strong></td><td>${c&&c.top_bid_3!=null?`${c.top_bid_1}, ${c.top_bid_2}, ${c.top_bid_3}`:'N/A'}</td><td>${c?.average_bid!=null?Number(c.average_bid).toFixed(1):'—'}</td><td><strong>${c?.cost_2_to_3!=null?`${c.cost_2_to_3} bids`:'—'}</strong></td><td><strong>${c?.cost_3_to_4!=null?`${c.cost_3_to_4} bids`:'—'}</strong></td></tr>`;}).join('')}</tbody></table></div></section>`;
+ return `<section class="card card-pad office-section extension-reference-card">
+   <div class="office-section-head"><div><h2>Contract Extension Cost Reference</h2><div class="small muted">Based on the actual top 3 Free Agent Auction bids at each position. Costs are rounded to the nearest whole bid dollar.</div></div>${isCommish()?'<button class="btn btn-sm btn-outline" data-action="refresh-extension-costs">Refresh</button>':''}</div>
+   <div class="extension-cost-scroll">
+     <div class="extension-cost-grid">
+       <div class="extension-grid-head">Position</div>
+       <div class="extension-grid-head">Top 3 Auction Bids</div>
+       <div class="extension-grid-head">Average Bid</div>
+       <div class="extension-grid-head"><strong>2-Year → 3-Year</strong><span>25% of average</span></div>
+       <div class="extension-grid-head"><strong>3-Year → 4-Year</strong><span>40% of average</span></div>
+       ${positions.map(pos=>{const c=state.extensionCosts.find(x=>x.position===pos);return `
+         <div class="extension-pos">${pos}</div>
+         <div class="extension-bids">${c&&c.top_bid_3!=null?`${c.top_bid_1} • ${c.top_bid_2} • ${c.top_bid_3}`:'N/A'}</div>
+         <div class="extension-average">${c?.average_bid!=null?Number(c.average_bid).toFixed(1):'—'}</div>
+         <div class="extension-cost-value">${c?.cost_2_to_3!=null?`<strong>${c.cost_2_to_3}</strong><span>bid dollars</span>`:'—'}</div>
+         <div class="extension-cost-value">${c?.cost_3_to_4!=null?`<strong>${c.cost_3_to_4}</strong><span>bid dollars</span>`:'—'}</div>`;}).join('')}
+     </div>
+   </div>
+   <div class="extension-rule-note"><strong>Eligibility reminder:</strong> Only a contracted player acquired by trade during the current season can be extended. A 2-year contract may only become a 3-year contract; a 3-year contract may only become a 4-year contract.</div>
+ </section>`;
 }
 function extensionPanel(){
  const t=myTeam(); if(!t||state.session?.spectator)return '';
@@ -212,7 +249,7 @@ function tradeSide(teamId,cls,sideLabel='Assets'){
    return `<label class="trade-player-row">
      <span class="trade-check-cell"><input type="checkbox" class="${cls}" data-type="player" data-key="${esc(r.player_key)}" data-name="${esc(r.player_name)}"></span>
      <span class="${rosterPositionClass(r.position)} trade-pos">${esc(r.position||'—')}</span>
-     <span class="trade-player-info"><strong>${esc(r.player_name)}</strong><small>${esc(r.nfl_team||'')} ${c?`• ${esc(contractLabel(c))}`:'• No contract'}${hasRights?' • Rights follow player':''}</small></span>
+     <span class="trade-player-info"><strong>${esc(r.player_name)}</strong><small>${esc(r.nfl_team||'')} ${c?`• ${esc(contractLabel(c))}`:'• No contract'}${hasRights?' • Rights follow player':''}</small>${playerStatLine(r,true)}</span>
      <span class="trade-cap-cell">${c?`${c.cap_cost} pts`:'—'}</span>
    </label>`;
  }).join('');
@@ -443,7 +480,7 @@ function bind(){
  app.querySelector('[data-action="save-correction"]')?.addEventListener('click',()=>{const desc=document.getElementById('corr-desc')?.value.trim();if(!desc)return toast('Enter a correction description.','error');commish('league_commish_correction',{p_team_id:document.getElementById('corr-team')?.value||null,p_bid_delta:Number(document.getElementById('corr-bids')?.value||0),p_description:desc,p_reverse_transaction_id:document.getElementById('corr-reverse')?.value||null},'Correction recorded.');});
 }
 
-async function subscribe(){if(state.realtime)await supabase.removeChannel(state.realtime);state.realtime=supabase.channel(`league-office-${ROOM_CODE}`).on('postgres_changes',{event:'*',schema:'public',table:'league_roster_entries'},refresh).on('postgres_changes',{event:'*',schema:'public',table:'teams'},refresh).on('postgres_changes',{event:'*',schema:'public',table:'league_contracts'},refresh).on('postgres_changes',{event:'*',schema:'public',table:'league_rule_settings'},refresh).on('postgres_changes',{event:'*',schema:'public',table:'redistribution_rules'},refresh).on('postgres_changes',{event:'*',schema:'public',table:'league_deadlines'},refresh).on('postgres_changes',{event:'*',schema:'public',table:'league_deadline_team_status'},refresh).on('postgres_changes',{event:'*',schema:'public',table:'league_history_seasons'},refresh).on('postgres_changes',{event:'*',schema:'public',table:'league_history_team_seasons'},refresh).subscribe();}
+async function subscribe(){if(state.realtime)await supabase.removeChannel(state.realtime);state.realtime=supabase.channel(`league-office-${ROOM_CODE}`).on('postgres_changes',{event:'*',schema:'public',table:'league_roster_entries'},refresh).on('postgres_changes',{event:'*',schema:'public',table:'teams'},refresh).on('postgres_changes',{event:'*',schema:'public',table:'league_contracts'},refresh).on('postgres_changes',{event:'*',schema:'public',table:'league_rule_settings'},refresh).on('postgres_changes',{event:'*',schema:'public',table:'redistribution_rules'},refresh).on('postgres_changes',{event:'*',schema:'public',table:'league_deadlines'},refresh).on('postgres_changes',{event:'*',schema:'public',table:'league_deadline_team_status'},refresh).on('postgres_changes',{event:'*',schema:'public',table:'league_history_seasons'},refresh).on('postgres_changes',{event:'*',schema:'public',table:'league_history_team_seasons'},refresh).on('postgres_changes',{event:'*',schema:'public',table:'league_player_stats'},refresh).subscribe();}
 let refreshTimer=null;function refresh(){clearTimeout(refreshTimer);refreshTimer=setTimeout(async()=>{try{await loadData();render();}catch(e){console.warn(e);}},180);}
 
 async function init(){if(!configured){state.loading=false;render();return;}try{await loadData();state.loading=false;render();await subscribe();}catch(e){state.loading=false;app.innerHTML=`<div class="login-wrap"><div class="login-card"><div class="login-head"><h1>League Office</h1><p>Database migration required.</p></div><div class="login-body"><div class="error">${esc(e.message)}</div><p class="small muted">Run the League Office v1 Supabase migration, then refresh.</p></div></div></div>`;}}
