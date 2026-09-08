@@ -405,16 +405,60 @@ function lineupView(){
  const t=myTeam(),week=currentWeek(),slots=state.lineupSlots;
  if(!t)return `${pageHeading('Set Lineup',`Week ${week} starting lineup.`,`Weekly Play`)}<div class="card empty">Sign in as a team owner to manage a lineup.</div>`;
  const current=lineupFor(t.id,week);
+ const starterKeys=new Set(current.map(l=>l.player_key));
+ const bench=rosterFor(t.id).filter(r=>!starterKeys.has(r.player_key)).sort((a,b)=>{
+   const p={QB:1,RB:2,WR:3,TE:4,K:5,DST:6};
+   return (p[String(a.position||'').toUpperCase()]||9)-(p[String(b.position||'').toUpperCase()]||9)||a.player_name.localeCompare(b.player_name);
+ });
+ const matchup=matchupForTeam(t.id,week);
+ const oppId=matchup?(matchup.home_team_id===t.id?matchup.away_team_id:matchup.home_team_id):null;
+ const opp=oppId?teamById(oppId):null;
+ const gameText=s=>{
+   if(!s)return 'Game data pending';
+   if(s.game_final)return 'Final';
+   if(s.game_started)return s.nfl_game_status||'Live';
+   return s.nfl_game_status||'Upcoming';
+ };
+ const posClass=p=>`yahoo-pos yahoo-pos-${String(p||'').toUpperCase().replace('/','')}`;
  return `${pageHeading('Set Lineup',`Week ${week} • players lock individually when their NFL game starts.`,`Weekly Play`)}
  ${!slots.length?lineupSetupPanel():''}
- ${slots.length?`<section class="card lineup-card">
-   <div class="lineup-card-head"><div><strong>${esc(t.name)}</strong><span>${current.length}/${slots.length} starters filled</span></div><div class="lineup-total">${weeklyScore(t.id,week).toFixed(2)}<span>PTS</span></div></div>
-   <div class="lineup-editor">${slots.map(slot=>{
-     const cur=current.find(l=>l.slot_code===slot.slot_code),curScore=cur?scoreFor(cur.player_key,week):null,locked=Boolean(curScore?.game_started);
-     const options=slotEligibleRoster(slot,t.id);
-     return `<div class="lineup-slot-row"><div class="lineup-slot-label">${esc(slot.label)}</div><div class="lineup-slot-select"><select class="input lineup-select" data-slot-code="${esc(slot.slot_code)}" ${locked?'disabled':''}><option value="">— Select player —</option>${options.map(r=>`<option value="${esc(r.player_key)}" ${cur?.player_key===r.player_key?'selected':''}>${esc(r.player_name)} • ${esc(r.nfl_team||'')} • ${esc(r.position||'')}</option>`).join('')}</select>${locked?'<span class="lineup-lock">LOCKED</span>':''}</div>${cur?weeklyPlayerLine(cur.player_key,week):'<span class="weekly-player-score pending">—</span>'}</div>`;
-   }).join('')}</div>
-   <div class="lineup-save-row"><div class="small muted">Started NFL players cannot be moved after kickoff.</div><button class="btn btn-primary" data-action="save-lineup">Save Week ${week} Lineup</button></div>
+ ${slots.length?`<section class="card lineup-card lineup-card-yahoo">
+   <div class="lineup-card-head lineup-yahoo-head">
+     <div><strong>${esc(t.name)}</strong><span>${current.length}/${slots.length} starters filled${opp?` • vs ${esc(opp.name)}`:''}</span></div>
+     <div class="lineup-score-block"><span class="lineup-score-label">WEEK ${week}</span><div class="lineup-total">${weeklyScore(t.id,week).toFixed(2)}<span>PTS</span></div></div>
+   </div>
+   <div class="lineup-table-wrap">
+     <div class="lineup-table-head"><span>Pos</span><span>Offense</span><span>Week</span><span>Fan Pts</span></div>
+     <div class="lineup-editor lineup-yahoo-editor">${slots.map(slot=>{
+       const cur=current.find(l=>l.slot_code===slot.slot_code),curScore=cur?scoreFor(cur.player_key,week):null,locked=Boolean(curScore?.game_started);
+       const options=slotEligibleRoster(slot,t.id);
+       const rosterPlayer=cur?rosterFor(t.id).find(r=>r.player_key===cur.player_key):null;
+       return `<div class="lineup-yahoo-row starter-row ${locked?'is-locked':''}">
+         <div class="lineup-yahoo-pos"><span class="${posClass(slot.label)}">${esc(slot.label)}</span></div>
+         <div class="lineup-yahoo-player">
+           <select class="lineup-player-select lineup-select" data-slot-code="${esc(slot.slot_code)}" ${locked?'disabled':''}>
+             <option value="">Select player</option>
+             ${options.map(r=>`<option value="${esc(r.player_key)}" ${cur?.player_key===r.player_key?'selected':''}>${esc(r.player_name)} • ${esc(r.nfl_team||'')} • ${esc(r.position||'')}</option>`).join('')}
+           </select>
+           ${rosterPlayer?`<div class="lineup-player-sub">${esc(rosterPlayer.nfl_team||'')} • ${esc(rosterPlayer.position||'')}${locked?' • Locked':''}</div>`:'<div class="lineup-player-sub empty-slot">Open starter</div>'}
+           ${rosterPlayer?playerStatLine(rosterPlayer,true):''}
+         </div>
+         <div class="lineup-yahoo-game">${rosterPlayer?`<strong>${esc(gameText(curScore))}</strong><small>${curScore?.game_started?'In progress / complete':'Kickoff lock applies'}</small>`:'<span>—</span>'}</div>
+         <div class="lineup-yahoo-points">${cur?weeklyPlayerLine(cur.player_key,week):'<strong>—</strong>'}</div>
+       </div>`;
+     }).join('')}</div>
+     <div class="lineup-section-divider"><strong>BENCH</strong><span>${bench.length} players</span></div>
+     <div class="lineup-bench">${bench.map(r=>{
+       const s=scoreFor(r.player_key,week);
+       return `<div class="lineup-yahoo-row bench-row">
+         <div class="lineup-yahoo-pos"><span class="yahoo-pos yahoo-pos-BN">BN</span></div>
+         <div class="lineup-yahoo-player bench-player"><strong>${esc(r.player_name)}</strong><div class="lineup-player-sub">${esc(r.nfl_team||'')} • ${esc(r.position||'')}</div>${playerStatLine(r,true)}</div>
+         <div class="lineup-yahoo-game"><strong>${esc(gameText(s))}</strong><small>${s?.game_started?'Bench locked for this game':'Available before kickoff'}</small></div>
+         <div class="lineup-yahoo-points">${weeklyPlayerLine(r.player_key,week)}</div>
+       </div>`;
+     }).join('')||'<div class="empty-tight">No bench players.</div>'}</div>
+   </div>
+   <div class="lineup-save-row lineup-yahoo-save"><div><strong>Lineup locks at each player's NFL kickoff.</strong><span>Use the player selector in a starter row to make changes.</span></div><button class="btn btn-primary" data-action="save-lineup">Save Week ${week} Lineup</button></div>
  </section>`:''}
  ${isCommish()&&slots.length?lineupSetupPanel():''}`;
 }
@@ -454,7 +498,7 @@ function standingsView(){
    <div class="standings-desktop">
      <div class="standings-grid standings-grid-head"><span>RK</span><span>TEAM</span><span>RECORD</span><span>PCT</span><span>PF</span><span>PA</span><span>DIFF</span></div>
      ${rows.map((r,i)=>`${i===playoffTeams?'<div class="standings-cutline"><span>PLAYOFF CUT LINE</span></div>':''}<div class="standings-grid standings-grid-row ${i<playoffTeams?'is-playoff':''} ${me?.id===r.team_id?'is-me':''}">
-       <div><span class="standings-rank ${i<3?'top-three':''}">${r.rank}</span></div>
+       <div><span class="standings-rank">${r.rank}</span></div>
        <div class="standings-team-cell"><strong>${esc(r.team_name)}</strong>${me?.id===r.team_id?'<span class="standings-you">YOU</span>':''}</div>
        <div class="standings-record"><strong>${r.wins}-${r.losses}${Number(r.ties)?`-${r.ties}`:''}</strong></div>
        <div>${Number(r.win_pct||0).toFixed(3)}</div>
@@ -465,7 +509,7 @@ function standingsView(){
    </div>
    <div class="standings-mobile">
      ${rows.map((r,i)=>`${i===playoffTeams?'<div class="standings-cutline mobile"><span>PLAYOFF CUT LINE</span></div>':''}<div class="standings-mobile-row ${i<playoffTeams?'is-playoff':''} ${me?.id===r.team_id?'is-me':''}">
-       <div class="standings-mobile-top"><span class="standings-rank ${i<3?'top-three':''}">${r.rank}</span><div><strong>${esc(r.team_name)}</strong>${me?.id===r.team_id?'<span class="standings-you">YOU</span>':''}</div><span class="standings-mobile-record">${r.wins}-${r.losses}${Number(r.ties)?`-${r.ties}`:''}</span></div>
+       <div class="standings-mobile-top"><span class="standings-rank">${r.rank}</span><div><strong>${esc(r.team_name)}</strong>${me?.id===r.team_id?'<span class="standings-you">YOU</span>':''}</div><span class="standings-mobile-record">${r.wins}-${r.losses}${Number(r.ties)?`-${r.ties}`:''}</span></div>
        <div class="standings-mobile-stats"><span><small>PCT</small><b>${Number(r.win_pct||0).toFixed(3)}</b></span><span><small>PF</small><b>${Number(r.points_for||0).toFixed(2)}</b></span><span><small>PA</small><b>${Number(r.points_against||0).toFixed(2)}</b></span><span><small>DIFF</small><b class="${r.diff>0?'positive':r.diff<0?'negative':''}">${r.diff>0?'+':''}${r.diff.toFixed(2)}</b></span></div>
      </div>`).join('')}
    </div>
