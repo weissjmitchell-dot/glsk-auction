@@ -437,7 +437,39 @@ function matchupsView(){
  ${isCommish()&&matches.length&&ws?.status!=='final'?`<div class="weekly-finalize"><button class="btn btn-reset" data-action="finalize-week">Finalize Week ${week}</button><span>Finalized weeks feed the GLSK standings.</span></div>`:''}`;
 }
 function standingsView(){
- return `${pageHeading('Standings','GLSK shadow standings use finalized regular-season matchup results.','Weekly Play')}<section class="card standings-card"><div class="table-scroll"><table class="office-table standings-table"><thead><tr><th>Rank</th><th>Team</th><th>W</th><th>L</th><th>T</th><th>PCT</th><th>PF</th><th>PA</th></tr></thead><tbody>${state.shadowStandings.map((r,i)=>`<tr><td><strong>${i+1}</strong></td><td><strong>${esc(r.team_name)}</strong></td><td>${r.wins}</td><td>${r.losses}</td><td>${r.ties}</td><td>${Number(r.win_pct||0).toFixed(3)}</td><td>${Number(r.points_for||0).toFixed(2)}</td><td>${Number(r.points_against||0).toFixed(2)}</td></tr>`).join('')}</tbody></table></div></section>`;
+ const playoffTeams=Number(state.weeklyHostSettings?.playoff_teams||6);
+ const finalizedWeeks=state.weekStates.filter(w=>w.phase==='regular'&&w.status==='final').length;
+ const me=myTeam();
+ const rows=state.shadowStandings.map((r,i)=>({...r,rank:i+1,diff:Number(r.points_for||0)-Number(r.points_against||0)}));
+ const leader=rows[0];
+ return `${pageHeading('Standings','Standings update from finalized regular-season GLSK matchup results.','Weekly Play')}
+ <section class="standings-overview">
+   <div class="standings-overview-card"><span>Current Week</span><strong>${currentWeek()}</strong><small>${weekState()?.status||'scheduled'}</small></div>
+   <div class="standings-overview-card"><span>Finalized Weeks</span><strong>${finalizedWeeks}</strong><small>of ${state.gameSettings?.regular_season_weeks||14}</small></div>
+   <div class="standings-overview-card"><span>Playoff Field</span><strong>${playoffTeams}</strong><small>teams qualify</small></div>
+   <div class="standings-overview-card"><span>Points Leader</span><strong class="standings-leader">${leader&&Number(leader.points_for||0)>0?esc(leader.team_name):'—'}</strong><small>${leader&&Number(leader.points_for||0)>0?`${Number(leader.points_for).toFixed(2)} PF`:'No finalized scoring yet'}</small></div>
+ </section>
+ <section class="card standings-card standings-card-v2">
+   <div class="standings-card-head"><div><h2>League Standings</h2><span>Top ${playoffTeams} are in playoff position</span></div><div class="standings-legend"><span class="legend-playoff"></span> Playoff position</div></div>
+   <div class="standings-desktop">
+     <div class="standings-grid standings-grid-head"><span>RK</span><span>TEAM</span><span>RECORD</span><span>PCT</span><span>PF</span><span>PA</span><span>DIFF</span></div>
+     ${rows.map((r,i)=>`${i===playoffTeams?'<div class="standings-cutline"><span>PLAYOFF CUT LINE</span></div>':''}<div class="standings-grid standings-grid-row ${i<playoffTeams?'is-playoff':''} ${me?.id===r.team_id?'is-me':''}">
+       <div><span class="standings-rank ${i<3?'top-three':''}">${r.rank}</span></div>
+       <div class="standings-team-cell"><strong>${esc(r.team_name)}</strong>${me?.id===r.team_id?'<span class="standings-you">YOU</span>':''}</div>
+       <div class="standings-record"><strong>${r.wins}-${r.losses}${Number(r.ties)?`-${r.ties}`:''}</strong></div>
+       <div>${Number(r.win_pct||0).toFixed(3)}</div>
+       <div>${Number(r.points_for||0).toFixed(2)}</div>
+       <div>${Number(r.points_against||0).toFixed(2)}</div>
+       <div class="${r.diff>0?'positive':r.diff<0?'negative':''}">${r.diff>0?'+':''}${r.diff.toFixed(2)}</div>
+     </div>`).join('')}
+   </div>
+   <div class="standings-mobile">
+     ${rows.map((r,i)=>`${i===playoffTeams?'<div class="standings-cutline mobile"><span>PLAYOFF CUT LINE</span></div>':''}<div class="standings-mobile-row ${i<playoffTeams?'is-playoff':''} ${me?.id===r.team_id?'is-me':''}">
+       <div class="standings-mobile-top"><span class="standings-rank ${i<3?'top-three':''}">${r.rank}</span><div><strong>${esc(r.team_name)}</strong>${me?.id===r.team_id?'<span class="standings-you">YOU</span>':''}</div><span class="standings-mobile-record">${r.wins}-${r.losses}${Number(r.ties)?`-${r.ties}`:''}</span></div>
+       <div class="standings-mobile-stats"><span><small>PCT</small><b>${Number(r.win_pct||0).toFixed(3)}</b></span><span><small>PF</small><b>${Number(r.points_for||0).toFixed(2)}</b></span><span><small>PA</small><b>${Number(r.points_against||0).toFixed(2)}</b></span><span><small>DIFF</small><b class="${r.diff>0?'positive':r.diff<0?'negative':''}">${r.diff>0?'+':''}${r.diff.toFixed(2)}</b></span></div>
+     </div>`).join('')}
+   </div>
+ </section>`;
 }
 function reconcileView(){
  if(!isCommish())return '<div class="card empty">Commissioner only.</div>';
