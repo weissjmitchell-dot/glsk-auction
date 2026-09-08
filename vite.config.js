@@ -7,6 +7,7 @@ export default defineConfig({
       input: {
         auction: resolve(import.meta.dirname, 'index.html'),
         supplemental: resolve(import.meta.dirname, 'supplemental.html'),
+        phase3: resolve(import.meta.dirname, 'phase3.html'),
       },
     },
   },

@@ -1,6 +1,8 @@
 {
   "rewrites": [
     { "source": "/supplemental", "destination": "/supplemental.html" },
-    { "source": "/supplemental/", "destination": "/supplemental.html" }
+    { "source": "/supplemental/", "destination": "/supplemental.html" },
+    { "source": "/phase3", "destination": "/phase3.html" },
+    { "source": "/phase3/", "destination": "/phase3.html" }
   ]
 }

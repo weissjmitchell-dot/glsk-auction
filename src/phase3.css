@@ -1,0 +1,52 @@
+
+/* Phase 3 roster-fill snake */
+.phase3-roster-line {
+  margin-top: 8px;
+  color: #53637d;
+  font-size: 13px;
+  font-weight: 850;
+}
+.phase3-roster-mini {
+  padding: 10px;
+  display: grid;
+  gap: 8px;
+}
+.phase3-team-mini {
+  background: #f6f8fb;
+  border: 1px solid #e2e7ef;
+  border-radius: 10px;
+  padding: 8px 9px;
+}
+.phase3-team-mini.full {
+  background: #edf8f1;
+  border-color: #c8e4d1;
+}
+.phase3-team-mini > div:first-child {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  align-items: baseline;
+  font-size: 11px;
+}
+.phase3-team-mini strong { font-size: 12px; }
+.phase3-team-mini span {
+  color: #667187;
+  font-weight: 900;
+  white-space: nowrap;
+}
+.phase3-progress {
+  height: 5px;
+  border-radius: 99px;
+  overflow: hidden;
+  background: #e3e8ef;
+  margin-top: 6px;
+}
+.phase3-progress i {
+  display: block;
+  height: 100%;
+  background: #45a36e;
+  border-radius: inherit;
+}
+.phase3-single-timer {
+  grid-template-columns: minmax(140px, 220px);
+}
