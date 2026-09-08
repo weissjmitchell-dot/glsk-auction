@@ -89,3 +89,49 @@
 .owner-contract-card{padding:16px;border:2px solid #f0c400;background:linear-gradient(180deg,#fffbea 0%,#fff 62%)}
 .owner-contract-card .section-title{font-weight:950;font-size:16px}
 .owner-pending{margin-top:12px;padding-top:10px;border-top:1px solid var(--border)}
+
+/* League Office v4 — History & Records */
+.office-bottom-nav .bottom-nav-inner{
+  grid-template-columns:repeat(9,minmax(66px,1fr));
+  max-width:980px;
+  overflow-x:auto;
+  scrollbar-width:none;
+}
+.office-bottom-nav .bottom-nav-inner::-webkit-scrollbar{display:none}
+.history-hero{background:linear-gradient(145deg,#17263f,#3a5275)}
+.history-kpis .kpi-sub{overflow-wrap:anywhere}
+.history-section{padding:14px;margin-bottom:14px}
+.history-table-head{align-items:end}
+.history-season-select{width:auto;min-width:150px}
+.history-table-scroll{overflow-x:auto;border:1px solid var(--line);border-radius:12px}
+.history-table{width:100%;min-width:1080px;border-collapse:collapse;background:#fff;font-size:12px}
+.history-table th{position:sticky;top:0;background:#f3f6fa;border-bottom:1px solid var(--line);padding:0;text-align:right;white-space:nowrap}
+.history-table th:first-child{text-align:left;left:0;z-index:2}
+.history-table td{padding:10px 9px;border-bottom:1px solid #edf0f4;text-align:right;white-space:nowrap}
+.history-table td:first-child{text-align:left;position:sticky;left:0;background:#fff;z-index:1;min-width:155px}
+.history-table tbody tr:last-child td{border-bottom:0}
+.history-table tbody tr:hover td{background:#f9fbfd}
+.history-sort{appearance:none;border:0;background:transparent;padding:10px 9px;font:inherit;font-weight:950;color:#536075;cursor:pointer;width:100%;text-align:right}
+.history-table th:first-child .history-sort{text-align:left}
+.history-sort.active{color:var(--navy)}
+.history-manager{font-size:10px;color:var(--muted);font-weight:700;margin-top:2px}
+.history-title-cell{font-weight:1000;color:#8a6a00}
+.history-grid{margin-top:0}
+.achievement-list{display:grid;gap:8px}
+.achievement{display:grid;grid-template-columns:34px 1fr;gap:9px;align-items:center;padding:10px;background:#f7f9fc;border:1px solid #e5e9ef;border-radius:10px}
+.achievement>span{font-size:22px;text-align:center}
+.achievement strong{display:block;font-size:12px}
+.achievement div div{font-size:12px;color:var(--muted);margin-top:2px}
+.history-import-status{padding:12px;background:#f7f9fc;border:1px solid #e5e9ef;border-radius:10px}
+.history-last-run{font-size:11px;color:var(--muted);margin:8px 0}
+.history-unmatched{display:grid;gap:8px}
+.history-map-row{display:grid;grid-template-columns:minmax(150px,1fr) minmax(160px,220px) auto;gap:8px;align-items:center;padding:9px 0;border-bottom:1px solid #edf0f4}
+.history-new-franchise{display:grid;grid-template-columns:1fr auto;gap:8px;margin-top:12px;padding-top:12px;border-top:1px solid #edf0f4}
+@media(max-width:700px){
+  .history-map-row{grid-template-columns:1fr}
+  .history-new-franchise{grid-template-columns:1fr}
+  .history-table-head{align-items:stretch;flex-direction:column}
+  .history-season-select{width:100%}
+  .office-bottom-nav .bottom-nav-inner{justify-content:start}
+}
+
