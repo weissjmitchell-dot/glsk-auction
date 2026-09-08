@@ -143,6 +143,19 @@ function teamsView(){
    }).join('')||'<div class="empty-tight">No roster entries.</div>'}</div></details>`;
  }).join('')}</div>`;
 }
+
+function extensionCostReference(){
+ const positions=['QB','RB','WR','TE'];
+ return `<section class="card card-pad office-section extension-reference-card"><div class="office-section-head"><div><h2>Extension Cost Reference</h2><div class="small muted">Actual top-3 Free Agent Auction bids • 2yr→3yr = 25% avg • 3yr→4yr = 40% avg</div></div>${isCommish()?'<button class="btn btn-sm btn-outline" data-action="refresh-extension-costs">Refresh</button>':''}</div><div class="table-scroll"><table class="office-table"><thead><tr><th>Pos</th><th>Top 3 bids</th><th>Avg</th><th>2→3</th><th>3→4</th></tr></thead><tbody>${positions.map(pos=>{const c=state.extensionCosts.find(x=>x.position===pos);return `<tr><td><strong>${pos}</strong></td><td>${c&&c.top_bid_3!=null?`${c.top_bid_1}, ${c.top_bid_2}, ${c.top_bid_3}`:'N/A'}</td><td>${c?.average_bid!=null?Number(c.average_bid).toFixed(1):'—'}</td><td><strong>${c?.cost_2_to_3!=null?`${c.cost_2_to_3} bids`:'—'}</strong></td><td><strong>${c?.cost_3_to_4!=null?`${c.cost_3_to_4} bids`:'—'}</strong></td></tr>`;}).join('')}</tbody></table></div></section>`;
+}
+function extensionPanel(){
+ const t=myTeam(); if(!t||state.session?.spectator)return '';
+ const rows=extensionEligibilityFor(t.id).map(e=>{const c=state.contracts.find(x=>x.id===e.contract_id&&x.status==='active'); if(!c)return null; const r=rosterFor(t.id).find(x=>x.player_key===c.player_key); const cost=state.extensionCosts.find(x=>x.position===r?.position); const bid=e.eligible_to_years===3?cost?.cost_2_to_3:cost?.cost_3_to_4; return {e,c,r,bid};}).filter(Boolean);
+ const deadline=openExtensionDeadline();
+ if(!rows.length)return '';
+ return `<section class="card owner-contract-card office-section"><div class="row between gap-8 wrap"><div><div class="section-title">Traded Contract Extensions</div><div class="small muted">${deadline?`${esc(deadline.title)} • due ${fmtDate(deadline.due_at)}`:'Commissioner must open a Contract Extensions deadline before an extension can be exercised.'}</div></div></div>${rows.map(({e,c,r,bid})=>`<div class="contract-row"><div><div class="contract-player">${esc(c.player_name)}</div><div class="contract-sub">${esc(r?.position||'')} • ${esc(contractLabel(c))} → ${e.eligible_to_years}-year • ${e.eligible_to_years===3?25:45} pts</div><div class="contract-detail">Extension fee: <strong>${bid==null?'N/A':`${bid} bid dollars`}</strong></div></div>${deadline?`<button class="btn btn-sm btn-green" data-extend-contract="${e.id}" data-player-name="${esc(c.player_name)}" data-extension-cost="${bid??''}">Extend</button>`:'<span class="tag">WAITING</span>'}</div>`).join('')}</section>`;
+}
+
 function contractsView(){
  const cap=state.season?.salary_cap_points||100;
  const body=state.teams.map(t=>{
@@ -184,11 +197,38 @@ function tradeAssetLabel(a){
  if(a.asset_type==='rookie_rights')return `Rookie rights: ${a.player_name||a.asset_key}`;
  return a.player_name||a.asset_key||a.asset_type;
 }
-function tradeSide(teamId,cls){
- const roster=rosterFor(teamId).slice().sort((a,b)=>a.player_name.localeCompare(b.player_name));
+function tradeSide(teamId,cls,sideLabel='Assets'){
+ const team=teamById(teamId),roster=rosterFor(teamId).slice().sort((a,b)=>{
+   const posOrder={QB:1,RB:2,WR:3,TE:4,K:5,DST:6};
+   return (posOrder[a.position]||9)-(posOrder[b.position]||9)||a.player_name.localeCompare(b.player_name);
+ });
  const rights=rightsFor(teamId).slice().sort((a,b)=>a.player_name.localeCompare(b.player_name));
  const picks=picksFor(teamId).filter(p=>p.draft_year===Number(state.season?.season_year||2026)+1);
- return `<div class="trade-assets"><div class="asset-group"><div class="asset-title">Players</div>${roster.map(r=>`<label class="asset-check"><input type="checkbox" class="${cls}" data-type="player" data-key="${esc(r.player_key)}" data-name="${esc(r.player_name)}"><span>${esc(r.player_name)}${contractForPlayer(teamId,r.player_key)?' • CONTRACT':''}</span></label>`).join('')||'<div class="small muted">None</div>'}</div><div class="asset-group"><div class="asset-title">Rookie Rights</div>${rights.map(r=>`<label class="asset-check"><input type="checkbox" class="${cls}" data-type="rookie_rights" data-key="${esc(r.player_key)}" data-name="${esc(r.player_name)}"><span>${esc(r.player_name)}</span></label>`).join('')||'<div class="small muted">None</div>'}</div><div class="asset-group"><div class="asset-title">2027 Picks</div>${picks.map(pk=>`<label class="asset-check"><input type="checkbox" class="${cls}" data-type="${pk.draft_type==='rookie'?'rookie_pick':'supplemental_pick'}" data-pick-id="${pk.id}"><span>${esc(pickLabel(pk))}</span></label>`).join('')||'<div class="small muted">None</div>'}</div></div>`;
+ const playerRows=roster.map(r=>{
+   const c=contractForPlayer(teamId,r.player_key),rightsRow=rights.find(x=>x.player_key===r.player_key);
+   return `<label class="trade-player-row">
+     <span class="trade-check-cell"><input type="checkbox" class="${cls}" data-type="player" data-key="${esc(r.player_key)}" data-name="${esc(r.player_name)}"></span>
+     <span class="${rosterPositionClass(r.position)} trade-pos">${esc(r.position||'—')}</span>
+     <span class="trade-player-info"><strong>${esc(r.player_name)}</strong><small>${esc(r.nfl_team||'')} ${c?`• ${esc(contractLabel(c))}`:'• No contract'}${rightsRow?' • Rookie rights':''}</small></span>
+     <span class="trade-cap-cell">${c?`${c.cap_cost} pts`:'—'}</span>
+   </label>`;
+ }).join('');
+ return `<div class="trade-team-panel">
+   <div class="trade-team-panel-head">
+     <div><span>${esc(sideLabel)}</span><strong>${esc(team?.name||'Team')}</strong></div>
+     <div class="trade-team-metrics"><span><b>${bidMoney(team?.remaining_budget||0)}</b> bids</span><span><b>${capUsed(teamId)}/100</b> cap</span></div>
+   </div>
+   <div class="trade-table-head"><span></span><span>Pos</span><span>Player</span><span>Cap</span></div>
+   <div class="trade-player-list">${playerRows||'<div class="trade-empty">No rostered players.</div>'}</div>
+   <details class="trade-other-assets">
+     <summary>Other tradable assets <span>${rights.length+picks.length}</span></summary>
+     <div class="trade-other-body">
+       <div class="asset-group"><div class="asset-title">Rookie Rights</div>${rights.map(r=>`<label class="asset-check trade-asset-line"><input type="checkbox" class="${cls}" data-type="rookie_rights" data-key="${esc(r.player_key)}" data-name="${esc(r.player_name)}"><span>${esc(r.player_name)}</span></label>`).join('')||'<div class="small muted">None</div>'}</div>
+       <div class="asset-group"><div class="asset-title">${(state.season?.season_year||2026)+1} Draft Picks</div>${picks.map(pk=>`<label class="asset-check trade-asset-line"><input type="checkbox" class="${cls}" data-type="${pk.draft_type==='rookie'?'rookie_pick':'supplemental_pick'}" data-pick-id="${pk.id}"><span>${esc(pickLabel(pk))}</span></label>`).join('')||'<div class="small muted">None</div>'}</div>
+     </div>
+   </details>
+   <div class="trade-bid-row"><label>Bid dollars</label><input id="${cls==='trade-give'?'trade-give-bids':'trade-receive-bids'}" class="input" type="number" min="0" max="${team?.remaining_budget||0}" value="0"><span>max ${bidMoney(team?.remaining_budget||0)}</span></div>
+ </div>`;
 }
 function tradeSummary(tr){
  const assets=state.tradeAssets.filter(a=>a.trade_id===tr.id),p=teamById(tr.proposer_team_id),q=teamById(tr.partner_team_id);
@@ -201,9 +241,25 @@ function tradesView(){
  const partnerId=state.tradePartner&&others.some(t=>t.id===state.tradePartner)?state.tradePartner:others[0]?.id;
  const partner=teamById(partnerId);
  const visible=state.trades.filter(tr=>isCommish()||!me||tr.proposer_team_id===me.id||tr.partner_team_id===me.id);
- return `${pageHeading('Trades','Build a deal from assets you actually own. Both owners agree before commissioner approval.','Transactions')}
- ${me&&!state.session?.spectator?`<section class="card office-form office-section"><div class="section-title">Propose Trade</div><div class="field"><label>Trade partner</label><select id="trade-partner" class="input">${others.map(t=>`<option value="${t.id}" ${t.id===partnerId?'selected':''}>${esc(t.name)}</option>`).join('')}</select></div><div class="trade-builder"><div><h3>You Send</h3>${tradeSide(me.id,'trade-give')}<div class="field"><label>Bid dollars</label><input id="trade-give-bids" class="input" type="number" min="0" max="${me.remaining_budget}" value="0"></div></div><div><h3>You Request from ${esc(partner?.name||'')}</h3>${partner?tradeSide(partner.id,'trade-receive'):''}<div class="field"><label>Bid dollars</label><input id="trade-receive-bids" class="input" type="number" min="0" max="${partner?.remaining_budget||0}" value="0"></div></div></div><div class="field"><label>Note</label><input id="trade-note" class="input" placeholder="Optional trade note"></div><div class="notice">Only currently owned assets are selectable. In ${state.season?.season_year||2026}, only ${(state.season?.season_year||2026)+1} Rookie/Supplemental picks are tradable. Contracted players carry their current year and original point value.</div><button class="btn btn-primary" data-action="propose-trade">Send Trade Proposal</button></section>`:''}
- <div class="list-stack">${visible.length?visible.map(tr=>{const proposer=teamById(tr.proposer_team_id),partnerT=teamById(tr.partner_team_id);return `<div class="card trade-card"><div class="row between gap-8 wrap"><div><div class="deadline-title">${esc(proposer?.name)} ↔ ${esc(partnerT?.name)}</div><div class="deadline-meta">Proposed ${fmtDate(tr.proposed_at)}${tr.note?` • ${esc(tr.note)}`:''}</div></div><span class="trade-status ${tr.status}">${esc(tr.status.replace('_',' '))}</span></div>${tradeSummary(tr)}<div class="inline-actions" style="margin-top:10px">${me?.id===tr.partner_team_id&&tr.status==='proposed'?`<button class="btn btn-sm btn-green" data-trade-response="accept" data-trade-id="${tr.id}">Accept</button><button class="btn btn-sm btn-reset" data-trade-response="reject" data-trade-id="${tr.id}">Reject</button>`:''}${me?.id===tr.proposer_team_id&&['proposed','pending_commish'].includes(tr.status)?`<button class="btn btn-sm btn-outline" data-cancel-trade="${tr.id}">Cancel</button>`:''}${isCommish()&&tr.status==='pending_commish'?`<button class="btn btn-sm btn-green" data-commish-trade="approve" data-trade-id="${tr.id}">Approve</button><button class="btn btn-sm btn-reset" data-commish-trade="deny" data-trade-id="${tr.id}">Deny</button>`:''}</div></div>`;}).join(''):'<div class="card empty">No trades yet.</div>'}</div>`;
+ return `${pageHeading('Trades','Select a partner, choose assets from each roster, then submit the deal for owner and commissioner approval.','Transactions')}
+ ${me&&!state.session?.spectator?`<section class="trade-workspace">
+   <div class="trade-toolbar card">
+     <div class="trade-toolbar-copy"><span class="trade-step">1</span><div><strong>Choose trade partner</strong><small>Only assets currently owned by each team are selectable.</small></div></div>
+     <select id="trade-partner" class="input trade-partner-select">${others.map(t=>`<option value="${t.id}" ${t.id===partnerId?'selected':''}>${esc(t.name)}</option>`).join('')}</select>
+   </div>
+   <div class="trade-builder-v2">
+     ${tradeSide(me.id,'trade-give','You Send')}
+     <div class="trade-swap-mark" aria-hidden="true">⇄</div>
+     ${partner?tradeSide(partner.id,'trade-receive','You Receive'):''}
+   </div>
+   <div class="trade-submit-card card">
+     <div class="trade-submit-summary"><span class="trade-step">2</span><div><strong>Review & submit</strong><small id="trade-selection-summary">Select players, rights, picks or bid dollars above.</small></div></div>
+     <div class="trade-submit-actions"><input id="trade-note" class="input" placeholder="Optional trade note"><button class="btn btn-primary" data-action="propose-trade">Send Trade Proposal</button></div>
+     <div class="trade-rule-note">Contracted players retain their current contract year and original point value. The platform blocks deals that would leave either team above the 100-point contract cap.</div>
+   </div>
+ </section>`:''}
+ <section class="office-section trade-inbox"><div class="office-section-head"><div><h2>Trade Activity</h2><div class="section-caption">Proposed, pending commissioner review, completed and declined deals</div></div><span class="trade-count">${visible.length}</span></div>
+ <div class="list-stack">${visible.length?visible.map(tr=>{const proposer=teamById(tr.proposer_team_id),partnerT=teamById(tr.partner_team_id);return `<div class="card trade-card trade-card-v2"><div class="trade-card-head"><div><div class="deadline-title">${esc(proposer?.name)} <span class="trade-arrow">⇄</span> ${esc(partnerT?.name)}</div><div class="deadline-meta">Proposed ${fmtDate(tr.proposed_at)}${tr.note?` • ${esc(tr.note)}`:''}</div></div><span class="trade-status ${tr.status}">${esc(tr.status.replaceAll('_',' '))}</span></div>${tradeSummary(tr)}<div class="inline-actions trade-card-actions">${me?.id===tr.partner_team_id&&tr.status==='proposed'?`<button class="btn btn-sm btn-green" data-trade-response="accept" data-trade-id="${tr.id}">Accept Trade</button><button class="btn btn-sm btn-reset" data-trade-response="reject" data-trade-id="${tr.id}">Reject</button>`:''}${me?.id===tr.proposer_team_id&&['proposed','pending_commish'].includes(tr.status)?`<button class="btn btn-sm btn-outline" data-cancel-trade="${tr.id}">Cancel Proposal</button>`:''}${isCommish()&&tr.status==='pending_commish'?`<button class="btn btn-sm btn-green" data-commish-trade="approve" data-trade-id="${tr.id}">Approve Trade</button><button class="btn btn-sm btn-reset" data-commish-trade="deny" data-trade-id="${tr.id}">Deny</button>`:''}</div></div>`;}).join(''):'<div class="card empty">No trade activity yet.</div>'}</div></section>`;
 }
 function transactionTypeLabel(t){return ({auction:'Auction',supplemental:'Supplemental',phase3:'Roster Fill',trade:'Trade',drop:'Drop',contract_assigned:'Contract Assigned',contract_removed:'Contract Removed',contract_extended:'Contract Extended',contract_voided:'Contract Voided',rookie_rights_transfer:'Rookie Rights',commissioner_correction:'Commissioner Correction',add:'Add'}[t]||t.replaceAll('_',' '));}
 function transactionsView(){
@@ -362,6 +418,17 @@ function bind(){
  app.querySelector('[data-action="refresh-extension-costs"]')?.addEventListener('click',()=>commish('league_commish_refresh_extension_costs',{},'Extension costs refreshed from auction results.'));
  document.querySelectorAll('[data-extend-contract]').forEach(b=>b.addEventListener('click',async()=>{const t=myTeam(),cost=b.dataset.extensionCost,name=b.dataset.playerName;if(!t)return;if(!confirm(`Extend ${name}${cost?` for ${cost} bid dollars`:''}? The new contract length and cap value apply immediately.`))return;try{await rpc('league_owner_extend_contract',{p_room_code:ROOM_CODE,p_team_id:t.id,p_pin:state.session.pin,p_eligibility_id:b.dataset.extendContract});toast(`${name} extended.`);await loadData();render();}catch(e){toast(e.message,'error');}}));
  app.querySelector('#trade-partner')?.addEventListener('change',e=>{state.tradePartner=e.target.value;render();});
+ const updateTradeSelectionSummary=()=>{
+   const give=[...document.querySelectorAll('.trade-give:checked')].length;
+   const receive=[...document.querySelectorAll('.trade-receive:checked')].length;
+   const gb=Number(document.getElementById('trade-give-bids')?.value||0),rb=Number(document.getElementById('trade-receive-bids')?.value||0);
+   const el=document.getElementById('trade-selection-summary');
+   if(el)el.textContent=`You send ${give} asset${give===1?'':'s'}${gb?` + ${gb} bids`:''} • You receive ${receive} asset${receive===1?'':'s'}${rb?` + ${rb} bids`:''}`;
+ };
+ document.querySelectorAll('.trade-give,.trade-receive').forEach(i=>i.addEventListener('change',updateTradeSelectionSummary));
+ app.querySelector('#trade-give-bids')?.addEventListener('input',updateTradeSelectionSummary);
+ app.querySelector('#trade-receive-bids')?.addEventListener('input',updateTradeSelectionSummary);
+ updateTradeSelectionSummary();
  app.querySelector('[data-action="propose-trade"]')?.addEventListener('click',async()=>{const me=myTeam(),partner=document.getElementById('trade-partner')?.value;if(!me||!partner)return;const collect=cls=>[...document.querySelectorAll(`.${cls}:checked`)].map(i=>({type:i.dataset.type,key:i.dataset.key||null,name:i.dataset.name||null,pick_id:i.dataset.pickId||null}));const give=collect('trade-give'),receive=collect('trade-receive');const gb=Number(document.getElementById('trade-give-bids')?.value||0),rb=Number(document.getElementById('trade-receive-bids')?.value||0);if(gb>0)give.push({type:'bid_dollars',amount:gb});if(rb>0)receive.push({type:'bid_dollars',amount:rb});try{await rpc('league_owner_propose_trade',{p_room_code:ROOM_CODE,p_team_id:me.id,p_pin:state.session.pin,p_partner_team_id:partner,p_give:give,p_receive:receive,p_note:document.getElementById('trade-note')?.value||null});toast('Trade proposal sent.');await loadData();render();}catch(e){toast(e.message,'error');}});
  document.querySelectorAll('[data-trade-response]').forEach(b=>b.addEventListener('click',async()=>{const t=myTeam();if(!t)return;try{await rpc('league_owner_trade_response',{p_room_code:ROOM_CODE,p_team_id:t.id,p_pin:state.session.pin,p_trade_id:b.dataset.tradeId,p_accept:b.dataset.tradeResponse==='accept'});toast(b.dataset.tradeResponse==='accept'?'Trade accepted — awaiting commissioner approval.':'Trade rejected.');await loadData();render();}catch(e){toast(e.message,'error');}}));
  document.querySelectorAll('[data-cancel-trade]').forEach(b=>b.addEventListener('click',async()=>{const t=myTeam();if(!t||!confirm('Cancel this trade proposal?'))return;try{await rpc('league_owner_cancel_trade',{p_room_code:ROOM_CODE,p_team_id:t.id,p_pin:state.session.pin,p_trade_id:b.dataset.cancelTrade});toast('Trade cancelled.');await loadData();render();}catch(e){toast(e.message,'error');}}));
