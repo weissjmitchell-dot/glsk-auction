@@ -1,6 +1,8 @@
 import './league.css';
+import './auth.css';
 import { supabase, configured } from './supabase.js';
 import { ROOM_CODE, LEAGUE_NAME } from './config.js';
+import { requireOwnerAccount, legacySessionFromAccount, signOutOwner, sendPasswordResetEmail } from './auth.js';
 
 const app = document.querySelector('#app');
 const STORAGE_KEY = `glsk-auction-session-${ROOM_CODE}`;
@@ -16,6 +18,7 @@ const state = {
   boardThreads:[], boardPosts:[], boardSelectedThread:null,
   notifications:[], notificationPrefs:[], notificationUnread:0, playerWatches:[], notificationPlayers:[], playerStatusUpdates:[],
   pushSupported:false, pushSubscribed:false, pushPermission:'default', pushStandalone:false, pushBusy:false,
+  authUser:null, authAccount:null,
   session:loadSession(), tab:(new URLSearchParams(location.search).get('tab')||'home'), loading:true, realtime:null, txFilters:{team:'',type:'',search:''},
   historySort:{key:'championships',dir:'desc'}, historySeason:'all',
 };
@@ -376,12 +379,12 @@ function topBar(){
    </button>
    <div class="office-user-area">
      ${t?`<div class="office-user-stats"><span><b>${bidMoney(t.remaining_budget)}</b> bids</span><span><b>${rosterCount}/${limit}</b> roster</span><span><b>${cap}/100</b> cap</span></div><button class="notification-bell ${state.notificationUnread?'has-unread':''}" data-tab="notifications" aria-label="Notifications"><span class="notification-bell-icon">♢</span>${state.notificationUnread?`<b>${state.notificationUnread>99?'99+':state.notificationUnread}</b>`:''}</button>`:''}
-     <div class="user-chip"><span class="status-dot live"></span><div class="user-chip-text"><div class="user-team">${t?`${esc(t.name)}${isCommish()?' • Commissioner':''}`:state.session?.spectator?'Spectator':'League'}</div><div class="user-budget">${t?'Connected':'League view'}</div></div><button class="btn-link office-leave" data-action="leave">Leave</button></div>
+     <div class="user-chip"><span class="status-dot live"></span><div class="user-chip-text"><div class="user-team">${t?`${esc(t.name)}${isCommish()?' • Commissioner':''}`:'Account Required'}</div><div class="user-budget">${t?'Connected':'League view'}</div></div><button class="btn-link office-account-link" data-tab="account">Account</button><button class="btn-link office-leave" data-action="leave">Sign Out</button></div>
    </div>
  </div></header>`;
 }
 function bottomNav(){
- const items=[['home','⌂','Home'],['lineup','☑','Lineup'],['matchups','VS','Matchups'],['schedule','◫','Schedule'],['standings','≡','Standings'],['board','✎','Board'],['teams','♟','Teams'],['contracts','▤','Contracts'],['trades','⇄','Trades'],['transactions','☷','Transactions'],['history','★','History'],['rules','⚙','Rules'],['deadlines','◷','Deadlines'],['finances','$','Finances']];
+ const items=[['home','⌂','Home'],['lineup','☑','Lineup'],['matchups','VS','Matchups'],['schedule','◫','Schedule'],['standings','≡','Standings'],['board','✎','Board'],['teams','♟','Teams'],['contracts','▤','Contracts'],['trades','⇄','Trades'],['transactions','☷','Transactions'],['history','★','History'],['rules','⚙','Rules'],['deadlines','◷','Deadlines'],['finances','$','Finances'],['account','●','Account']];
  if(isCommish())items.push(['reconcile','✓','Reconcile']);
  return `<nav class="bottom-nav office-bottom-nav"><div class="bottom-nav-inner">${items.map(([t,i,l])=>`<button class="nav-btn ${state.tab===t?'active':''}" data-tab="${t}"><span>${i}</span>${l}</button>`).join('')}</div></nav>`;
 }
@@ -1190,12 +1193,40 @@ function historyView(){
   `;
 }
 
-function loginView(){const options=state.teams.map(t=>`<option value="${t.id}">${esc(t.name)}</option>`).join('');return `<div class="login-wrap"><div class="login-card"><div class="login-head"><h1>${esc(LEAGUE_NAME)}</h1><p>League Office</p></div><div class="login-body"><div class="field"><label>Your team</label><select id="join-team" class="input"><option value="">Select your team…</option>${options}</select></div><div class="field"><label>Team PIN</label><input id="team-pin" class="input pin-input" inputmode="numeric" maxlength="6" placeholder="6-digit PIN"></div><div id="join-error"></div><button class="btn btn-primary btn-block" data-action="join">Enter League Office</button><button class="btn-link btn-block" data-action="spectate">View public league dashboard</button><a class="btn-link btn-block" href="/" style="display:block;text-align:center;text-decoration:none">← Auction Room</a></div></div></div>`;}
-function setupError(){return `<div class="login-wrap"><div class="login-card"><div class="login-head"><h1>League Office Ready</h1><p>Database connection is missing.</p></div></div></div>`;}
-function render(){if(!configured){app.innerHTML=setupError();return;}if(state.loading){app.innerHTML='<div class="login-wrap"><div style="color:white;font-weight:900">Loading League Office…</div></div>';return;}if(!state.session){app.innerHTML=loginView();bind();return;}let content=state.tab==='lineup'?lineupView():state.tab==='matchups'?matchupsView():state.tab==='schedule'?scheduleView():state.tab==='standings'?standingsView():state.tab==='board'?boardView():state.tab==='notifications'?notificationView():state.tab==='teams'?teamsView():state.tab==='contracts'?contractsView():state.tab==='trades'?tradesView():state.tab==='transactions'?transactionsView():state.tab==='history'?historyView():state.tab==='rules'?rulesView():state.tab==='deadlines'?deadlinesView():state.tab==='finances'?financesView():state.tab==='reconcile'?reconcileView():dashboard();app.innerHTML=`<div class="office-shell">${topBar()}<main class="main">${content}</main>${bottomNav()}</div>`;bind();}
+function loginView(){return `<div class="login-wrap"><div class="login-card"><div class="login-head"><h1>${esc(LEAGUE_NAME)}</h1><p>Private League Access</p></div><div class="login-body"><div class="notice">A signed-in GLSK owner account is required. Public and spectator views are disabled.</div></div></div></div>`;}
 
-async function join(){const teamId=document.querySelector('#join-team')?.value,pin=document.querySelector('#team-pin')?.value.trim(),err=document.querySelector('#join-error');if(!teamId||!pin){err.innerHTML='<div class="error">Select your team and enter its PIN.</div>';return;}try{await rpc('join_room',{p_room_code:ROOM_CODE,p_team_id:teamId,p_pin:pin});const t=state.teams.find(x=>x.id===teamId);let commishPin=null;if(t?.name===COMMISH_TEAM_NAME){const valid=await rpc('commish_login',{p_room_code:ROOM_CODE,p_pin:pin});if(!valid?.valid)throw new Error('Commissioner access is not configured.');commishPin=pin;}saveSession({teamId,pin,commishPin,spectator:false});await loadData();render();}catch(e){err.innerHTML=`<div class="error">${esc(e.message)}</div>`;}}
-function logout(){saveSession(null);render();}
+function accountView(){
+ const t=myTeam(),email=state.authUser?.email||state.session?.email||'—';
+ return `${pageHeading('Account','Your private GLSK owner login and device access.','Owner Settings')}
+ <div class="account-layout">
+   <section class="card card-pad office-section account-card">
+     <div class="office-section-head"><div><h2>Owner Account</h2><div class="section-caption">This login is permanently linked to your GLSK franchise until the commissioner releases it.</div></div></div>
+     <div class="account-detail-list">
+       <div><span>Email</span><strong>${esc(email)}</strong></div>
+       <div><span>Franchise</span><strong>${esc(t?.name||state.authAccount?.team_name||'—')}</strong></div>
+       <div><span>Role</span><strong>${isCommish()?'Commissioner / Owner':'Team Owner'}</strong></div>
+       <div><span>Session</span><strong>Stay signed in enabled</strong></div>
+     </div>
+     <div class="account-actions">
+       <button class="btn btn-outline" data-action="account-reset-password">Send Password Reset Email</button>
+       <button class="btn btn-reset" data-action="leave">Sign Out</button>
+     </div>
+   </section>
+   <section class="card card-pad office-section account-card">
+     <div class="office-section-head"><div><h2>Notifications</h2><div class="section-caption">Push subscriptions are tied to this owner account and this device.</div></div></div>
+     <div class="account-notification-status">
+       <span class="push-status-dot ${state.pushSubscribed?'on':'off'}"></span>
+       <div><strong>${state.pushSubscribed?'Push enabled on this device':'Push not enabled on this device'}</strong><span>${state.pushSubscribed?'GLSK can alert this device while the app is closed.':'Open Notifications to enable background alerts.'}</span></div>
+     </div>
+     <button class="btn btn-primary" data-tab="notifications">Open Notification Settings</button>
+   </section>
+ </div>`;
+}
+
+function setupError(){return `<div class="login-wrap"><div class="login-card"><div class="login-head"><h1>League Office Ready</h1><p>Database connection is missing.</p></div></div></div>`;}
+function render(){if(!configured){app.innerHTML=setupError();return;}if(state.loading){app.innerHTML='<div class="login-wrap"><div style="color:white;font-weight:900">Loading League Office…</div></div>';return;}if(!state.session){app.innerHTML=loginView();bind();return;}let content=state.tab==='lineup'?lineupView():state.tab==='matchups'?matchupsView():state.tab==='schedule'?scheduleView():state.tab==='standings'?standingsView():state.tab==='board'?boardView():state.tab==='notifications'?notificationView():state.tab==='teams'?teamsView():state.tab==='contracts'?contractsView():state.tab==='trades'?tradesView():state.tab==='transactions'?transactionsView():state.tab==='history'?historyView():state.tab==='rules'?rulesView():state.tab==='deadlines'?deadlinesView():state.tab==='finances'?financesView():state.tab==='account'?accountView():state.tab==='reconcile'?reconcileView():dashboard();app.innerHTML=`<div class="office-shell">${topBar()}<main class="main">${content}</main>${bottomNav()}</div>`;bind();}
+
+async function logout(){const t=myTeam();await signOutOwner({roomCode:ROOM_CODE,teamId:t?.id||null,legacyStorageKey:STORAGE_KEY});location.reload();}
 async function commish(name,args={},msg='Saved.'){try{await rpc(name,{p_room_code:ROOM_CODE,p_commish_pin:state.session.commishPin,...args});toast(msg);await loadData();render();}catch(e){toast(e.message,'error');}}
 
 function bind(){
@@ -1315,8 +1346,11 @@ function bind(){
  });
  app.querySelectorAll('[data-history-sort]').forEach(b=>b.addEventListener('click',()=>{const key=b.dataset.historySort;if(state.historySort.key===key)state.historySort.dir=state.historySort.dir==='asc'?'desc':'asc';else state.historySort={key,dir:key==='display_name'?'asc':'desc'};render();}));
  document.querySelectorAll('[data-history-map]').forEach(b=>b.addEventListener('click',()=>{const id=Number(b.dataset.historyMap),select=document.querySelector(`[data-history-map-select="${id}"]`),fid=select?.value;if(!fid)return toast('Choose a franchise.','error');commish('league_commish_map_history_team',{p_history_team_season_id:id,p_franchise_id:fid},'Historical franchise mapped.');}));
- app.querySelector('[data-action="history-create-franchise"]')?.addEventListener('click',()=>{const name=document.getElementById('history-new-franchise')?.value.trim();if(!name)return toast('Enter a franchise name.','error');commish('league_commish_create_history_franchise',{p_display_name:name},'Historical franchise created.');});
- app.querySelector('[data-action="join"]')?.addEventListener('click',join); app.querySelector('[data-action="spectate"]')?.addEventListener('click',()=>{saveSession({spectator:true,teamId:null,pin:null,commishPin:null});render();}); app.querySelector('[data-action="leave"]')?.addEventListener('click',logout);
+ app.querySelector('[data-action="history-create-franchise"]')?.addEventListener('click',()=>{const name=document.getElementById('history-new-franchise')?.value.trim();if(!name)return toast('Enter a franchise name.','error');commish('league_commish_create_history_franchise',{p_display_name:name},'Historical franchise created.');}); app.querySelector('[data-action="account-reset-password"]')?.addEventListener('click',async()=>{
+   try{await sendPasswordResetEmail(state.authUser?.email);toast('Password reset email sent.');}
+   catch(e){toast(e.message,'error');}
+ });
+ app.querySelector('[data-action="leave"]')?.addEventListener('click',logout);
  app.querySelector('[data-action="save-rules"]')?.addEventListener('click',()=>{const updates=[...document.querySelectorAll('[data-rule-key]')].map(i=>({key:i.dataset.ruleKey,value:Number(i.value)}));commish('league_commish_set_rules',{p_updates:updates},'League rule defaults updated.');});
  const updateTotal=()=>{const t=[...document.querySelectorAll('.distro-input')].reduce((s,i)=>s+Number(i.value||0),0);for(const id of ['distro-total','distro-total-bottom']){const el=document.getElementById(id);if(el){el.textContent=`${t.toFixed(2)}%`;el.classList.toggle('bad',Math.abs(t-100)>.001);}}}; document.querySelectorAll('.distro-input').forEach(i=>i.addEventListener('input',updateTotal));
  app.querySelector('[data-action="save-distro"]')?.addEventListener('click',()=>{const rows=[...document.querySelectorAll('.distro-input')].map(i=>({bracket:i.dataset.bracket,finish:Number(i.dataset.finish),percentage:Number(i.value)}));commish('league_commish_save_redistribution',{p_rows:rows},'Redistribution saved.');});
@@ -1368,5 +1402,21 @@ let refreshTimer=null;function refresh(){clearTimeout(refreshTimer);refreshTimer
 
 ensurePwaMetadata();
 
-async function init(){if(!configured){state.loading=false;render();return;}try{await loadData();state.loading=false;render();await subscribe();}catch(e){state.loading=false;app.innerHTML=`<div class="login-wrap"><div class="login-card"><div class="login-head"><h1>League Office</h1><p>Database migration required.</p></div><div class="login-body"><div class="error">${esc(e.message)}</div><p class="small muted">Run the League Office v1 Supabase migration, then refresh.</p></div></div></div>`;}}
+async function init(){
+ if(!configured){state.loading=false;render();return;}
+ try{
+   const auth=await requireOwnerAccount({app,roomCode:ROOM_CODE,leagueName:LEAGUE_NAME,legacyStorageKey:STORAGE_KEY});
+   state.authUser=auth.user;
+   state.authAccount=auth.account;
+   saveSession(legacySessionFromAccount(auth.account,auth.user));
+   await loadData();
+   state.loading=false;
+   render();
+   await subscribe();
+ }catch(e){
+   state.loading=false;
+   app.innerHTML=`<div class="login-wrap"><div class="login-card"><div class="login-head"><h1>League Office</h1><p>Account setup required.</p></div><div class="login-body"><div class="error">${esc(e.message)}</div><p class="small muted">Run the GLSK v7 owner-account migration, then refresh.</p></div></div></div>`;
+ }
+}
+
 init();

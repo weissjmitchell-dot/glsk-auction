@@ -1,7 +1,9 @@
 import './styles.css';
+import './auth.css';
 import './phase3.css';
 import { supabase, configured } from './supabase.js';
 import { ROOM_CODE, LEAGUE_NAME } from './config.js';
+import { requireOwnerAccount, legacySessionFromAccount, signOutOwner } from './auth.js';
 
 const app = document.querySelector('#app');
 const STORAGE_KEY = `glsk-auction-session-${ROOM_CODE}`;
@@ -165,7 +167,7 @@ function playerRow(p,showButton=true){
 
 function topBar(){
   const t=myTeam(),rs=t?rosterByTeam(t.id):null;
-  return `<header class="topbar"><div class="topbar-inner"><div class="brand"><div class="brand-kicker">Phase 3 • Roster Fill</div><div class="brand-title">${escapeHtml(LEAGUE_NAME)}</div></div><div class="user-chip"><div class="status-dot ${state.settings?.status==='live'?'live':''}"></div><div class="user-chip-text"><div class="user-team">${t?escapeHtml(t.name):state.session?.spectator?'Spectator':'Not joined'}${isCommish()?' • Czar':''}</div><div class="user-budget">${rs?`${rs.roster_count}/${rs.max_roster_size} rostered • ${openSpots(t.id)} open`:escapeHtml(state.settings?.status||'')}</div></div><a class="phase-link league-link" href="/league">League Office</a><a class="phase-link phase1-link" href="/">Auction</a><a class="phase-link phase2-link" href="/supplemental">Phase 2</a><button class="sound-toggle" data-action="toggle-sound">${audioState.enabled?'🔊':'🔇'}<span>${audioState.enabled?'Sound':'Muted'}</span></button><button class="btn-link" data-action="logout">Leave</button></div></div></header>`;
+  return `<header class="topbar"><div class="topbar-inner"><div class="brand"><div class="brand-kicker">Phase 3 • Roster Fill</div><div class="brand-title">${escapeHtml(LEAGUE_NAME)}</div></div><div class="user-chip"><div class="status-dot ${state.settings?.status==='live'?'live':''}"></div><div class="user-chip-text"><div class="user-team">${t?escapeHtml(t.name):'Account required'}${isCommish()?' • Czar':''}</div><div class="user-budget">${rs?`${rs.roster_count}/${rs.max_roster_size} rostered • ${openSpots(t.id)} open`:escapeHtml(state.settings?.status||'')}</div></div><a class="phase-link league-link" href="/league">League Office</a><a class="phase-link phase1-link" href="/">Auction</a><a class="phase-link phase2-link" href="/supplemental">Phase 2</a><button class="sound-toggle" data-action="toggle-sound">${audioState.enabled?'🔊':'🔇'}<span>${audioState.enabled?'Sound':'Muted'}</span></button><button class="btn-link" data-action="logout">Sign Out</button></div></div></header>`;
 }
 
 function predictedUpcoming(limit=24){
@@ -268,7 +270,7 @@ function resultsView(){
 }
 
 function bottomNav(){return `<nav class="bottom-nav phase3-bottom-nav"><div class="bottom-nav-inner"><button class="nav-btn ${state.tab==='draft'?'active':''}" data-tab="draft"><span>⚡</span>Draft</button><button class="nav-btn ${state.tab==='players'?'active':''}" data-tab="players"><span>☰</span>Players</button><button class="nav-btn ${state.tab==='order'?'active':''}" data-tab="order"><span>↕</span>Order</button><button class="nav-btn ${state.tab==='board'?'active':''}" data-tab="board"><span>▦</span>Board</button><button class="nav-btn ${state.tab==='results'?'active':''}" data-tab="results"><span>▤</span>Results</button><button class="nav-btn ${state.tab==='myteam'?'active':''}" data-tab="myteam"><span>♜</span>My Team</button></div></nav>`;}
-function loginView(){const opts=state.teams.map(t=>`<option value="${t.id}">${escapeHtml(t.name)}</option>`).join('');return `<div class="login-wrap"><div class="login-card"><div class="login-head"><h1>${escapeHtml(LEAGUE_NAME)}</h1><p>2026 Phase 3 • Roster-Fill Snake Draft</p></div><div class="login-body"><div class="field"><label>Your team</label><select id="join-team" class="input"><option value="">Select your team…</option>${opts}</select></div><div class="field"><label>Team PIN</label><input id="team-pin" class="input pin-input" inputmode="numeric" maxlength="6" placeholder="6-digit PIN"></div><div id="join-error"></div><button class="btn btn-primary btn-block" data-action="join">Enter Phase 3 Room</button><button class="btn-link btn-block" data-action="spectate">View as spectator</button><a class="btn-link btn-block" href="/supplemental" style="display:block;text-align:center;text-decoration:none">← Back to Supplemental</a></div></div></div>`;}
+function loginView(){const opts=state.teams.map(t=>`<option value="${t.id}">${escapeHtml(t.name)}</option>`).join('');return `<div class="login-wrap"><div class="login-card"><div class="login-head"><h1>${escapeHtml(LEAGUE_NAME)}</h1><p>2026 Phase 3 • Roster-Fill Snake Draft</p></div><div class="login-body"><div class="field"><label>Your team</label><select id="join-team" class="input"><option value="">Select your team…</option>${opts}</select></div><div class="field"><label>Team PIN</label><input id="team-pin" class="input pin-input" inputmode="numeric" maxlength="6" placeholder="6-digit PIN"></div><div id="join-error"></div><button class="btn btn-primary btn-block" data-action="join">Enter Phase 3 Room</button><a class="btn-link btn-block" href="/supplemental" style="display:block;text-align:center;text-decoration:none">← Back to Supplemental</a></div></div></div>`;}
 function migrationView(){return `<div class="login-wrap"><div class="login-card"><div class="login-head"><h1>Phase 3 App Ready</h1><p>The Phase 3 database migration still needs to be installed.</p></div><div class="login-body"><div class="notice">Run <strong>supabase/phase3.sql</strong> in the GLSK Supabase SQL Editor, then refresh this page.</div><a class="btn-link btn-block" href="/supplemental" style="display:block;text-align:center;text-decoration:none">← Supplemental room</a></div></div></div>`;}
 function connectionView(e){return `<div class="login-wrap"><div class="login-card"><div class="login-head"><h1>Connection Error</h1><p>Phase 3 room could not load.</p></div><div class="login-body"><div class="error">${escapeHtml(e.message)}</div></div></div></div>`;}
 
@@ -291,8 +293,7 @@ async function join(){
     saveSession({teamId,pin,commishPin,spectator:false});render();
   }catch(e){err.innerHTML=`<div class="error">${escapeHtml(e.message)}</div>`;}
 }
-function spectate(){unlockAudio();saveSession({spectator:true,teamId:null,pin:null,commishPin:null});render();}
-function logout(){saveSession(null);render();}
+async function logout(){const t=myTeam();await signOutOwner({roomCode:ROOM_CODE,teamId:t?.id||null,legacyStorageKey:STORAGE_KEY});location.reload();}
 async function teamCall(name,args={},success=''){const t=myTeam();if(!t)return;try{const out=await rpc(name,{p_room_code:ROOM_CODE,p_team_id:t.id,p_pin:state.session.pin,...args});if(success)toast(typeof success==='function'?success(out):success);await loadData();render();}catch(e){toast(e.message,'error');}}
 async function commishCall(name,args={},success=''){if(!isCommish())return;try{const out=await rpc(name,{p_room_code:ROOM_CODE,p_commish_pin:state.session.commishPin,...args});if(success)toast(typeof success==='function'?success(out):success);await loadData();render();}catch(e){toast(e.message,'error');}}
 async function selectPlayer(id){
@@ -310,7 +311,6 @@ function exportPhase3(){const rows=[['Phase 3 Pick','Snake Turn','Round','Team',
 function bindEvents(){
   app.querySelectorAll('[data-tab]').forEach(b=>b.addEventListener('click',()=>{state.tab=b.dataset.tab;render();}));
   app.querySelector('[data-action="join"]')?.addEventListener('click',join);
-  app.querySelector('[data-action="spectate"]')?.addEventListener('click',spectate);
   app.querySelector('[data-action="logout"]')?.addEventListener('click',logout);
   app.querySelector('[data-action="toggle-sound"]')?.addEventListener('click',toggleSound);
   app.querySelectorAll('[data-select-player]').forEach(b=>b.addEventListener('click',()=>selectPlayer(b.dataset.selectPlayer)));
@@ -345,7 +345,11 @@ async function finalizeExpired(){
 
 async function boot(){
   if(!configured){state.loading=false;render();return;}
-  try{await loadData();subscribeRealtime();render();setInterval(updateCountdown,250);}catch(e){state.loading=false;app.innerHTML=connectionView(e);}
+  try{
+    const auth=await requireOwnerAccount({app,roomCode:ROOM_CODE,leagueName:LEAGUE_NAME,legacyStorageKey:STORAGE_KEY});
+    saveSession(legacySessionFromAccount(auth.account,auth.user));
+    await loadData();subscribeRealtime();render();setInterval(updateCountdown,250);
+  }catch(e){state.loading=false;app.innerHTML=connectionView(e);}
 }
 document.addEventListener('pointerdown',unlockAudio,{once:true,passive:true});
 boot();

@@ -1,6 +1,8 @@
 import './styles.css';
+import './auth.css';
 import { supabase, configured } from './supabase.js';
 import { ROOM_CODE, LEAGUE_NAME } from './config.js';
+import { requireOwnerAccount, legacySessionFromAccount, signOutOwner } from './auth.js';
 
 const app = document.querySelector('#app');
 const STORAGE_KEY = `glsk-auction-session-${ROOM_CODE}`;
@@ -302,12 +304,12 @@ function topBar() {
         <div class="user-chip">
           <div class="status-dot ${state.room?.status === 'live' ? 'live' : ''}" aria-label="Connection status"></div>
           <div class="user-chip-text">
-            <div class="user-team">${t ? escapeHtml(t.name) : state.session?.spectator ? 'Spectator' : 'Not joined'}${isCommish() ? ' • Czar' : ''}</div>
+            <div class="user-team">${t ? escapeHtml(t.name) : 'Account required'}${isCommish() ? ' • Czar' : ''}</div>
             <div class="user-budget">${t ? `${money(t.remaining_budget)} remaining` : escapeHtml(state.room?.status || '')}</div>
           </div>
-          <a class="phase-link league-link" href="/league" title="Open League Office">League Office</a><a class="phase-link phase2-link" href="/supplemental" title="Open Supplemental Draft">Phase 2</a><a class="phase-link phase3-link" href="/phase3" title="Open Phase 3 Roster-Fill Draft">Phase 3</a>
+          <a class="phase-link phase2-link" href="/supplemental" title="Open Supplemental Draft">Phase 2</a><a class="phase-link phase3-link" href="/phase3" title="Open Phase 3 Roster-Fill Draft">Phase 3</a>
           <button class="sound-toggle" data-action="toggle-sound" aria-pressed="${audioState.enabled}" title="Toggle auction sound effects">${audioState.enabled ? '🔊' : '🔇'}<span>${audioState.enabled ? 'Sound' : 'Muted'}</span></button>
-          <button class="btn-link" data-action="logout" aria-label="Leave room">Leave</button>
+          <button class="btn-link" data-action="logout" aria-label="Sign out">Sign Out</button>
         </div>
       </div>
     </header>`;
@@ -344,7 +346,7 @@ function actionView() {
             <div class="high-bidder">${high ? `High bidder: ${escapeHtml(high.name)}` : 'Waiting for the first bid'}</div>
           </div>
           <button class="bid-button ${isHigh ? 'high' : ''}" data-action="bid" ${canBid ? '' : 'disabled'}>
-            ${isHigh ? '<small>You are</small>HIGH BID' : mine ? `<small>One tap</small>BID ${money(bid)}` : '<small>Join a team</small>VIEW ONLY'}
+            ${isHigh ? '<small>You are</small>HIGH BID' : mine ? `<small>One tap</small>BID ${money(bid)}` : '<small>Account required</small>LOCKED'}
           </button>
         </div>
       </div>
@@ -473,7 +475,7 @@ function loginView() {
           <div class="small muted" style="margin:-4px 0 15px">Commissioner controls are enabled automatically when Weiss Tea & Lemonade joins with its team PIN.</div>
           <div id="join-error"></div>
           <button class="btn btn-primary btn-block" data-action="join" style="margin-top:8px">Enter Auction Room</button>
-          <button class="btn-link btn-block" data-action="spectate" style="margin-top:8px">View as spectator</button>
+          
         </div>
       </div>
     </div>`;
@@ -513,8 +515,7 @@ async function join() {
   } catch (e) { err.innerHTML = `<div class="error">${escapeHtml(e.message)}</div>`; }
 }
 
-function spectate() { unlockAudio(); saveSession({ spectator: true, teamId: null, pin: null, commishPin: null }); render(); }
-function logout() { saveSession(null); render(); }
+async function logout(){const t=myTeam();await signOutOwner({roomCode:ROOM_CODE,teamId:t?.id||null,legacyStorageKey:STORAGE_KEY});location.reload();}
 
 async function submitBid() {
   const t = myTeam();
@@ -568,7 +569,6 @@ async function exportCsv() {
 function bindEvents() {
   app.querySelectorAll('[data-tab]').forEach(b => b.addEventListener('click', () => { state.tab = b.dataset.tab; render(); }));
   app.querySelector('[data-action="join"]')?.addEventListener('click', join);
-  app.querySelector('[data-action="spectate"]')?.addEventListener('click', spectate);
   app.querySelector('[data-action="logout"]')?.addEventListener('click', logout);
   app.querySelector('[data-action="toggle-sound"]')?.addEventListener('click', toggleSound);
   app.querySelector('[data-action="bid"]')?.addEventListener('click', submitBid);
@@ -628,13 +628,15 @@ async function finalizeExpired() {
 async function boot() {
   if (!configured) { state.loading = false; render(); return; }
   try {
+    const auth=await requireOwnerAccount({app,roomCode:ROOM_CODE,leagueName:LEAGUE_NAME,legacyStorageKey:STORAGE_KEY});
+    saveSession(legacySessionFromAccount(auth.account,auth.user));
     await loadData();
     subscribeRealtime();
     render();
     setInterval(updateCountdown, 250);
   } catch (e) {
     state.loading = false;
-    app.innerHTML = `<div class="login-wrap"><div class="login-card"><div class="login-head"><h1>Connection Error</h1><p>The app could not load the auction room.</p></div><div class="login-body"><div class="error">${escapeHtml(e.message)}</div><p class="muted small">Make sure the Supabase SQL setup was run and the environment variables are correct.</p></div></div></div>`;
+    app.innerHTML = `<div class="login-wrap"><div class="login-card"><div class="login-head"><h1>Connection Error</h1><p>The app could not load the auction room.</p></div><div class="login-body"><div class="error">${escapeHtml(e.message)}</div><p class="muted small">Make sure the v7 owner-account migration is installed.</p></div></div></div>`;
   }
 }
 

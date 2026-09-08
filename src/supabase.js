@@ -8,5 +8,5 @@ const key = 'sb_publishable_vFPh7D0LYQ0n66n_jbBOKA_qTvpXsPq';
 export const configured = true;
 export const supabase = createClient(url, key, {
   realtime: { params: { eventsPerSecond: 20 } },
-  auth: { persistSession: false },
+  auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: true },
 });
