@@ -333,7 +333,7 @@ button:disabled { cursor: not-allowed; opacity: .5; }
 }
 
 @media (max-width: 620px) {
-  .phase-link.phase1-link::after { content: 'P1'; }
+  .phase-link.phase1-link::after { content: 'Auction'; }
   .phase-link.phase2-link::after { content: 'Supplemental'; }
   .phase-link.phase3-link::after { content: 'Snake'; }
 }
@@ -405,6 +405,19 @@ button:disabled { cursor: not-allowed; opacity: .5; }
   .phase-link.phase2-link::after{
     content:'Supplemental';
     font-size:9px;
+    font-weight:1000;
+  }
+}
+
+/* GLSK v7.0.8 — show Auction instead of P1 on mobile */
+@media (max-width:620px){
+  .phase-link.phase1-link{
+    width:58px;
+    padding:0 6px;
+  }
+  .phase-link.phase1-link::after{
+    content:'Auction';
+    font-size:10px;
     font-weight:1000;
   }
 }
