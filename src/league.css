@@ -684,3 +684,29 @@
  .matchup-scoreboard{padding:11px}.matchup-team>span{font-size:21px}
  .reconcile-kpis{grid-template-columns:1fr 1fr}
 }
+
+/* League Office v6.1 — weekly host/scoring reference */
+.host-rules-panel{margin-bottom:14px}
+.host-rule-kpis{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-bottom:10px}
+.host-rule-kpis>div{padding:9px 10px;background:#f5f8fb;border:1px solid #e2e7ee;border-radius:9px}
+.host-rule-kpis span{display:block;font-size:8px;text-transform:uppercase;letter-spacing:.05em;color:#7c899b;font-weight:1000}
+.host-rule-kpis strong{display:block;font-size:11px;color:#273a55;margin-top:3px}
+.host-lineup-strip{display:flex;justify-content:space-between;gap:12px;align-items:center;padding:10px 11px;background:#17263f;color:#fff;border-radius:9px;margin-bottom:12px}
+.host-lineup-strip span{font-size:9px;text-transform:uppercase;letter-spacing:.06em;color:#b9c5d5;font-weight:1000}
+.host-lineup-strip strong{font-size:11px;text-align:right}
+.scoring-rule-groups{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px}
+.scoring-rule-group{border:1px solid #e2e7ee;border-radius:10px;overflow:hidden}
+.scoring-group-title{padding:8px 10px;background:#edf2f7;color:#465873;font-size:9px;font-weight:1000;text-transform:uppercase;letter-spacing:.06em}
+.scoring-rule-row{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:3px 8px;padding:7px 9px;border-top:1px solid #edf0f4;align-items:center}
+.scoring-rule-row span{font-size:9px;color:#344863;font-weight:800}
+.scoring-rule-row strong{font-size:9px;color:#172b47;white-space:nowrap}
+.scoring-rule-row small{grid-column:1/-1;color:#8994a4;font-size:7.5px}
+@media(max-width:820px){
+ .host-rule-kpis{grid-template-columns:repeat(2,1fr)}
+ .scoring-rule-groups{grid-template-columns:1fr}
+}
+@media(max-width:520px){
+ .host-lineup-strip{align-items:flex-start;flex-direction:column}
+ .host-lineup-strip strong{text-align:left}
+}
+
