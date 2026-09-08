@@ -15,7 +15,8 @@ const state = {
   matchupBrowseWeek:null, selectedMatchupId:null, scheduleTeamId:null,
   boardThreads:[], boardPosts:[], boardSelectedThread:null,
   notifications:[], notificationPrefs:[], notificationUnread:0, playerWatches:[], notificationPlayers:[], playerStatusUpdates:[],
-  session:loadSession(), tab:'home', loading:true, realtime:null, txFilters:{team:'',type:'',search:''},
+  pushSupported:false, pushSubscribed:false, pushPermission:'default', pushStandalone:false, pushBusy:false,
+  session:loadSession(), tab:(new URLSearchParams(location.search).get('tab')||'home'), loading:true, realtime:null, txFilters:{team:'',type:'',search:''},
   historySort:{key:'championships',dir:'desc'}, historySeason:'all',
 };
 
@@ -48,6 +49,116 @@ function toast(msg,type=''){let w=document.querySelector('.toast-wrap');if(!w){w
 
 async function rpc(name,args={}){const {data,error}=await supabase.rpc(name,args);if(error)throw new Error(error.message);if(data&&data.ok===false)throw new Error(data.error||'Request failed.');return data;}
 async function q(table,select='*',eq=[]){let x=supabase.from(table).select(select);for(const [k,v] of eq)x=x.eq(k,v);const {data,error}=await x;if(error)throw error;return data||[];}
+
+
+function ensurePwaMetadata(){
+  if(!document.querySelector('link[rel="manifest"]')){
+    const l=document.createElement('link');l.rel='manifest';l.href='/manifest.webmanifest';document.head.appendChild(l);
+  }
+  if(!document.querySelector('meta[name="theme-color"]')){
+    const m=document.createElement('meta');m.name='theme-color';m.content='#17263f';document.head.appendChild(m);
+  }
+  if(!document.querySelector('link[rel="apple-touch-icon"]')){
+    const a=document.createElement('link');a.rel='apple-touch-icon';a.href='/glsk-icon-192.png';document.head.appendChild(a);
+  }
+  if(!document.querySelector('meta[name="apple-mobile-web-app-capable"]')){
+    const m=document.createElement('meta');m.name='apple-mobile-web-app-capable';m.content='yes';document.head.appendChild(m);
+  }
+}
+function isStandaloneApp(){
+  return Boolean(window.matchMedia?.('(display-mode: standalone)').matches||window.navigator.standalone===true);
+}
+function isIOSDevice(){return /iphone|ipad|ipod/i.test(navigator.userAgent);}
+function base64UrlToUint8Array(value){
+  const pad='='.repeat((4-value.length%4)%4),base64=(value+pad).replace(/-/g,'+').replace(/_/g,'/');
+  const raw=atob(base64),out=new Uint8Array(raw.length);
+  for(let i=0;i<raw.length;i++)out[i]=raw.charCodeAt(i);
+  return out;
+}
+async function getPushRegistration(){
+  if(!('serviceWorker' in navigator))return null;
+  try{
+    await navigator.serviceWorker.register('/sw.js',{scope:'/'});
+    return await navigator.serviceWorker.ready;
+  }catch(e){console.warn('service worker',e.message);return null;}
+}
+async function refreshPushState(){
+  state.pushSupported=Boolean('serviceWorker' in navigator&&'PushManager' in window&&'Notification' in window);
+  state.pushPermission=('Notification' in window)?Notification.permission:'denied';
+  state.pushStandalone=isStandaloneApp();
+  if(!state.pushSupported){state.pushSubscribed=false;return;}
+  const reg=await getPushRegistration();
+  const sub=reg?await reg.pushManager.getSubscription():null;
+  state.pushSubscribed=Boolean(sub);
+}
+async function enablePushNotifications(){
+  const t=myTeam();if(!t)return;
+  if(!state.pushSupported)return toast('Push notifications are not supported in this browser.','error');
+  if(isIOSDevice()&&!isStandaloneApp())return toast('On iPhone/iPad, add GLSK to your Home Screen first, then enable notifications from the Home Screen app.','error');
+  if(state.pushBusy)return;
+  state.pushBusy=true;render();
+  try{
+    const permission=await Notification.requestPermission();
+    if(permission!=='granted')throw new Error('Notification permission was not granted.');
+    const reg=await getPushRegistration();
+    if(!reg)throw new Error('GLSK could not start its notification service worker.');
+
+    const cfgRes=await fetch('/api/push-config',{cache:'no-store'});
+    if(!cfgRes.ok)throw new Error('Push configuration is not available yet.');
+    const cfg=await cfgRes.json();
+    if(!cfg.publicKey)throw new Error('VAPID public key is not configured.');
+
+    let sub=await reg.pushManager.getSubscription();
+    if(!sub){
+      sub=await reg.pushManager.subscribe({
+        userVisibleOnly:true,
+        applicationServerKey:base64UrlToUint8Array(cfg.publicKey)
+      });
+    }
+
+    const j=sub.toJSON(),keys=j.keys||{};
+    const platform=navigator.userAgentData?.platform||navigator.platform||'Device';
+    await rpc('league_owner_save_push_subscription',{
+      p_room_code:ROOM_CODE,
+      p_team_id:t.id,
+      p_pin:state.session.pin,
+      p_endpoint:j.endpoint,
+      p_p256dh:keys.p256dh,
+      p_auth:keys.auth,
+      p_expiration_time:j.expirationTime||null,
+      p_user_agent:navigator.userAgent,
+      p_device_label:platform
+    });
+
+    await refreshPushState();
+    toast('Phone/browser push notifications enabled.');
+  }catch(e){toast(e.message,'error');}
+  finally{state.pushBusy=false;render();}
+}
+async function disablePushNotifications(){
+  const t=myTeam();if(!t||state.pushBusy)return;
+  state.pushBusy=true;render();
+  try{
+    const reg=await getPushRegistration();
+    const sub=reg?await reg.pushManager.getSubscription():null;
+    if(sub){
+      await rpc('league_owner_remove_push_subscription',{
+        p_room_code:ROOM_CODE,p_team_id:t.id,p_pin:state.session.pin,p_endpoint:sub.endpoint
+      });
+      await sub.unsubscribe();
+    }
+    await refreshPushState();
+    toast('Push notifications disabled on this device.');
+  }catch(e){toast(e.message,'error');}
+  finally{state.pushBusy=false;render();}
+}
+function setTab(tab){
+  state.tab=tab||'home';
+  const u=new URL(location.href);
+  if(state.tab==='home')u.searchParams.delete('tab');else u.searchParams.set('tab',state.tab);
+  history.replaceState(null,'',u.pathname+(u.search?u.search:'')+u.hash);
+  render();
+}
 
 async function loadFinance(){
   state.finance=[];
@@ -145,6 +256,7 @@ async function loadData(){
   await loadFinance();
   await loadReconciliation();
   await loadNotifications();
+  await refreshPushState();
 }
 
 
@@ -405,8 +517,21 @@ function notificationView(){
    </section>
 
    <div class="notification-settings-column">
+     <section class="card card-pad office-section push-device-card">
+       <div class="office-section-head"><div><h2>Phone & Browser Push</h2><div class="section-caption">Receive selected GLSK alerts even when the site is closed.</div></div></div>
+       <div class="push-device-status">
+         <div class="push-status-copy">
+           <span class="push-status-dot ${state.pushSubscribed?'on':'off'}"></span>
+           <div><strong>${state.pushSubscribed?'Push enabled on this device':state.pushSupported?'Push not enabled':'Push unsupported'}</strong><span>${state.pushSubscribed?'This device is registered for background notifications.':isIOSDevice()&&!state.pushStandalone?'On iPhone/iPad: add GLSK to the Home Screen, open it there, then enable push.':'Enable this device to receive Lock Screen / system notifications.'}</span></div>
+         </div>
+         ${state.pushSupported?`<div class="push-device-actions">${state.pushSubscribed?'<button class="btn btn-outline" data-action="push-test">Send Test Push</button>':''}<button class="btn ${state.pushSubscribed?'btn-reset':'btn-primary'}" data-action="${state.pushSubscribed?'push-disable':'push-enable'}" ${state.pushBusy?'disabled':''}>${state.pushBusy?'Working…':state.pushSubscribed?'Disable on This Device':'Enable Push Notifications'}</button></div>`:''}
+       </div>
+       ${state.pushPermission==='denied'?'<div class="push-denied-note">Notifications are blocked in this browser’s settings. Re-enable GLSK notifications there before trying again.</div>':''}
+       <div class="notification-delivery-note"><strong>How settings work</strong><span>The category switches below control both the in-app feed and phone push. Each owner can enable GLSK on multiple phones/computers independently.</span></div>
+     </section>
+
      <section class="card card-pad office-section notification-settings-card">
-       <div class="office-section-head"><div><h2>Notification Settings</h2><div class="section-caption">Each owner controls their own feed.</div></div></div>
+       <div class="office-section-head"><div><h2>Notification Settings</h2><div class="section-caption">Each owner controls their own feed and push alerts.</div></div></div>
        <div class="notification-toggle-list">${categories.map(c=>{const [label]=notificationCategoryMeta(c);return `<label class="notification-toggle-row"><div><strong>${esc(label)}</strong><span>${c==='injuries'?'My roster + watched players':c==='player_availability'?'Watched players only':'League activity'}</span></div><input type="checkbox" class="notification-pref-toggle" data-notification-category="${c}" ${notificationPrefEnabled(c)?'checked':''}></label>`}).join('')}</div>
        <div class="notification-delivery-note"><strong>Delivery</strong><span>These are realtime in-app alerts. Background phone/browser push can be added as a separate delivery layer later.</span></div>
      </section>
@@ -1069,12 +1194,12 @@ function loginView(){const options=state.teams.map(t=>`<option value="${t.id}">$
 function setupError(){return `<div class="login-wrap"><div class="login-card"><div class="login-head"><h1>League Office Ready</h1><p>Database connection is missing.</p></div></div></div>`;}
 function render(){if(!configured){app.innerHTML=setupError();return;}if(state.loading){app.innerHTML='<div class="login-wrap"><div style="color:white;font-weight:900">Loading League Office…</div></div>';return;}if(!state.session){app.innerHTML=loginView();bind();return;}let content=state.tab==='lineup'?lineupView():state.tab==='matchups'?matchupsView():state.tab==='schedule'?scheduleView():state.tab==='standings'?standingsView():state.tab==='board'?boardView():state.tab==='notifications'?notificationView():state.tab==='teams'?teamsView():state.tab==='contracts'?contractsView():state.tab==='trades'?tradesView():state.tab==='transactions'?transactionsView():state.tab==='history'?historyView():state.tab==='rules'?rulesView():state.tab==='deadlines'?deadlinesView():state.tab==='finances'?financesView():state.tab==='reconcile'?reconcileView():dashboard();app.innerHTML=`<div class="office-shell">${topBar()}<main class="main">${content}</main>${bottomNav()}</div>`;bind();}
 
-async function join(){const teamId=document.querySelector('#join-team')?.value,pin=document.querySelector('#team-pin')?.value.trim(),err=document.querySelector('#join-error');if(!teamId||!pin){err.innerHTML='<div class="error">Select your team and enter its PIN.</div>';return;}try{await rpc('join_room',{p_room_code:ROOM_CODE,p_team_id:teamId,p_pin:pin});const t=state.teams.find(x=>x.id===teamId);let commishPin=null;if(t?.name===COMMISH_TEAM_NAME){const valid=await rpc('commish_login',{p_room_code:ROOM_CODE,p_pin:pin});if(!valid?.valid)throw new Error('Commissioner access is not configured.');commishPin=pin;}saveSession({teamId,pin,commishPin,spectator:false});await loadFinance();render();}catch(e){err.innerHTML=`<div class="error">${esc(e.message)}</div>`;}}
+async function join(){const teamId=document.querySelector('#join-team')?.value,pin=document.querySelector('#team-pin')?.value.trim(),err=document.querySelector('#join-error');if(!teamId||!pin){err.innerHTML='<div class="error">Select your team and enter its PIN.</div>';return;}try{await rpc('join_room',{p_room_code:ROOM_CODE,p_team_id:teamId,p_pin:pin});const t=state.teams.find(x=>x.id===teamId);let commishPin=null;if(t?.name===COMMISH_TEAM_NAME){const valid=await rpc('commish_login',{p_room_code:ROOM_CODE,p_pin:pin});if(!valid?.valid)throw new Error('Commissioner access is not configured.');commishPin=pin;}saveSession({teamId,pin,commishPin,spectator:false});await loadData();render();}catch(e){err.innerHTML=`<div class="error">${esc(e.message)}</div>`;}}
 function logout(){saveSession(null);render();}
 async function commish(name,args={},msg='Saved.'){try{await rpc(name,{p_room_code:ROOM_CODE,p_commish_pin:state.session.commishPin,...args});toast(msg);await loadData();render();}catch(e){toast(e.message,'error');}}
 
 function bind(){
- app.querySelectorAll('[data-tab]').forEach(b=>b.addEventListener('click',()=>{state.tab=b.dataset.tab;render();}));
+ app.querySelectorAll('[data-tab]').forEach(b=>b.addEventListener('click',()=>setTab(b.dataset.tab)));
  app.querySelector('#history-season')?.addEventListener('change',e=>{state.historySeason=e.target.value;render();});
  app.querySelectorAll('[data-lineup-week]').forEach(b=>b.addEventListener('click',()=>{state.lineupBrowseWeek=Number(b.dataset.lineupWeek);render();}));
  app.querySelectorAll('[data-lineup-data-tab]').forEach(b=>b.addEventListener('click',()=>{state.lineupDataTab=b.dataset.lineupDataTab;render();}));
@@ -1113,10 +1238,14 @@ function bind(){
    if(action==='archive'&&!confirm('Archive this discussion? It will disappear from the active message board.'))return;
    commish('league_commish_message_thread_action',{p_thread_id:id,p_action:action},`Discussion ${action}d.`);
  }));
- app.querySelectorAll('[data-notification-tab]').forEach(b=>b.addEventListener('click',async()=>{
-   state.tab=b.dataset.notificationTab;
-   render();
- }));
+ app.querySelectorAll('[data-notification-tab]').forEach(b=>b.addEventListener('click',()=>setTab(b.dataset.notificationTab)));
+ app.querySelector('[data-action="push-enable"]')?.addEventListener('click',enablePushNotifications);
+ app.querySelector('[data-action="push-disable"]')?.addEventListener('click',disablePushNotifications);
+ app.querySelector('[data-action="push-test"]')?.addEventListener('click',async()=>{
+   const t=myTeam();if(!t)return;
+   try{await rpc('league_owner_test_push',{p_room_code:ROOM_CODE,p_team_id:t.id,p_pin:state.session.pin});toast('Test push queued. Lock the phone or close GLSK and watch for the alert.');}
+   catch(e){toast(e.message,'error');}
+ });
  app.querySelector('[data-action="notifications-mark-read"]')?.addEventListener('click',async()=>{
    const t=myTeam();if(!t)return;
    try{
@@ -1236,6 +1365,8 @@ function bind(){
 
 async function subscribe(){if(state.realtime)await supabase.removeChannel(state.realtime);state.realtime=supabase.channel(`league-office-${ROOM_CODE}`).on('postgres_changes',{event:'*',schema:'public',table:'league_roster_entries'},refresh).on('postgres_changes',{event:'*',schema:'public',table:'teams'},refresh).on('postgres_changes',{event:'*',schema:'public',table:'league_contracts'},refresh).on('postgres_changes',{event:'*',schema:'public',table:'league_rule_settings'},refresh).on('postgres_changes',{event:'*',schema:'public',table:'redistribution_rules'},refresh).on('postgres_changes',{event:'*',schema:'public',table:'league_deadlines'},refresh).on('postgres_changes',{event:'*',schema:'public',table:'league_deadline_team_status'},refresh).on('postgres_changes',{event:'*',schema:'public',table:'league_history_seasons'},refresh).on('postgres_changes',{event:'*',schema:'public',table:'league_history_team_seasons'},refresh).on('postgres_changes',{event:'*',schema:'public',table:'league_player_stats'},refresh).on('postgres_changes',{event:'*',schema:'public',table:'league_lineups'},refresh).on('postgres_changes',{event:'*',schema:'public',table:'league_weekly_player_scores'},refresh).on('postgres_changes',{event:'*',schema:'public',table:'league_schedule'},refresh).on('postgres_changes',{event:'*',schema:'public',table:'league_week_states'},refresh).on('postgres_changes',{event:'*',schema:'public',table:'league_scoring_rules'},refresh).on('postgres_changes',{event:'*',schema:'public',table:'league_player_projections'},refresh).on('postgres_changes',{event:'*',schema:'public',table:'league_message_threads'},refresh).on('postgres_changes',{event:'*',schema:'public',table:'league_message_posts'},refresh).on('postgres_changes',{event:'*',schema:'public',table:'league_transactions'},refresh).on('postgres_changes',{event:'*',schema:'public',table:'league_trades'},refresh).on('postgres_changes',{event:'*',schema:'public',table:'league_player_status_updates'},refresh).subscribe();}
 let refreshTimer=null;function refresh(){clearTimeout(refreshTimer);refreshTimer=setTimeout(async()=>{try{await loadData();render();}catch(e){console.warn(e);}},180);}
+
+ensurePwaMetadata();
 
 async function init(){if(!configured){state.loading=false;render();return;}try{await loadData();state.loading=false;render();await subscribe();}catch(e){state.loading=false;app.innerHTML=`<div class="login-wrap"><div class="login-card"><div class="login-head"><h1>League Office</h1><p>Database migration required.</p></div><div class="login-body"><div class="error">${esc(e.message)}</div><p class="small muted">Run the League Office v1 Supabase migration, then refresh.</p></div></div></div>`;}}
 init();

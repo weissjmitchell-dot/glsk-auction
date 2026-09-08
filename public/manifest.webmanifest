@@ -1,0 +1,14 @@
+{
+  "name": "Great Lake State Keepers",
+  "short_name": "GLSK",
+  "description": "Great Lake State Keepers fantasy football league office",
+  "start_url": "/league",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#f1f4f8",
+  "theme_color": "#17263f",
+  "icons": [
+    {"src":"/glsk-icon-192.png","sizes":"192x192","type":"image/png","purpose":"any maskable"},
+    {"src":"/glsk-icon-512.png","sizes":"512x512","type":"image/png","purpose":"any maskable"}
+  ]
+}
