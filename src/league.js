@@ -2,7 +2,7 @@ import './league.css';
 import './auth.css';
 import { supabase, configured } from './supabase.js';
 import { ROOM_CODE, LEAGUE_NAME } from './config.js';
-import { requireOwnerAccount, legacySessionFromAccount, signOutOwner, sendPasswordResetEmail } from './auth.js';
+import { requireOwnerAccount, legacySessionFromAccount, signOutOwner, sendPasswordResetEmail, promptOwnerPush } from './auth.js';
 
 const app = document.querySelector('#app');
 const STORAGE_KEY = `glsk-auction-session-${ROOM_CODE}`;
@@ -509,7 +509,7 @@ function notificationView(){
  return `${pageHeading('Notifications','Choose what you want to hear about and follow league activity in realtime.','League Activity')}
  <div class="notifications-layout">
    <section class="card notification-feed-card">
-     <div class="notification-feed-head"><div><h2>Activity Feed</h2><span>${state.notificationUnread} unread</span></div>${state.notificationUnread?'<button class="btn btn-sm btn-outline" data-action="notifications-mark-read">Mark All Read</button>':''}</div>
+     <div class="notification-feed-head"><div><h2>Activity Feed</h2><span>${state.notificationUnread} unread</span></div>${state.notificationUnread?'<button class="btn btn-sm notification-mark-read" data-action="notifications-mark-read">Mark All Read</button>':''}</div>
      <div class="notification-feed">${state.notifications.length?state.notifications.map(e=>{
        const [label,icon]=notificationCategoryMeta(e.category),tab=notificationRelatedTab(e);
        return `<button class="notification-row ${e.unread?'unread':''}" ${tab?`data-notification-tab="${tab}"`:''}>
@@ -522,21 +522,28 @@ function notificationView(){
    <div class="notification-settings-column">
      <section class="card card-pad office-section push-device-card">
        <div class="office-section-head"><div><h2>Phone & Browser Push</h2><div class="section-caption">Receive selected GLSK alerts even when the site is closed.</div></div></div>
-       <div class="push-device-status">
+       <div class="push-device-status ${state.pushPermission==='denied'?'permission-blocked':''}">
          <div class="push-status-copy">
-           <span class="push-status-dot ${state.pushSubscribed?'on':'off'}"></span>
-           <div><strong>${state.pushSubscribed?'Push enabled on this device':state.pushSupported?'Push not enabled':'Push unsupported'}</strong><span>${state.pushSubscribed?'This device is registered for background notifications.':isIOSDevice()&&!state.pushStandalone?'On iPhone/iPad: add GLSK to the Home Screen, open it there, then enable push.':'Enable this device to receive Lock Screen / system notifications.'}</span></div>
+           <span class="push-status-dot ${state.pushSubscribed?'on':state.pushPermission==='denied'?'blocked':'off'}"></span>
+           <div>
+             <strong>${state.pushSubscribed?'Push enabled on this device':state.pushPermission==='denied'?'Push blocked in browser settings':state.pushSupported?'Push not enabled':'Push unsupported'}</strong>
+             <span>${state.pushSubscribed?'This device is registered for background notifications.':state.pushPermission==='denied'?'Chrome, Safari, or a browser extension is currently blocking GLSK notifications.':isIOSDevice()&&!state.pushStandalone?'On iPhone/iPad: add GLSK to the Home Screen, open it there, then enable push.':'Enable this device to receive Lock Screen / system notifications.'}</span>
+           </div>
          </div>
-         ${state.pushSupported?`<div class="push-device-actions">${state.pushSubscribed?'<button class="btn btn-outline" data-action="push-test">Send Test Push</button>':''}<button class="btn ${state.pushSubscribed?'btn-reset':'btn-primary'}" data-action="${state.pushSubscribed?'push-disable':'push-enable'}" ${state.pushBusy?'disabled':''}>${state.pushBusy?'Working…':state.pushSubscribed?'Disable on This Device':'Enable Push Notifications'}</button></div>`:''}
+         ${state.pushSupported
+           ? state.pushPermission==='denied'
+             ? `<div class="push-device-actions"><button class="btn btn-outline push-refresh-permission" data-action="push-refresh-permission" ${state.pushBusy?'disabled':''}>${state.pushBusy?'Checking…':'Refresh Status'}</button></div>`
+             : `<div class="push-device-actions">${state.pushSubscribed?'<button class="btn btn-outline" data-action="push-test">Send Test Push</button>':''}<button class="btn ${state.pushSubscribed?'btn-reset':'btn-primary'}" data-action="${state.pushSubscribed?'push-disable':'push-enable'}" ${state.pushBusy?'disabled':''}>${state.pushBusy?'Working…':state.pushSubscribed?'Disable on This Device':'Enable Push Notifications'}</button></div>`
+           : ''}
        </div>
-       ${state.pushPermission==='denied'?'<div class="push-denied-note">Notifications are blocked in this browser’s settings. Re-enable GLSK notifications there before trying again.</div>':''}
+       ${state.pushPermission==='denied'?'<div class="push-denied-note"><strong>Browser permission blocked.</strong><span>Allow notifications for <b>glsk-auction.vercel.app</b> in browser/site settings—or disable the extension blocking them—then tap <b>Refresh Status</b>.</span></div>':''}
        <div class="notification-delivery-note"><strong>How settings work</strong><span>The category switches below control both the in-app feed and phone push. Each owner can enable GLSK on multiple phones/computers independently.</span></div>
      </section>
 
      <section class="card card-pad office-section notification-settings-card">
        <div class="office-section-head"><div><h2>Notification Settings</h2><div class="section-caption">Each owner controls their own feed and push alerts.</div></div></div>
        <div class="notification-toggle-list">${categories.map(c=>{const [label]=notificationCategoryMeta(c);return `<label class="notification-toggle-row"><div><strong>${esc(label)}</strong><span>${c==='injuries'?'My roster + watched players':c==='player_availability'?'Watched players only':'League activity'}</span></div><input type="checkbox" class="notification-pref-toggle" data-notification-category="${c}" ${notificationPrefEnabled(c)?'checked':''}></label>`}).join('')}</div>
-       <div class="notification-delivery-note"><strong>Delivery</strong><span>These are realtime in-app alerts. Background phone/browser push can be added as a separate delivery layer later.</span></div>
+       <div class="notification-delivery-note"><strong>Delivery</strong><span>These settings control both the realtime GLSK activity feed and background phone/browser push alerts on subscribed devices.</span></div>
      </section>
 
      <section class="card card-pad office-section player-alerts-card">
@@ -1272,6 +1279,14 @@ function bind(){
  app.querySelectorAll('[data-notification-tab]').forEach(b=>b.addEventListener('click',()=>setTab(b.dataset.notificationTab)));
  app.querySelector('[data-action="push-enable"]')?.addEventListener('click',enablePushNotifications);
  app.querySelector('[data-action="push-disable"]')?.addEventListener('click',disablePushNotifications);
+ app.querySelector('[data-action="push-refresh-permission"]')?.addEventListener('click',async()=>{
+   if(state.pushBusy)return;
+   state.pushBusy=true;render();
+   await refreshPushState();
+   state.pushBusy=false;render();
+   if(state.pushPermission==='granted'&&!state.pushSubscribed)toast('Browser permission is allowed. You can now enable GLSK push notifications.');
+   else if(state.pushPermission==='denied')toast('Notifications are still blocked in browser or extension settings.','error');
+ });
  app.querySelector('[data-action="push-test"]')?.addEventListener('click',async()=>{
    const t=myTeam();if(!t)return;
    try{await rpc('league_owner_test_push',{p_room_code:ROOM_CODE,p_team_id:t.id,p_pin:state.session.pin});toast('Test push queued. Lock the phone or close GLSK and watch for the alert.');}
@@ -1412,6 +1427,7 @@ async function init(){
    await loadData();
    state.loading=false;
    render();
+   promptOwnerPush(ROOM_CODE,LEAGUE_NAME,auth.account).catch(()=>{});
    await subscribe();
  }catch(e){
    state.loading=false;
