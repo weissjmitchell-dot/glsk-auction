@@ -80,9 +80,24 @@ function dashboard(){
  <div class="office-grid two"><div><div class="office-section"><div class="office-section-head"><h2>League Snapshot</h2><button class="btn btn-sm btn-outline" data-tab="teams">All Teams</button></div>${teamCards()}</div></div><div><div class="office-section"><div class="office-section-head"><h2>Draft Rooms</h2></div><div class="draft-links"><a class="draft-link" href="/"><strong>⚡</strong>Auction</a><a class="draft-link" href="/supplemental"><strong>↔</strong>Supplemental</a><a class="draft-link" href="/phase3"><strong>⇅</strong>Roster Fill</a></div></div><div class="office-section"><div class="office-section-head"><h2>Commissioner Tools</h2></div><div class="card card-pad"><div class="small muted">${isCommish()?'You have commissioner access. Rules, contracts, deadlines and finance controls are unlocked.':'Commissioner controls are only available to Weiss Tea & Lemonade.'}</div></div></div></div></div>`;
 }
 function teamCards(){const lim=state.season?.roster_limit||18,cap=state.season?.salary_cap_points||100;return `<div class="team-office-grid">${state.teams.map(t=>`<div class="card office-team-card"><div class="office-team-name">${esc(t.name)}</div><div class="cap-badge">${capUsed(t.id)}/${cap} pts</div><div class="office-team-metrics"><div class="office-mini"><span>Roster</span><strong>${rosterFor(t.id).length}/${lim}</strong></div><div class="office-mini"><span>Bids</span><strong>${bidMoney(t.remaining_budget)}</strong></div><div class="office-mini"><span>Contracts</span><strong>${contractsFor(t.id).length}</strong></div></div></div>`).join('')}</div>`;}
+
+function commissionerAddPlayerForm(){
+ if(!isCommish())return '';
+ return `<section class="card office-form office-section">
+   <div class="office-section-head"><div><h2>Commissioner • Add Player to Roster</h2><div class="small muted">Manual roster correction/add. Before Phase 3 starts, the player is also removed from the Roster-Fill player pool and the team's open spots update automatically.</div></div></div>
+   <div class="form-grid">
+     <div class="field"><label>Team</label><select id="manual-add-team" class="input">${state.teams.map(t=>`<option value="${t.id}">${esc(t.name)}</option>`).join('')}</select></div>
+     <div class="field"><label>Player</label><input id="manual-add-player" class="input" placeholder="Player or D/ST name"></div>
+     <div class="field"><label>NFL Team</label><input id="manual-add-nfl" class="input" placeholder="e.g. BUF or HOU" maxlength="4"></div>
+     <div class="field"><label>Position</label><select id="manual-add-position" class="input"><option>QB</option><option>RB</option><option>WR</option><option>TE</option><option>K</option><option>DST</option></select></div>
+   </div>
+   <button class="btn btn-primary" data-action="commish-add-player">Add to Roster</button>
+ </section>`;
+}
+
 function teamsView(){
  const lim=state.season?.roster_limit||18,cap=state.season?.salary_cap_points||100;
- return `<div class="office-section-head"><h2>Teams & Rosters</h2><div class="small muted">Live from the shared league roster</div></div><div class="team-office-grid">${state.teams.map(t=>{
+ return `<div class="office-section-head"><h2>Teams & Rosters</h2><div class="small muted">Live from the shared league roster</div></div>${commissionerAddPlayerForm()}<div class="team-office-grid">${state.teams.map(t=>{
    const roster=rosterFor(t.id).slice().sort((a,b)=>(a.position||'').localeCompare(b.position||'')||a.player_name.localeCompare(b.player_name));
    return `<details class="card office-team-card"><summary style="cursor:pointer;list-style:none"><div class="row between gap-8"><div class="office-team-name">${esc(t.name)}</div><div><strong>${roster.length}/${lim}</strong> • ${bidMoney(t.remaining_budget)} • ${capUsed(t.id)}/${cap} pts</div></div></summary><div style="grid-column:1/-1;margin-top:8px">${roster.map(r=>{
      const c=contractForPlayer(t.id,r.player_key);
@@ -195,6 +210,14 @@ function bind(){
  app.querySelector('[data-action="save-rules"]')?.addEventListener('click',()=>{const updates=[...document.querySelectorAll('[data-rule-key]')].map(i=>({key:i.dataset.ruleKey,value:Number(i.value)}));commish('league_commish_set_rules',{p_updates:updates},'League rule defaults updated.');});
  const updateTotal=()=>{const t=[...document.querySelectorAll('.distro-input')].reduce((s,i)=>s+Number(i.value||0),0);for(const id of ['distro-total','distro-total-bottom']){const el=document.getElementById(id);if(el){el.textContent=`${t.toFixed(2)}%`;el.classList.toggle('bad',Math.abs(t-100)>.001);}}}; document.querySelectorAll('.distro-input').forEach(i=>i.addEventListener('input',updateTotal));
  app.querySelector('[data-action="save-distro"]')?.addEventListener('click',()=>{const rows=[...document.querySelectorAll('.distro-input')].map(i=>({bracket:i.dataset.bracket,finish:Number(i.dataset.finish),percentage:Number(i.value)}));commish('league_commish_save_redistribution',{p_rows:rows},'Redistribution saved.');});
+ app.querySelector('[data-action="commish-add-player"]')?.addEventListener('click',()=>{
+   const p_team_id=document.getElementById('manual-add-team')?.value;
+   const p_player_name=document.getElementById('manual-add-player')?.value.trim();
+   const p_nfl_team=document.getElementById('manual-add-nfl')?.value.trim().toUpperCase();
+   const p_position=document.getElementById('manual-add-position')?.value;
+   if(!p_team_id||!p_player_name||!p_nfl_team||!p_position)return toast('Team, player, NFL team and position are required.','error');
+   commish('league_commish_add_player',{p_team_id,p_player_name,p_nfl_team,p_position},`${p_player_name} added to roster.`);
+ });
  app.querySelector('[data-action="save-contract"]')?.addEventListener('click',()=>{const p_team_id=document.getElementById('contract-team').value,p_player_name=document.getElementById('contract-player').value.trim(),p_length_years=Number(document.getElementById('contract-years').value),p_start_year=Number(document.getElementById('contract-start').value);if(!p_player_name)return toast('Enter a player name.','error');commish('league_commish_upsert_contract',{p_team_id,p_player_name,p_length_years,p_start_year},'Contract saved.');});
  app.querySelector('[data-action="owner-save-contract"]')?.addEventListener('click',async()=>{const deadline=openContractDeadline(),t=myTeam(),p_player_key=document.getElementById('owner-contract-player')?.value,p_length_years=Number(document.getElementById('owner-contract-years')?.value);if(!deadline||!t)return toast('Contract assignments are not open.','error');if(!p_player_key)return toast('Select a player.','error');try{await rpc('league_owner_upsert_contract',{p_room_code:ROOM_CODE,p_team_id:t.id,p_pin:state.session.pin,p_player_key,p_length_years,p_deadline_id:deadline.id});toast('Contract assignment saved.');await loadData();render();}catch(e){toast(e.message,'error');}});
  app.querySelector('[data-action="owner-submit-contracts"]')?.addEventListener('click',async()=>{const t=myTeam(),deadlineId=document.querySelector('[data-action="owner-submit-contracts"]')?.dataset.deadlineId;if(!t||!deadlineId)return;try{await rpc('league_mark_deadline_submitted',{p_room_code:ROOM_CODE,p_team_id:t.id,p_pin:state.session.pin,p_deadline_id:deadlineId});toast('Contract assignments submitted.');await loadData();render();}catch(e){toast(e.message,'error');}});
