@@ -10,7 +10,8 @@ const state = {
   room:null, teams:[], season:null, roster:[], contracts:[], rules:[], distro:[], deadlines:[], deadlineStatus:[], finance:[], contractOptions:[],
   transactions:[], trades:[], tradeAssets:[], futurePicks:[], rookieRights:[], extensionCosts:[], extensionEligibility:[],
   historySeasons:[], historyTeamSeasons:[], historyAllTime:[], historyFranchises:[], historyImportRuns:[], playerStats:[],
-  gameSettings:null, lineupSlots:[], weekStates:[], schedule:[], lineups:[], weeklyScores:[], matchupScores:[], shadowStandings:[], reconciliation:[], scoringRules:[], weeklyHostSettings:null,
+  gameSettings:null, lineupSlots:[], weekStates:[], schedule:[], lineups:[], weeklyScores:[], matchupScores:[], shadowStandings:[], reconciliation:[], scoringRules:[], weeklyHostSettings:null, playerProjections:[],
+  lineupDataTab:'stats', lineupStatsRange:'week', lineupProjectionRange:'week', lineupBrowseWeek:null,
   session:loadSession(), tab:'home', loading:true, realtime:null, txFilters:{team:'',type:'',search:''},
   historySort:{key:'championships',dir:'desc'}, historySeason:'all',
 };
@@ -71,12 +72,12 @@ async function loadReconciliation(){
 
 async function loadData(){
   const {data:room,error:re}=await supabase.from('rooms').select('*').eq('code',ROOM_CODE).single(); if(re)throw re; state.room=room;
-  const [teams,seasons,roster,contracts,rules,distro,deadlines,statuses,options,transactions,trades,tradeAssets,futurePicks,rookieRights,extensionCosts,extensionEligibility,historySeasons,historyTeamSeasons,historyAllTime,historyFranchises,historyImportRuns,playerStats,gameSettings,lineupSlots,weekStates,schedule,lineups,weeklyScores,matchupScores,shadowStandings,scoringRules,weeklyHostSettings]=await Promise.all([
+  const [teams,seasons,roster,contracts,rules,distro,deadlines,statuses,options,transactions,trades,tradeAssets,futurePicks,rookieRights,extensionCosts,extensionEligibility,historySeasons,historyTeamSeasons,historyAllTime,historyFranchises,historyImportRuns,playerStats,gameSettings,lineupSlots,weekStates,schedule,lineups,weeklyScores,matchupScores,shadowStandings,scoringRules,weeklyHostSettings,playerProjections]=await Promise.all([
     q('teams','*',[['room_id',room.id]]),q('league_seasons','*',[['room_id',room.id]]),q('league_roster_entries','*',[['room_id',room.id]]),
     q('league_contracts','*'),q('league_rule_settings','*'),q('redistribution_rules','*'),q('league_deadlines','*'),q('league_deadline_team_status','*'),q('contract_options','*'),
     q('league_transactions','*'),q('league_trades','*'),q('league_trade_assets','*'),q('league_future_picks','*',[['room_id',room.id]]),q('league_rookie_rights','*',[['room_id',room.id]]),q('league_extension_costs','*'),q('league_contract_extension_eligibility','*'),
     q('league_history_seasons','*',[['room_id',room.id]]),q('league_history_team_seasons','*'),q('league_history_all_time','*',[['room_id',room.id]]),q('league_franchises','*',[['room_id',room.id]]),q('league_history_import_runs','*',[['room_id',room.id]]),q('league_player_stats','*',[['room_id',room.id]]),
-    q('league_game_settings','*'),q('league_lineup_slots','*'),q('league_week_states','*'),q('league_schedule','*'),q('league_lineups','*'),q('league_weekly_player_scores','*'),q('league_matchup_live_scores','*'),q('league_shadow_standings','*'),q('league_scoring_rules','*'),q('league_weekly_host_settings','*')
+    q('league_game_settings','*'),q('league_lineup_slots','*'),q('league_week_states','*'),q('league_schedule','*'),q('league_lineups','*'),q('league_weekly_player_scores','*'),q('league_matchup_live_scores','*'),q('league_shadow_standings','*'),q('league_scoring_rules','*'),q('league_weekly_host_settings','*'),q('league_player_projections','*',[['room_id',room.id]])
   ]);
   state.teams=teams.sort((a,b)=>a.sort_order-b.sort_order); state.season=seasons.find(s=>s.is_current)||seasons.sort((a,b)=>b.season_year-a.season_year)[0]||null;
   const sid=state.season?.id; state.roster=roster; state.contracts=contracts.filter(x=>x.season_id===sid); state.rules=rules.filter(x=>x.season_id===sid).sort((a,b)=>a.sort_order-b.sort_order);
@@ -103,6 +104,8 @@ async function loadData(){
   state.shadowStandings=shadowStandings.filter(x=>x.season_id===sid).sort((a,b)=>Number(b.win_pct)-Number(a.win_pct)||Number(b.points_for)-Number(a.points_for));
   state.scoringRules=scoringRules.filter(x=>x.season_id===sid&&x.active).sort((a,b)=>a.rule_order-b.rule_order);
   state.weeklyHostSettings=weeklyHostSettings.find(x=>x.season_id===sid)||null;
+  state.playerProjections=playerProjections.filter(x=>x.season_id===sid).sort((a,b)=>a.week-b.week||String(a.player_name).localeCompare(String(b.player_name)));
+  if(state.lineupBrowseWeek==null)state.lineupBrowseWeek=Number(state.gameSettings?.current_week||1);
   await loadFinance();
   await loadReconciliation();
 }
@@ -149,6 +152,71 @@ function slotEligibleRoster(slot,teamId){
   return rosterFor(teamId).filter(r=>(slot.allowed_positions||[]).includes(String(r.position||'').toUpperCase())).sort((a,b)=>a.player_name.localeCompare(b.player_name));
 }
 function lineupSlotCounts(){const c={QB:0,RB:0,WR:0,TE:0,FLEX:0,K:0,DST:0};for(const s of state.lineupSlots){const code=String(s.slot_code||'').replace(/[0-9]+$/,'');if(code.startsWith('FLEX'))c.FLEX++;else if(c[code]!=null)c[code]++;}return c;}
+function browseWeek(){return Math.max(1,Math.min(18,Number(state.lineupBrowseWeek||currentWeek())));}
+function projectionsFor(playerKey){return state.playerProjections.filter(p=>p.player_key===playerKey);}
+function projectionFor(playerKey,week=browseWeek()){return state.playerProjections.find(p=>p.player_key===playerKey&&Number(p.week)===Number(week))||null;}
+function n(v){return v==null||v===''?null:Number(v);}
+function sumNullable(rows,key){const vals=rows.map(r=>n(r[key])).filter(v=>v!=null&&!Number.isNaN(v));return vals.length?vals.reduce((a,b)=>a+b,0):null;}
+function projectionBundle(playerKey,range='week',week=browseWeek()){
+  let rows=projectionsFor(playerKey);
+  if(range==='week')rows=rows.filter(r=>Number(r.week)===Number(week));
+  else if(range==='weeks1_4')rows=rows.filter(r=>Number(r.week)>=1&&Number(r.week)<=4);
+  else if(range==='remaining')rows=rows.filter(r=>Number(r.week)>=currentWeek());
+  else if(range==='season')rows=rows.filter(r=>Number(r.week)>=1);
+  if(!rows.length)return null;
+  const one=range==='week'?rows[0]:null;
+  const keys=['projected_fantasy_points','projected_max','projected_min','passing_yards','passing_td','interceptions','rushing_attempts','rushing_yards','rushing_td','targets','receptions','receiving_yards','receiving_td','return_yards','return_td','fumbles_lost'];
+  const out={};
+  keys.forEach(k=>out[k]=sumNullable(rows,k));
+  out.projected_position_rank=one?.projected_position_rank??null;
+  out.opponent_team=one?.opponent_team||null;
+  out.is_home=one?.is_home;
+  out.game_start_at=one?.game_start_at||null;
+  out.bye_week=one?.bye_week??rows.find(r=>r.bye_week!=null)?.bye_week??null;
+  out.weeks=rows.length;
+  return out;
+}
+function actualBundle(playerKey,range='week',week=browseWeek()){
+  if(range==='season'){
+    const s=statForPlayer(playerKey); if(!s)return null;
+    return {
+      fantasy_points:n(s.fantasy_points),position_rank:s.position_rank??null,
+      passing_yards:n(s.passing_yards),passing_td:n(s.passing_td),interceptions:n(s.interceptions),
+      rushing_attempts:null,rushing_yards:n(s.rushing_yards),rushing_td:n(s.rushing_td),
+      targets:null,receptions:n(s.receptions),receiving_yards:n(s.receiving_yards),receiving_td:n(s.receiving_td),
+      games_played:n(s.games_played)
+    };
+  }
+  const s=scoreFor(playerKey,week); if(!s)return null;
+  const raw=(s.raw_stats&&typeof s.raw_stats==='object')?s.raw_stats:{};
+  const take=(...keys)=>{for(const k of keys){if(raw[k]!=null)return n(raw[k]);}return null;};
+  return {
+    fantasy_points:n(s.fantasy_points),
+    position_rank:raw.position_rank??null,
+    passing_yards:take('passing_yards','pass_yards','passingYards'),
+    passing_td:take('passing_td','passing_tds','pass_td','passingTouchdowns'),
+    interceptions:take('interceptions','interceptions_thrown','ints'),
+    rushing_attempts:take('rushing_attempts','rush_attempts','carries'),
+    rushing_yards:take('rushing_yards','rush_yards'),
+    rushing_td:take('rushing_td','rushing_tds','rush_td'),
+    targets:take('targets','receiving_targets'),
+    receptions:take('receptions','rec'),
+    receiving_yards:take('receiving_yards','rec_yards'),
+    receiving_td:take('receiving_td','receiving_tds','rec_td')
+  };
+}
+function fmtStat(v,d=0){return v==null||Number.isNaN(Number(v))?'—':Number(v).toFixed(d);}
+function lineupGameLabel(playerKey,week=browseWeek()){
+  const p=projectionFor(playerKey,week);
+  if(p?.bye_week!=null&&Number(p.bye_week)===Number(week))return {main:'BYE',sub:`Week ${week}`};
+  if(!p)return {main:'—',sub:'Schedule pending'};
+  const opp=p.opponent_team?`${p.is_home===false?'@':'vs'} ${p.opponent_team}`:'Opponent pending';
+  const when=p.game_start_at?new Intl.DateTimeFormat('en-US',{weekday:'short',hour:'numeric',minute:'2-digit'}).format(new Date(p.game_start_at)):'Kickoff pending';
+  return {main:opp,sub:when};
+}
+function projectedTeamTotal(teamId,range='week',week=browseWeek()){
+  return lineupFor(teamId,week).reduce((sum,l)=>sum+Number(projectionBundle(l.player_key,range,week)?.projected_fantasy_points||0),0);
+}
 
 function topBar(){
  const t=myTeam(),rosterCount=t?rosterFor(t.id).length:0,limit=state.season?.roster_limit||18,cap=t?capUsed(t.id):0;
@@ -402,64 +470,125 @@ function lineupSetupPanel(){
  </section>`;
 }
 function lineupView(){
- const t=myTeam(),week=currentWeek(),slots=state.lineupSlots;
- if(!t)return `${pageHeading('Set Lineup',`Week ${week} starting lineup.`,`Weekly Play`)}<div class="card empty">Sign in as a team owner to manage a lineup.</div>`;
- const current=lineupFor(t.id,week);
- const starterKeys=new Set(current.map(l=>l.player_key));
+ const t=myTeam(),week=browseWeek(),slots=state.lineupSlots,current=currentWeek();
+ if(!t)return `${pageHeading('Set Lineup',`Week ${week} lineup and player data.`,`Weekly Play`)}<div class="card empty">Sign in as a team owner to manage a lineup.</div>`;
+
+ const lineup=lineupFor(t.id,week);
+ const starterKeys=new Set(lineup.map(l=>l.player_key));
  const bench=rosterFor(t.id).filter(r=>!starterKeys.has(r.player_key)).sort((a,b)=>{
    const p={QB:1,RB:2,WR:3,TE:4,K:5,DST:6};
    return (p[String(a.position||'').toUpperCase()]||9)-(p[String(b.position||'').toUpperCase()]||9)||a.player_name.localeCompare(b.player_name);
  });
+ const editable=week===current;
+ const dataTab=state.lineupDataTab||'stats';
+ const statRange=state.lineupStatsRange||'week';
+ const projRange=state.lineupProjectionRange||'week';
+ const range=dataTab==='stats'?statRange:projRange;
  const matchup=matchupForTeam(t.id,week);
  const oppId=matchup?(matchup.home_team_id===t.id?matchup.away_team_id:matchup.home_team_id):null;
  const opp=oppId?teamById(oppId):null;
- const gameText=s=>{
-   if(!s)return 'Game data pending';
-   if(s.game_final)return 'Final';
-   if(s.game_started)return s.nfl_game_status||'Live';
-   return s.nfl_game_status||'Upcoming';
- };
  const posClass=p=>`yahoo-pos yahoo-pos-${String(p||'').toUpperCase().replace('/','')}`;
- return `${pageHeading('Set Lineup',`Week ${week} • players lock individually when their NFL game starts.`,`Weekly Play`)}
- ${!slots.length?lineupSetupPanel():''}
- ${slots.length?`<section class="card lineup-card lineup-card-yahoo">
+ const allRows=slots.map(slot=>{
+   const cur=lineup.find(l=>l.slot_code===slot.slot_code);
+   const rp=cur?rosterFor(t.id).find(r=>r.player_key===cur.player_key):null;
+   return {slot,cur,rp,bench:false};
+ }).concat(bench.map(r=>({slot:{label:'BN',allowed_positions:[r.position]},cur:{player_key:r.player_key,player_name:r.player_name},rp:r,bench:true})));
+
+ const dataFor=row=>{
+   if(!row.rp)return null;
+   return dataTab==='stats'?actualBundle(row.rp.player_key,range,week):projectionBundle(row.rp.player_key,range,week);
+ };
+ const pointsLabel=dataTab==='stats'?'Fan Pts':'Proj Pts';
+ const showProj=dataTab==='projected';
+ const teamDisplayPoints=dataTab==='projected'?projectedTeamTotal(t.id,range,week):weeklyScore(t.id,week);
+
+ const rowHtml=row=>{
+   const {slot,cur,rp,bench:isBench}=row;
+   const score=cur?scoreFor(cur.player_key,week):null;
+   const locked=Boolean(score?.game_started);
+   const d=dataFor(row);
+   const game=rp?lineupGameLabel(rp.player_key,week):{main:'—',sub:'Open starter'};
+   const options=!isBench?slotEligibleRoster(slot,t.id):[];
+   const playerCell=isBench
+     ?`<div class="lineup-player-static"><strong>${esc(rp.player_name)}</strong><span>${esc(rp.nfl_team||'')} • ${esc(rp.position||'')}</span></div>`
+     :`<select class="lineup-player-select lineup-select" data-slot-code="${esc(slot.slot_code)}" ${(!editable||locked)?'disabled':''}><option value="">Select player</option>${options.map(r=>`<option value="${esc(r.player_key)}" ${cur?.player_key===r.player_key?'selected':''}>${esc(r.player_name)} • ${esc(r.nfl_team||'')} • ${esc(r.position||'')}</option>`).join('')}</select><div class="lineup-player-sub">${rp?`${esc(rp.nfl_team||'')} • ${esc(rp.position||'')}${locked?' • Locked':''}`:'Open starter'}</div>`;
+   return `<div class="lineup-data-row ${isBench?'bench-row':'starter-row'} ${locked?'is-locked':''}">
+     <div class="lineup-yahoo-pos"><span class="${isBench?'yahoo-pos yahoo-pos-BN':posClass(slot.label)}">${esc(isBench?'BN':slot.label)}</span></div>
+     <div class="lineup-yahoo-player">${playerCell}</div>
+     <div class="lineup-data-game"><strong>${esc(game.main)}</strong><small>${esc(game.sub)}</small></div>
+     <div class="lineup-num main-points">${fmtStat(dataTab==='stats'?d?.fantasy_points:d?.projected_fantasy_points,2)}</div>
+     ${showProj?`<div class="lineup-num">${fmtStat(d?.projected_max,2)}</div><div class="lineup-num">${fmtStat(d?.projected_min,2)}</div>`:''}
+     <div class="lineup-num">${d?.position_rank!=null?`${d.position_rank} (${esc(rp?.position||'')})`:'—'}</div>
+     <div class="lineup-num stat-divider">${fmtStat(d?.passing_yards,0)}</div>
+     <div class="lineup-num">${fmtStat(d?.passing_td,showProj?1:0)}</div>
+     <div class="lineup-num">${fmtStat(d?.interceptions,showProj?1:0)}</div>
+     <div class="lineup-num stat-divider">${fmtStat(d?.rushing_attempts,showProj?1:0)}</div>
+     <div class="lineup-num">${fmtStat(d?.rushing_yards,showProj?1:0)}</div>
+     <div class="lineup-num">${fmtStat(d?.rushing_td,showProj?1:0)}</div>
+     <div class="lineup-num stat-divider">${fmtStat(d?.targets,showProj?1:0)}</div>
+     <div class="lineup-num">${fmtStat(d?.receptions,showProj?1:0)}</div>
+     <div class="lineup-num">${fmtStat(d?.receiving_yards,showProj?1:0)}</div>
+     <div class="lineup-num">${fmtStat(d?.receiving_td,showProj?1:0)}</div>
+   </div>`;
+ };
+
+ const subTabs=dataTab==='stats'
+   ?`<button class="${statRange==='week'?'active':''}" data-lineup-range="week">Current Week</button><button class="${statRange==='season'?'active':''}" data-lineup-range="season">This Season</button>`
+   :`<button class="${projRange==='week'?'active':''}" data-lineup-range="week">Week ${week}</button><button class="${projRange==='weeks1_4'?'active':''}" data-lineup-range="weeks1_4">Weeks 1–4</button><button class="${projRange==='remaining'?'active':''}" data-lineup-range="remaining">Remaining Games</button><button class="${projRange==='season'?'active':''}" data-lineup-range="season">Season Total</button>`;
+
+ return `${pageHeading('Lineup',`Week ${week}${week===current?' • current week':''} • players lock individually at NFL kickoff.`,`Weekly Play`)}
+ <section class="lineup-data-toolbar">
+   <div class="lineup-week-nav">
+     <button class="week-arrow" data-lineup-week="${Math.max(1,week-1)}" ${week<=1?'disabled':''}>‹</button>
+     <strong>Week ${week}</strong>
+     <button class="week-arrow" data-lineup-week="${Math.min(18,week+1)}" ${week>=18?'disabled':''}>›</button>
+   </div>
+   <div class="lineup-main-tabs">
+     <button class="${dataTab==='stats'?'active':''}" data-lineup-data-tab="stats">Stats</button>
+     <button class="${dataTab==='projected'?'active':''}" data-lineup-data-tab="projected">Projected Stats</button>
+   </div>
+ </section>
+ <div class="lineup-subtabs">${subTabs}</div>
+
+ <section class="card lineup-card lineup-card-data">
    <div class="lineup-card-head lineup-yahoo-head">
-     <div><strong>${esc(t.name)}</strong><span>${current.length}/${slots.length} starters filled${opp?` • vs ${esc(opp.name)}`:''}</span></div>
-     <div class="lineup-score-block"><span class="lineup-score-label">WEEK ${week}</span><div class="lineup-total">${weeklyScore(t.id,week).toFixed(2)}<span>PTS</span></div></div>
+     <div><strong>${esc(t.name)}</strong><span>${lineup.length}/${slots.length} starters filled${opp?` • vs ${esc(opp.name)}`:''}${!editable?' • read-only week':''}</span></div>
+     <div class="lineup-score-duo">
+       <div><span>${dataTab==='projected'?'PROJECTED':'WEEK SCORE'}</span><strong>${Number(teamDisplayPoints||0).toFixed(2)}</strong></div>
+       ${dataTab==='stats'?`<div><span>PROJ WEEK ${week}</span><strong>${projectedTeamTotal(t.id,'week',week).toFixed(2)}</strong></div>`:''}
+     </div>
    </div>
-   <div class="lineup-table-wrap">
-     <div class="lineup-table-head"><span>Pos</span><span>Offense</span><span>Week</span><span>Fan Pts</span></div>
-     <div class="lineup-editor lineup-yahoo-editor">${slots.map(slot=>{
-       const cur=current.find(l=>l.slot_code===slot.slot_code),curScore=cur?scoreFor(cur.player_key,week):null,locked=Boolean(curScore?.game_started);
-       const options=slotEligibleRoster(slot,t.id);
-       const rosterPlayer=cur?rosterFor(t.id).find(r=>r.player_key===cur.player_key):null;
-       return `<div class="lineup-yahoo-row starter-row ${locked?'is-locked':''}">
-         <div class="lineup-yahoo-pos"><span class="${posClass(slot.label)}">${esc(slot.label)}</span></div>
-         <div class="lineup-yahoo-player">
-           <select class="lineup-player-select lineup-select" data-slot-code="${esc(slot.slot_code)}" ${locked?'disabled':''}>
-             <option value="">Select player</option>
-             ${options.map(r=>`<option value="${esc(r.player_key)}" ${cur?.player_key===r.player_key?'selected':''}>${esc(r.player_name)} • ${esc(r.nfl_team||'')} • ${esc(r.position||'')}</option>`).join('')}
-           </select>
-           ${rosterPlayer?`<div class="lineup-player-sub">${esc(rosterPlayer.nfl_team||'')} • ${esc(rosterPlayer.position||'')}${locked?' • Locked':''}</div>`:'<div class="lineup-player-sub empty-slot">Open starter</div>'}
-           ${rosterPlayer?playerStatLine(rosterPlayer,true):''}
-         </div>
-         <div class="lineup-yahoo-game">${rosterPlayer?`<strong>${esc(gameText(curScore))}</strong><small>${curScore?.game_started?'In progress / complete':'Kickoff lock applies'}</small>`:'<span>—</span>'}</div>
-         <div class="lineup-yahoo-points">${cur?weeklyPlayerLine(cur.player_key,week):'<strong>—</strong>'}</div>
-       </div>`;
-     }).join('')}</div>
-     <div class="lineup-section-divider"><strong>BENCH</strong><span>${bench.length} players</span></div>
-     <div class="lineup-bench">${bench.map(r=>{
-       const s=scoreFor(r.player_key,week);
-       return `<div class="lineup-yahoo-row bench-row">
-         <div class="lineup-yahoo-pos"><span class="yahoo-pos yahoo-pos-BN">BN</span></div>
-         <div class="lineup-yahoo-player bench-player"><strong>${esc(r.player_name)}</strong><div class="lineup-player-sub">${esc(r.nfl_team||'')} • ${esc(r.position||'')}</div>${playerStatLine(r,true)}</div>
-         <div class="lineup-yahoo-game"><strong>${esc(gameText(s))}</strong><small>${s?.game_started?'Bench locked for this game':'Available before kickoff'}</small></div>
-         <div class="lineup-yahoo-points">${weeklyPlayerLine(r.player_key,week)}</div>
-       </div>`;
-     }).join('')||'<div class="empty-tight">No bench players.</div>'}</div>
+
+   <div class="lineup-data-scroller">
+     <div class="lineup-data-head ${showProj?'with-proj':''}">
+       <span>Pos</span><span>Offense</span><span>Opponent</span><span>${pointsLabel}</span>
+       ${showProj?'<span>Proj Max</span><span>Proj Min</span>':''}
+       <span>Pos Rank</span>
+       <span class="group-head">Passing</span><span></span><span></span>
+       <span class="group-head">Rushing</span><span></span><span></span>
+       <span class="group-head">Receiving</span><span></span><span></span><span></span>
+     </div>
+     <div class="lineup-data-subhead ${showProj?'with-proj':''}">
+       <span></span><span></span><span></span><span></span>${showProj?'<span></span><span></span>':''}<span></span>
+       <span>Yds</span><span>TD</span><span>Int</span>
+       <span>Att</span><span>Yds</span><span>TD</span>
+       <span>Tgt</span><span>Rec</span><span>Yds</span><span>TD</span>
+     </div>
+
+     <div class="lineup-data-body">
+       ${allRows.slice(0,slots.length).map(rowHtml).join('')}
+       <div class="lineup-section-divider"><strong>BENCH</strong><span>${bench.length} players</span></div>
+       ${allRows.slice(slots.length).map(rowHtml).join('')}
+     </div>
    </div>
-   <div class="lineup-save-row lineup-yahoo-save"><div><strong>Lineup locks at each player's NFL kickoff.</strong><span>Use the player selector in a starter row to make changes.</span></div><button class="btn btn-primary" data-action="save-lineup">Save Week ${week} Lineup</button></div>
- </section>`:''}
+
+   <div class="lineup-save-row lineup-yahoo-save">
+     <div>${editable?'<strong>Lineup locks at each player’s NFL kickoff.</strong><span>Projected and actual stat views do not change your saved starters until you click Save.</span>':`<strong>Week ${week} is view-only.</strong><span>Return to the current week to make lineup changes.</span>`}</div>
+     ${editable?`<button class="btn btn-primary" data-action="save-lineup">Save Week ${week} Lineup</button>`:''}
+   </div>
+ </section>
+
+ ${dataTab==='projected'&&!state.playerProjections.length?'<div class="notice lineup-feed-notice">Projection layout is ready. Values will populate when the projection feed is connected.</div>':''}
  ${isCommish()&&slots.length?lineupSetupPanel():''}`;
 }
 function scheduleSetupPanel(){
@@ -637,6 +766,13 @@ async function commish(name,args={},msg='Saved.'){try{await rpc(name,{p_room_cod
 function bind(){
  app.querySelectorAll('[data-tab]').forEach(b=>b.addEventListener('click',()=>{state.tab=b.dataset.tab;render();}));
  app.querySelector('#history-season')?.addEventListener('change',e=>{state.historySeason=e.target.value;render();});
+ app.querySelectorAll('[data-lineup-week]').forEach(b=>b.addEventListener('click',()=>{state.lineupBrowseWeek=Number(b.dataset.lineupWeek);render();}));
+ app.querySelectorAll('[data-lineup-data-tab]').forEach(b=>b.addEventListener('click',()=>{state.lineupDataTab=b.dataset.lineupDataTab;render();}));
+ app.querySelectorAll('[data-lineup-range]').forEach(b=>b.addEventListener('click',()=>{
+   if(state.lineupDataTab==='projected')state.lineupProjectionRange=b.dataset.lineupRange;
+   else state.lineupStatsRange=b.dataset.lineupRange;
+   render();
+ }));
  app.querySelector('[data-action="save-lineup-slots"]')?.addEventListener('click',()=>{
    const counts={};['QB','RB','WR','TE','FLEX','K','DST'].forEach(p=>counts[p]=Number(document.getElementById(`slot-count-${p}`)?.value||0));
    const slots=[];let order=1;
@@ -648,7 +784,7 @@ function bind(){
  app.querySelector('[data-action="save-lineup"]')?.addEventListener('click',async()=>{
    const t=myTeam();if(!t)return;
    const entries=[...document.querySelectorAll('.lineup-select')].map(s=>({slot_code:s.dataset.slotCode,player_key:s.value||null}));
-   try{await rpc('league_owner_save_lineup',{p_room_code:ROOM_CODE,p_team_id:t.id,p_pin:state.session.pin,p_week:currentWeek(),p_entries:entries});toast(`Week ${currentWeek()} lineup saved.`);await loadData();render();}catch(e){toast(e.message,'error');}
+   try{await rpc('league_owner_save_lineup',{p_room_code:ROOM_CODE,p_team_id:t.id,p_pin:state.session.pin,p_week:browseWeek(),p_entries:entries});toast(`Week ${browseWeek()} lineup saved.`);await loadData();render();}catch(e){toast(e.message,'error');}
  });
  app.querySelector('[data-action="set-current-week"]')?.addEventListener('click',()=>{const w=Number(document.getElementById('current-week-input')?.value);commish('league_commish_set_current_week',{p_week:w},`Current week set to ${w}.`);});
  app.querySelector('[data-action="save-week-schedule"]')?.addEventListener('click',()=>{
@@ -711,7 +847,7 @@ function bind(){
  app.querySelector('[data-action="save-correction"]')?.addEventListener('click',()=>{const desc=document.getElementById('corr-desc')?.value.trim();if(!desc)return toast('Enter a correction description.','error');commish('league_commish_correction',{p_team_id:document.getElementById('corr-team')?.value||null,p_bid_delta:Number(document.getElementById('corr-bids')?.value||0),p_description:desc,p_reverse_transaction_id:document.getElementById('corr-reverse')?.value||null},'Correction recorded.');});
 }
 
-async function subscribe(){if(state.realtime)await supabase.removeChannel(state.realtime);state.realtime=supabase.channel(`league-office-${ROOM_CODE}`).on('postgres_changes',{event:'*',schema:'public',table:'league_roster_entries'},refresh).on('postgres_changes',{event:'*',schema:'public',table:'teams'},refresh).on('postgres_changes',{event:'*',schema:'public',table:'league_contracts'},refresh).on('postgres_changes',{event:'*',schema:'public',table:'league_rule_settings'},refresh).on('postgres_changes',{event:'*',schema:'public',table:'redistribution_rules'},refresh).on('postgres_changes',{event:'*',schema:'public',table:'league_deadlines'},refresh).on('postgres_changes',{event:'*',schema:'public',table:'league_deadline_team_status'},refresh).on('postgres_changes',{event:'*',schema:'public',table:'league_history_seasons'},refresh).on('postgres_changes',{event:'*',schema:'public',table:'league_history_team_seasons'},refresh).on('postgres_changes',{event:'*',schema:'public',table:'league_player_stats'},refresh).on('postgres_changes',{event:'*',schema:'public',table:'league_lineups'},refresh).on('postgres_changes',{event:'*',schema:'public',table:'league_weekly_player_scores'},refresh).on('postgres_changes',{event:'*',schema:'public',table:'league_schedule'},refresh).on('postgres_changes',{event:'*',schema:'public',table:'league_week_states'},refresh).on('postgres_changes',{event:'*',schema:'public',table:'league_scoring_rules'},refresh).subscribe();}
+async function subscribe(){if(state.realtime)await supabase.removeChannel(state.realtime);state.realtime=supabase.channel(`league-office-${ROOM_CODE}`).on('postgres_changes',{event:'*',schema:'public',table:'league_roster_entries'},refresh).on('postgres_changes',{event:'*',schema:'public',table:'teams'},refresh).on('postgres_changes',{event:'*',schema:'public',table:'league_contracts'},refresh).on('postgres_changes',{event:'*',schema:'public',table:'league_rule_settings'},refresh).on('postgres_changes',{event:'*',schema:'public',table:'redistribution_rules'},refresh).on('postgres_changes',{event:'*',schema:'public',table:'league_deadlines'},refresh).on('postgres_changes',{event:'*',schema:'public',table:'league_deadline_team_status'},refresh).on('postgres_changes',{event:'*',schema:'public',table:'league_history_seasons'},refresh).on('postgres_changes',{event:'*',schema:'public',table:'league_history_team_seasons'},refresh).on('postgres_changes',{event:'*',schema:'public',table:'league_player_stats'},refresh).on('postgres_changes',{event:'*',schema:'public',table:'league_lineups'},refresh).on('postgres_changes',{event:'*',schema:'public',table:'league_weekly_player_scores'},refresh).on('postgres_changes',{event:'*',schema:'public',table:'league_schedule'},refresh).on('postgres_changes',{event:'*',schema:'public',table:'league_week_states'},refresh).on('postgres_changes',{event:'*',schema:'public',table:'league_scoring_rules'},refresh).on('postgres_changes',{event:'*',schema:'public',table:'league_player_projections'},refresh).subscribe();}
 let refreshTimer=null;function refresh(){clearTimeout(refreshTimer);refreshTimer=setTimeout(async()=>{try{await loadData();render();}catch(e){console.warn(e);}},180);}
 
 async function init(){if(!configured){state.loading=false;render();return;}try{await loadData();state.loading=false;render();await subscribe();}catch(e){state.loading=false;app.innerHTML=`<div class="login-wrap"><div class="login-card"><div class="login-head"><h1>League Office</h1><p>Database migration required.</p></div><div class="login-body"><div class="error">${esc(e.message)}</div><p class="small muted">Run the League Office v1 Supabase migration, then refresh.</p></div></div></div>`;}}
