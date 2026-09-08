@@ -360,3 +360,116 @@
   .trade-player-list{max-height:390px}
 }
 
+/* League Office v5.2 — cleaner Yahoo-style draft-pick selector */
+.trade-other-body-clean{
+  display:grid;
+  grid-template-columns:minmax(180px,.75fr) minmax(260px,1.25fr);
+  gap:14px;
+  padding:0;
+  background:#fff;
+}
+.trade-other-body-clean .asset-group{
+  padding:12px 13px;
+  min-width:0;
+}
+.trade-other-body-clean .asset-group + .asset-group{
+  border-left:1px solid #e6ebf1;
+}
+.rights-grid{
+  display:grid;
+  grid-template-columns:repeat(2,minmax(0,1fr));
+  gap:6px 10px;
+}
+.trade-asset-line{
+  display:flex;
+  align-items:center;
+  gap:6px;
+  min-width:0;
+  padding:4px 0;
+  font-size:11px;
+}
+.trade-asset-line span{
+  min-width:0;
+  overflow-wrap:anywhere;
+}
+.draft-picks-board{
+  border:1px solid #e3e8ef;
+  border-radius:9px;
+  overflow:hidden;
+  background:#fff;
+}
+.draft-pick-group + .draft-pick-group{
+  border-top:1px solid #e3e8ef;
+}
+.draft-pick-group-title{
+  background:#f3f6fa;
+  color:#53627a;
+  font-size:9px;
+  font-weight:1000;
+  text-transform:uppercase;
+  letter-spacing:.06em;
+  padding:7px 9px;
+}
+.draft-pick-grid{
+  display:grid;
+  grid-template-columns:repeat(2,minmax(0,1fr));
+  gap:0;
+}
+.draft-pick-option{
+  display:grid;
+  grid-template-columns:18px minmax(0,1fr);
+  column-gap:6px;
+  align-items:center;
+  padding:8px 9px;
+  border-top:1px solid #f0f2f5;
+  cursor:pointer;
+  min-width:0;
+}
+.draft-pick-option:nth-child(odd){
+  border-right:1px solid #f0f2f5;
+}
+.draft-pick-option:hover{
+  background:#f8fbff;
+}
+.draft-pick-option:has(input:checked){
+  background:#eef6ff;
+}
+.draft-pick-option input{
+  width:16px;
+  height:16px;
+  accent-color:#2c69b7;
+  margin:0;
+}
+.draft-pick-round{
+  color:#1f314c;
+  font-size:11px;
+  font-weight:900;
+  line-height:1.15;
+}
+.draft-pick-origin{
+  grid-column:2;
+  color:#7a8798;
+  font-size:8px;
+  font-weight:700;
+  margin-top:2px;
+  line-height:1.2;
+}
+@media(max-width:700px){
+  .trade-other-body-clean{
+    grid-template-columns:1fr;
+  }
+  .trade-other-body-clean .asset-group + .asset-group{
+    border-left:0;
+    border-top:1px solid #e6ebf1;
+  }
+}
+@media(max-width:430px){
+  .rights-grid,
+  .draft-pick-grid{
+    grid-template-columns:1fr;
+  }
+  .draft-pick-option:nth-child(odd){
+    border-right:0;
+  }
+}
+

@@ -203,7 +203,13 @@ function tradeSide(teamId,cls,sideLabel='Assets'){
    return (posOrder[a.position]||9)-(posOrder[b.position]||9)||a.player_name.localeCompare(b.player_name);
  });
  const rights=rightsFor(teamId).slice().sort((a,b)=>a.player_name.localeCompare(b.player_name));
- const picks=picksFor(teamId).filter(p=>p.draft_year===Number(state.season?.season_year||2026)+1);
+ const nextYear=Number(state.season?.season_year||2026)+1;
+ const picks=picksFor(teamId).filter(p=>p.draft_year===nextYear).sort((a,b)=>{
+   const typeOrder={rookie:1,supplemental:2};
+   return (typeOrder[a.draft_type]||9)-(typeOrder[b.draft_type]||9)||Number(a.round_no)-Number(b.round_no);
+ });
+ const rookiePicks=picks.filter(p=>p.draft_type==='rookie');
+ const suppPicks=picks.filter(p=>p.draft_type==='supplemental');
  const playerRows=roster.map(r=>{
    const c=contractForPlayer(teamId,r.player_key),rightsRow=rights.find(x=>x.player_key===r.player_key);
    return `<label class="trade-player-row">
@@ -213,6 +219,15 @@ function tradeSide(teamId,cls,sideLabel='Assets'){
      <span class="trade-cap-cell">${c?`${c.cap_cost} pts`:'—'}</span>
    </label>`;
  }).join('');
+ const pickRow=(pk,label)=>`<label class="draft-pick-option">
+   <input type="checkbox" class="${cls}" data-type="${pk.draft_type==='rookie'?'rookie_pick':'supplemental_pick'}" data-pick-id="${pk.id}">
+   <span class="draft-pick-round">${esc(label)}</span>
+   ${pk.original_team_id&&pk.original_team_id!==teamId?`<span class="draft-pick-origin">from ${esc(teamById(pk.original_team_id)?.name||'another team')}</span>`:''}
+ </label>`;
+ const pickGroup=(title,rows)=>`<div class="draft-pick-group">
+   <div class="draft-pick-group-title">${esc(title)}</div>
+   <div class="draft-pick-grid">${rows.length?rows.map(pk=>pickRow(pk,`Round ${pk.round_no}`)).join(''):'<div class="small muted">No picks owned.</div>'}</div>
+ </div>`;
  return `<div class="trade-team-panel">
    <div class="trade-team-panel-head">
      <div><span>${esc(sideLabel)}</span><strong>${esc(team?.name||'Team')}</strong></div>
@@ -222,9 +237,18 @@ function tradeSide(teamId,cls,sideLabel='Assets'){
    <div class="trade-player-list">${playerRows||'<div class="trade-empty">No rostered players.</div>'}</div>
    <details class="trade-other-assets">
      <summary>Other tradable assets <span>${rights.length+picks.length}</span></summary>
-     <div class="trade-other-body">
-       <div class="asset-group"><div class="asset-title">Rookie Rights</div>${rights.map(r=>`<label class="asset-check trade-asset-line"><input type="checkbox" class="${cls}" data-type="rookie_rights" data-key="${esc(r.player_key)}" data-name="${esc(r.player_name)}"><span>${esc(r.player_name)}</span></label>`).join('')||'<div class="small muted">None</div>'}</div>
-       <div class="asset-group"><div class="asset-title">${(state.season?.season_year||2026)+1} Draft Picks</div>${picks.map(pk=>`<label class="asset-check trade-asset-line"><input type="checkbox" class="${cls}" data-type="${pk.draft_type==='rookie'?'rookie_pick':'supplemental_pick'}" data-pick-id="${pk.id}"><span>${esc(pickLabel(pk))}</span></label>`).join('')||'<div class="small muted">None</div>'}</div>
+     <div class="trade-other-body trade-other-body-clean">
+       <div class="asset-group rights-group">
+         <div class="asset-title">Rookie Rights</div>
+         <div class="rights-grid">${rights.map(r=>`<label class="asset-check trade-asset-line"><input type="checkbox" class="${cls}" data-type="rookie_rights" data-key="${esc(r.player_key)}" data-name="${esc(r.player_name)}"><span>${esc(r.player_name)}</span></label>`).join('')||'<div class="small muted">None</div>'}</div>
+       </div>
+       <div class="asset-group draft-picks-group">
+         <div class="asset-title">${nextYear} Draft Picks</div>
+         <div class="draft-picks-board">
+           ${pickGroup('Rookie Draft',rookiePicks)}
+           ${pickGroup('Supplemental Draft',suppPicks)}
+         </div>
+       </div>
      </div>
    </details>
    <div class="trade-bid-row"><label>Bid dollars</label><input id="${cls==='trade-give'?'trade-give-bids':'trade-receive-bids'}" class="input" type="number" min="0" max="${team?.remaining_budget||0}" value="0"><span>max ${bidMoney(team?.remaining_budget||0)}</span></div>
