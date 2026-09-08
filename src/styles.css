@@ -141,7 +141,7 @@ button:disabled { cursor: not-allowed; opacity: .5; }
 .log-price { font-size: 20px; font-weight: 1000; }
 
 .bottom-nav { position: fixed; z-index: 40; bottom: 0; left: 0; right: 0; background: rgba(255,255,255,.97); backdrop-filter: blur(10px); border-top: 1px solid var(--line); padding: 7px max(8px, env(safe-area-inset-right)) calc(7px + env(safe-area-inset-bottom)) max(8px, env(safe-area-inset-left)); }
-.bottom-nav-inner { max-width: 680px; margin: 0 auto; display: grid; grid-template-columns: repeat(4, 1fr); gap: 5px; }
+.bottom-nav-inner { max-width: 760px; margin: 0 auto; display: grid; grid-template-columns: repeat(5, 1fr); gap: 5px; }
 .nav-btn { min-height: 55px; border: 0; background: transparent; border-radius: 10px; color: #818b9b; font-size: 11px; font-weight: 950; text-transform: uppercase; }
 .nav-btn span { display: block; font-size: 20px; line-height: 1.2; margin-bottom: 2px; }
 .nav-btn.active { color: #263953; background: #e6eef9; }
@@ -275,4 +275,89 @@ button:disabled { cursor: not-allowed; opacity: .5; }
   .supp-player-card > .btn { grid-column: 1 / -1; width: 100%; }
   .timer-grid { grid-template-columns: 1fr; }
   .supp-budget-mini { grid-template-columns: 1fr; }
+}
+
+
+/* v10: Phase 3 roster-fill snake */
+.phase3-roster-line {
+  margin-top: 8px;
+  color: #53637d;
+  font-size: 13px;
+  font-weight: 850;
+}
+.phase3-roster-mini {
+  padding: 10px;
+  display: grid;
+  gap: 8px;
+}
+.phase3-team-mini {
+  background: #f6f8fb;
+  border: 1px solid #e2e7ef;
+  border-radius: 10px;
+  padding: 8px 9px;
+}
+.phase3-team-mini.full {
+  background: #edf8f1;
+  border-color: #c8e4d1;
+}
+.phase3-team-mini > div:first-child {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  align-items: baseline;
+  font-size: 11px;
+}
+.phase3-team-mini strong {
+  font-size: 12px;
+}
+.phase3-team-mini span {
+  color: #667187;
+  font-weight: 900;
+  white-space: nowrap;
+}
+.phase3-progress {
+  height: 5px;
+  border-radius: 99px;
+  overflow: hidden;
+  background: #e3e8ef;
+  margin-top: 6px;
+}
+.phase3-progress i {
+  display: block;
+  height: 100%;
+  background: #45a36e;
+  border-radius: inherit;
+}
+.phase3-single-timer {
+  grid-template-columns: minmax(140px, 220px);
+}
+
+@media (max-width: 620px) {
+  .phase-link.phase1-link::after { content: 'P1'; }
+  .phase-link.phase2-link::after { content: 'P2'; }
+  .phase-link.phase3-link::after { content: 'P3'; }
+}
+
+
+/* My Team — shared across Auction, Supplemental and Phase 3 */
+.myteam-header { margin-bottom: 12px; }
+.myteam-summary { min-width: 92px; text-align: right; padding: 8px 11px; border-radius: 12px; background: #fff; border: 1px solid var(--line); }
+.myteam-summary strong { display: block; font-size: 22px; line-height: 1; color: #223651; }
+.myteam-summary span { display: block; margin-top: 4px; font-size: 11px; font-weight: 900; color: var(--muted); text-transform: uppercase; }
+.myteam-budget { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 12px; padding: 13px 15px; margin-bottom: 13px; }
+.myteam-budget > div { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.myteam-budget strong { font-size: 18px; color: #223651; }
+.myteam-list { display: grid; gap: 12px; }
+.myteam-group { background: #fff; border: 1px solid var(--line); border-radius: 14px; overflow: hidden; }
+.myteam-group-head { display: flex; align-items: center; justify-content: space-between; padding: 9px 13px; background: #273a56; color: #fff; font-size: 12px; font-weight: 1000; letter-spacing: .05em; text-transform: uppercase; }
+.myteam-group-head span { min-width: 25px; height: 25px; display: grid; place-items: center; border-radius: 999px; background: rgba(255,255,255,.15); }
+.myteam-player { display: flex; align-items: center; gap: 11px; padding: 10px 12px; border-top: 1px solid var(--line); }
+.myteam-player:first-of-type { border-top: 0; }
+.myteam-player .pos-badge { width: 45px; min-width: 45px; height: 38px; font-size: 13px; }
+.myteam-player-main { min-width: 0; flex: 1; }
+.myteam-player-name { font-size: 15px; font-weight: 950; color: #1f314c; }
+@media (max-width: 430px) {
+  .nav-btn { font-size: 9px; }
+  .nav-btn span { font-size: 18px; }
+  .myteam-budget { grid-template-columns: 1fr; }
 }

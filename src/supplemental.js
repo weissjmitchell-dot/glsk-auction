@@ -16,6 +16,7 @@ const state = {
   players: [],
   picks: [],
   bids: [],
+  rosterEntries: [],
   session: loadSession(),
   tab: 'draft',
   loading: true,
@@ -48,6 +49,24 @@ function currentPicker() { return state.settings ? pickerForPick(state.settings.
 function selectedPlayer() { return state.settings?.selected_player_id ? playerById(state.settings.selected_player_id) : null; }
 function highBidder() { return state.settings?.active_bidder_team_id ? teamById(state.settings.active_bidder_team_id) : null; }
 function rightsHolder(p=selectedPlayer()) { return p?.rights_team_id ? teamById(p.rights_team_id) : null; }
+
+
+function myRosterEntries() {
+  const t = myTeam();
+  return t ? state.rosterEntries.filter(r => r.team_id === t.id && r.active !== false) : [];
+}
+function rosterSourceLabel(r) {
+  return ({auction:'Auction',supplemental:'Supplemental',phase3:'Phase 3',rookie:'Rookie Draft',contract:'Contract',rights_claim:'Rookie Rights',current_roster:'Existing Roster'}[r.acquisition_type] || 'Roster');
+}
+function myTeamView() {
+  const t = myTeam();
+  if (!t) return `<div class="card empty"><strong>My Team</strong><br><span class="small muted">Sign in as a team owner to view a roster.</span></div>`;
+  const order={QB:1,RB:2,WR:3,TE:4,K:5,DST:6};
+  const rows=myRosterEntries().slice().sort((a,b)=>(order[a.position]||99)-(order[b.position]||99)||a.player_name.localeCompare(b.player_name));
+  const maxRoster=18,open=Math.max(0,maxRoster-rows.length);
+  const groups=['QB','RB','WR','TE','K','DST'].map(pos=>{const ps=rows.filter(r=>r.position===pos);if(!ps.length)return '';return `<section class="myteam-group"><div class="myteam-group-head">${pos}<span>${ps.length}</span></div>${ps.map(r=>`<div class="myteam-player">${positionBadge(r.position)}<div class="myteam-player-main"><div class="myteam-player-name">${escapeHtml(r.player_name)}</div><div class="small muted">${escapeHtml(r.nfl_team||'')} • ${escapeHtml(rosterSourceLabel(r))}${r.acquisition_price!=null?` • ${money(r.acquisition_price)}`:''}</div></div></div>`).join('')}</section>`;}).join('');
+  return `<div class="row between gap-12 wrap myteam-header"><div><h2 class="section-title">${escapeHtml(t.name)}</h2><div class="small muted">My Team • live roster</div></div><div class="myteam-summary"><strong>${rows.length}/${maxRoster}</strong><span>${open} open</span></div></div><div class="myteam-budget card"><div><span class="small muted">Bid dollars remaining</span><strong>${money(t.remaining_budget)}</strong></div><div><span class="small muted">Roster spots</span><strong>${open}</strong></div></div><div class="myteam-list">${groups||'<div class="card empty">No rostered players yet.</div>'}</div>`;
+}
 
 function toast(message,type='') {
   let wrap=document.querySelector('.toast-wrap');
@@ -92,14 +111,15 @@ async function loadData(){
   if(settingsRes.error && settingsRes.error.code!=='42P01') throw settingsRes.error;
   if(!settingsRes.data){state.migrationMissing=true;state.settings=null;state.loading=false;return;}
   state.migrationMissing=false;state.settings=settingsRes.data;
-  const [o,p,pk,b]=await Promise.all([
+  const [o,p,pk,b,re]=await Promise.all([
     supabase.from('supplemental_order').select('*').eq('room_id',state.room.id).order('slot'),
     supabase.from('supplemental_players').select('*').eq('room_id',state.room.id).order('yahoo_rank'),
     supabase.from('supplemental_picks').select('*').eq('room_id',state.room.id).order('pick_no'),
     supabase.from('supplemental_bids').select('*').eq('room_id',state.room.id).order('created_at',{ascending:false}).limit(100),
+    supabase.from('league_roster_entries').select('*').eq('room_id',state.room.id).eq('active',true).order('player_name'),
   ]);
-  for(const r of[o,p,pk,b]) if(r.error) throw r.error;
-  state.order=o.data||[];state.players=p.data||[];state.picks=pk.data||[];state.bids=b.data||[];state.loading=false;
+  for(const r of[o,p,pk,b,re]) if(r.error) throw r.error;
+  state.order=o.data||[];state.players=p.data||[];state.picks=pk.data||[];state.bids=b.data||[];state.rosterEntries=re.data||[];state.loading=false;
   const curr=snapshot();if(prev)handleTransitions(prev,curr);audioState.snapshot=curr;
 }
 function scheduleRefresh(){clearTimeout(state.refreshTimer);state.refreshTimer=setTimeout(async()=>{try{await loadData();render();}catch(e){console.error(e);}},90);}
@@ -113,6 +133,7 @@ function subscribeRealtime(){
     .on('postgres_changes',{event:'*',schema:'public',table:'supplemental_players',filter:`room_id=eq.${state.room.id}`},scheduleRefresh)
     .on('postgres_changes',{event:'*',schema:'public',table:'supplemental_picks',filter:`room_id=eq.${state.room.id}`},scheduleRefresh)
     .on('postgres_changes',{event:'*',schema:'public',table:'supplemental_bids',filter:`room_id=eq.${state.room.id}`},scheduleRefresh)
+    .on('postgres_changes',{event:'*',schema:'public',table:'league_roster_entries',filter:`room_id=eq.${state.room.id}`},scheduleRefresh)
     .subscribe();
 }
 
@@ -131,7 +152,7 @@ function playerRow(p,showButton=true){
   return `<div class="supp-player-card"><div class="rank">#${p.yahoo_rank}</div>${positionBadge(p.position)}<div class="supp-player-info"><div class="supp-player-name">${escapeHtml(p.name)}</div><div class="supp-player-meta">${escapeHtml(p.nfl_team)} • ${escapeHtml(p.position)}${p.pos_rank?String(p.pos_rank).padStart(2,'0'):''} • Bye ${p.bye??'—'}</div>${projectionSummary(p)?`<div class="proj-line">${escapeHtml(projectionSummary(p))}</div>`:''}${rights?`<span class="rights-badge">Rookie rights: ${escapeHtml(rights.name)}</span>`:''}</div>${can?`<button class="btn btn-sm btn-primary" data-select-player="${p.id}">Select</button>`:''}</div>`;
 }
 
-function topBar(){const t=myTeam();return `<header class="topbar"><div class="topbar-inner"><div class="brand"><div class="brand-kicker">Phase 2 • Supplemental</div><div class="brand-title">${escapeHtml(LEAGUE_NAME)}</div></div><div class="user-chip"><div class="status-dot ${state.settings?.status==='live'?'live':''}"></div><div class="user-chip-text"><div class="user-team">${t?escapeHtml(t.name):state.session?.spectator?'Spectator':'Not joined'}${isCommish()?' • Czar':''}</div><div class="user-budget">${t?`${money(t.remaining_budget)} remaining`:escapeHtml(state.settings?.status||'')}</div></div><a class="phase-link" href="/">Auction</a><button class="sound-toggle" data-action="toggle-sound">${audioState.enabled?'🔊':'🔇'}<span>${audioState.enabled?'Sound':'Muted'}</span></button><button class="btn-link" data-action="logout">Leave</button></div></div></header>`;}
+function topBar(){const t=myTeam();return `<header class="topbar"><div class="topbar-inner"><div class="brand"><div class="brand-kicker">Phase 2 • Supplemental</div><div class="brand-title">${escapeHtml(LEAGUE_NAME)}</div></div><div class="user-chip"><div class="status-dot ${state.settings?.status==='live'?'live':''}"></div><div class="user-chip-text"><div class="user-team">${t?escapeHtml(t.name):state.session?.spectator?'Spectator':'Not joined'}${isCommish()?' • Czar':''}</div><div class="user-budget">${t?`${money(t.remaining_budget)} remaining`:escapeHtml(state.settings?.status||'')}</div></div><a class="phase-link phase1-link" href="/">Auction</a><a class="phase-link phase3-link" href="/phase3">Phase 3</a><button class="sound-toggle" data-action="toggle-sound">${audioState.enabled?'🔊':'🔇'}<span>${audioState.enabled?'Sound':'Muted'}</span></button><button class="btn-link" data-action="logout">Leave</button></div></div></header>`;}
 
 function pickStrip(){
   if(!state.settings||state.order.length<12)return '';
@@ -140,7 +161,7 @@ function pickStrip(){
 
 function stageView(){
   const s=state.settings, cp=currentPicker(), sp=selectedPlayer(), hb=highBidder(), mine=myTeam(), rights=rightsHolder(sp);
-  if(s.status==='complete')return `<section class="card hero-complete"><div class="trophy">🏁</div><h2>Supplemental Draft Complete</h2><p class="muted">All 24 snake-draft picks are complete.</p><button class="btn btn-dark" data-tab="results">View Results</button></section>`;
+  if(s.status==='complete')return `<section class="card hero-complete"><div class="trophy">🏁</div><h2>Supplemental Draft Complete</h2><p class="muted">All 24 snake-draft picks are complete.</p><div class="row gap-8 wrap" style="justify-content:center;margin-top:12px"><button class="btn btn-dark" data-tab="results">View Results</button><a class="btn btn-primary phase-button" href="/phase3">Open Phase 3 →</a></div></section>`;
   if(s.status==='setup')return `<section class="card supp-stage"><div class="supp-stage-head"><div><div class="supp-stage-title">Supplemental Draft</div><div class="supp-stage-sub">2-round snake • 45s pick • 10s challenge • 30s auction</div></div><div class="timer">--</div></div><div class="supp-body"><div class="on-clock">Ready for Phase 2</div><p class="muted">The commissioner can review the order and timers, then start the draft.</p></div></section>`;
 
   let body='';
@@ -179,7 +200,7 @@ function resultsView(){
 }
 function sourceNote(){return `<div class="source-note">Player order: <a href="${RANKING_URL}" target="_blank" rel="noreferrer">Yahoo Sports Half-PPR Top 300</a>, updated Sept. 5, 2026. Raw projection stats are a June 9 Yahoo Sports-hosted projection snapshot where available. Players already contracted, selected in the 2026 rookie draft, or included in the 40-player auction are excluded.</div>`;}
 
-function bottomNav(){const items=[['draft','⚡','Draft'],['players','☷','Players'],['order','⇅','Order'],['results','≡','Results']];return `<nav class="bottom-nav"><div class="bottom-nav-inner">${items.map(([tab,icon,label])=>`<button class="nav-btn ${state.tab===tab?'active':''}" data-tab="${tab}"><span>${icon}</span>${label}</button>`).join('')}</div></nav>`;}
+function bottomNav(){const items=[['draft','⚡','Draft'],['players','☷','Players'],['order','⇅','Order'],['results','≡','Results'],['myteam','♜','My Team']];return `<nav class="bottom-nav"><div class="bottom-nav-inner">${items.map(([tab,icon,label])=>`<button class="nav-btn ${state.tab===tab?'active':''}" data-tab="${tab}"><span>${icon}</span>${label}</button>`).join('')}</div></nav>`;}
 
 function loginView(){const opts=state.teams.map(t=>`<option value="${t.id}">${escapeHtml(t.name)}</option>`).join('');return `<div class="login-wrap"><div class="login-card"><div class="login-head"><h1>${escapeHtml(LEAGUE_NAME)}</h1><p>2026 Supplemental Draft</p></div><div class="login-body"><div class="field"><label>Your team</label><select id="join-team" class="input"><option value="">Select your team…</option>${opts}</select></div><div class="field"><label>Team PIN</label><input id="team-pin" class="input pin-input" inputmode="numeric" maxlength="6" placeholder="6-digit PIN"></div><div id="join-error"></div><button class="btn btn-primary btn-block" data-action="join">Enter Supplemental Room</button><button class="btn-link btn-block" data-action="spectate">View as spectator</button><a class="btn-link btn-block" href="/" style="display:block;text-align:center;text-decoration:none">← Back to Auction</a></div></div></div>`;}
 function migrationView(){return `<div class="login-wrap"><div class="login-card"><div class="login-head"><h1>Phase 2 App Ready</h1><p>The Supplemental database migration still needs to be installed.</p></div><div class="login-body"><div class="notice">Run <strong>supabase/phase2.sql</strong> in the GLSK Supabase SQL Editor, then refresh this page.</div><a class="btn-link btn-block" href="/" style="display:block;text-align:center;text-decoration:none">← Auction room</a></div></div></div>`;}
@@ -190,7 +211,7 @@ function render(){
   if(state.loading){app.innerHTML='<div class="login-wrap"><div style="color:white;font-weight:900">Loading Supplemental Draft…</div></div>';return;}
   if(state.migrationMissing){app.innerHTML=migrationView();return;}
   if(!state.session){app.innerHTML=loginView();bindEvents();return;}
-  let content=state.tab==='players'?playersView():state.tab==='order'?orderView():state.tab==='results'?resultsView():draftView();
+  let content=state.tab==='players'?playersView():state.tab==='order'?orderView():state.tab==='results'?resultsView():state.tab==='myteam'?myTeamView():draftView();
   app.innerHTML=`<div class="app-shell">${topBar()}<main class="main">${content}</main>${bottomNav()}</div>`;bindEvents();updateCountdown();
 }
 

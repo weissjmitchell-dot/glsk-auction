@@ -13,6 +13,7 @@ const state = {
   players: [],
   bids: [],
   sales: [],
+  rosterEntries: [],
   session: loadSession(),
   tab: 'action',
   loading: true,
@@ -190,6 +191,28 @@ function availablePlayers() { return state.players.filter(p => p.status === 'ava
 function soldPlayers() { return state.players.filter(p => p.status === 'sold'); }
 function wonCount(teamId) { return soldPlayers().filter(p => p.sold_team_id === teamId).length; }
 
+
+function myRosterEntries() {
+  const t = myTeam();
+  return t ? state.rosterEntries.filter(r => r.team_id === t.id && r.active !== false) : [];
+}
+function rosterSourceLabel(r) {
+  return ({auction:'Auction',supplemental:'Supplemental',phase3:'Phase 3',rookie:'Rookie Draft',contract:'Contract',rights_claim:'Rookie Rights',current_roster:'Existing Roster'}[r.acquisition_type] || 'Roster');
+}
+function myTeamView() {
+  const t = myTeam();
+  if (!t) return `<div class="card empty"><strong>My Team</strong><br><span class="small muted">Sign in as a team owner to view a roster.</span></div>`;
+  const order = {QB:1,RB:2,WR:3,TE:4,K:5,DST:6};
+  const rows = myRosterEntries().slice().sort((a,b)=>(order[a.position]||99)-(order[b.position]||99)||a.player_name.localeCompare(b.player_name));
+  const maxRoster = 18, open = Math.max(0,maxRoster-rows.length);
+  const groups = ['QB','RB','WR','TE','K','DST'].map(pos => {
+    const ps = rows.filter(r => r.position === pos);
+    if (!ps.length) return '';
+    return `<section class="myteam-group"><div class="myteam-group-head">${pos}<span>${ps.length}</span></div>${ps.map(r => `<div class="myteam-player">${positionBadge(r.position)}<div class="myteam-player-main"><div class="myteam-player-name">${escapeHtml(r.player_name)}</div><div class="small muted">${escapeHtml(r.nfl_team||'')} • ${escapeHtml(rosterSourceLabel(r))}${r.acquisition_price!=null ? ` • ${money(r.acquisition_price)}` : ''}</div></div></div>`).join('')}</section>`;
+  }).join('');
+  return `<div class="row between gap-12 wrap myteam-header"><div><h2 class="section-title">${escapeHtml(t.name)}</h2><div class="small muted">My Team • live roster</div></div><div class="myteam-summary"><strong>${rows.length}/${maxRoster}</strong><span>${open} open</span></div></div><div class="myteam-budget card"><div><span class="small muted">Bid dollars remaining</span><strong>${money(t.remaining_budget)}</strong></div><div><span class="small muted">Roster spots</span><strong>${open}</strong></div></div><div class="myteam-list">${groups || '<div class="card empty">No rostered players yet.</div>'}</div>`;
+}
+
 function toast(message, type = '') {
   let wrap = document.querySelector('.toast-wrap');
   if (!wrap) {
@@ -217,17 +240,19 @@ async function loadData() {
   if (roomRes.error) throw roomRes.error;
   state.room = roomRes.data;
 
-  const [teamsRes, playersRes, bidsRes, salesRes] = await Promise.all([
+  const [teamsRes, playersRes, bidsRes, salesRes, rosterRes] = await Promise.all([
     supabase.from('teams').select('*').eq('room_id', state.room.id).order('sort_order'),
     supabase.from('players').select('*').eq('room_id', state.room.id).order('rank'),
     supabase.from('bids').select('*').eq('room_id', state.room.id).order('created_at', { ascending: false }).limit(100),
     supabase.from('sales').select('*').eq('room_id', state.room.id).eq('undone', false).order('sold_at', { ascending: false }),
+    supabase.from('league_roster_entries').select('*').eq('room_id', state.room.id).eq('active', true).order('player_name'),
   ]);
-  for (const r of [teamsRes, playersRes, bidsRes, salesRes]) if (r.error) throw r.error;
+  for (const r of [teamsRes, playersRes, bidsRes, salesRes, rosterRes]) if (r.error) throw r.error;
   state.teams = teamsRes.data || [];
   state.players = playersRes.data || [];
   state.bids = bidsRes.data || [];
   state.sales = salesRes.data || [];
+  state.rosterEntries = rosterRes.data || [];
   state.loading = false;
   if (previousSoundState) handleSoundTransitions(previousSoundState, soundSnapshot());
 }
@@ -248,6 +273,7 @@ function subscribeRealtime() {
     .on('postgres_changes', { event: '*', schema: 'public', table: 'players', filter: `room_id=eq.${state.room.id}` }, scheduleRefresh)
     .on('postgres_changes', { event: '*', schema: 'public', table: 'bids', filter: `room_id=eq.${state.room.id}` }, scheduleRefresh)
     .on('postgres_changes', { event: '*', schema: 'public', table: 'sales', filter: `room_id=eq.${state.room.id}` }, scheduleRefresh)
+    .on('postgres_changes', { event: '*', schema: 'public', table: 'league_roster_entries', filter: `room_id=eq.${state.room.id}` }, scheduleRefresh)
     .subscribe();
 }
 
@@ -279,7 +305,7 @@ function topBar() {
             <div class="user-team">${t ? escapeHtml(t.name) : state.session?.spectator ? 'Spectator' : 'Not joined'}${isCommish() ? ' • Czar' : ''}</div>
             <div class="user-budget">${t ? `${money(t.remaining_budget)} remaining` : escapeHtml(state.room?.status || '')}</div>
           </div>
-          <a class="phase-link" href="/supplemental.html" title="Open Supplemental Draft">Phase 2</a>
+          <a class="phase-link phase2-link" href="/supplemental" title="Open Supplemental Draft">Phase 2</a><a class="phase-link phase3-link" href="/phase3" title="Open Phase 3 Roster-Fill Draft">Phase 3</a>
           <button class="sound-toggle" data-action="toggle-sound" aria-pressed="${audioState.enabled}" title="Toggle auction sound effects">${audioState.enabled ? '🔊' : '🔇'}<span>${audioState.enabled ? 'Sound' : 'Muted'}</span></button>
           <button class="btn-link" data-action="logout" aria-label="Leave room">Leave</button>
         </div>
@@ -289,7 +315,7 @@ function topBar() {
 
 function actionView() {
   if (state.room.status === 'complete') {
-    return `<div class="card hero-complete"><div class="trophy">🏆</div><h2>Auction Complete</h2><p class="muted">All 40 auction players have been sold.</p><button class="btn btn-dark" data-tab="log">View Results</button></div>`;
+    return `<div class="card hero-complete"><div class="trophy">🏆</div><h2>Auction Complete</h2><p class="muted">All 40 auction players have been sold.</p><div class="row gap-8 wrap" style="justify-content:center;margin-top:12px"><button class="btn btn-dark" data-tab="log">View Results</button><a class="btn btn-primary phase-button" href="/supplemental">Open Phase 2 →</a><a class="btn btn-outline phase-button" href="/phase3">Phase 3 →</a></div></div>`;
   }
 
   const p = activePlayer();
@@ -414,7 +440,7 @@ function teamsView() {
 
 function logView() {
   return `
-    <div class="row between gap-12 wrap" style="margin-bottom:12px"><h2 class="section-title">Auction Results</h2><div class="row gap-8 wrap"><a class="btn btn-sm btn-primary phase-button" href="/supplemental.html">Open Supplemental Draft →</a><button class="btn btn-sm btn-outline" data-action="export">Export CSV</button></div></div>
+    <div class="row between gap-12 wrap" style="margin-bottom:12px"><h2 class="section-title">Auction Results</h2><div class="row gap-8 wrap"><a class="btn btn-sm btn-primary phase-button" href="/supplemental">Open Supplemental Draft →</a><a class="btn btn-sm btn-outline phase-button" href="/phase3">Phase 3 →</a><button class="btn btn-sm btn-outline" data-action="export">Export CSV</button></div></div>
     <div class="list-stack">
       ${state.sales.length ? state.sales.map(s => {
         const p = playerById(s.player_id); const t = teamById(s.team_id); const rights = p?.rights_team_id ? teamById(p.rights_team_id) : null;
@@ -430,6 +456,7 @@ function bottomNav() {
     ['action','⚡','Action'],
     ['teams','♟','Teams'],
     ['log','≡','Results'],
+    ['myteam','♜','My Team'],
   ];
   return `<nav class="bottom-nav"><div class="bottom-nav-inner">${items.map(([tab,icon,label]) => `<button class="nav-btn ${state.tab===tab?'active':''}" data-tab="${tab}"><span>${icon}</span>${label}</button>`).join('')}</div></nav>`;
 }
@@ -460,7 +487,7 @@ function render() {
   if (!configured) { app.innerHTML = setupErrorView(); return; }
   if (state.loading) { app.innerHTML = `<div class="login-wrap"><div style="color:white;font-weight:900">Loading auction room…</div></div>`; return; }
   if (!state.session) { app.innerHTML = loginView(); bindEvents(); return; }
-  let content = state.tab === 'players' ? playersView() : state.tab === 'teams' ? teamsView() : state.tab === 'log' ? logView() : actionView();
+  let content = state.tab === 'players' ? playersView() : state.tab === 'teams' ? teamsView() : state.tab === 'log' ? logView() : state.tab === 'myteam' ? myTeamView() : actionView();
   app.innerHTML = `<div class="app-shell">${topBar()}<main class="main">${content}</main>${bottomNav()}</div>`;
   bindEvents();
   updateCountdown();

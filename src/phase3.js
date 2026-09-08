@@ -15,6 +15,7 @@ const state = {
   order: [],
   rosterState: [],
   rosterEntries: [],
+  leagueRosterEntries: [],
   players: [],
   picks: [],
   session: loadSession(),
@@ -50,6 +51,24 @@ function rosterCount(teamId) { return rosterByTeam(teamId)?.roster_count ?? 0; }
 function maxRoster(teamId) { return rosterByTeam(teamId)?.max_roster_size ?? 18; }
 function isFull(teamId) { return openSpots(teamId) <= 0; }
 function phase3PickByPlayer(id) { return state.picks.find(p=>p.player_id===id); }
+
+
+function myLeagueRosterEntries() {
+  const t = myTeam();
+  return t ? state.leagueRosterEntries.filter(r => r.team_id === t.id && r.active !== false) : [];
+}
+function rosterSourceLabel(r) {
+  return ({auction:'Auction',supplemental:'Supplemental',phase3:'Phase 3',rookie:'Rookie Draft',contract:'Contract',rights_claim:'Rookie Rights',current_roster:'Existing Roster'}[r.acquisition_type] || 'Roster');
+}
+function myTeamView() {
+  const t=myTeam();
+  if(!t)return `<div class="card empty"><strong>My Team</strong><br><span class="small muted">Sign in as a team owner to view a roster.</span></div>`;
+  const order={QB:1,RB:2,WR:3,TE:4,K:5,DST:6};
+  const rows=myLeagueRosterEntries().slice().sort((a,b)=>(order[a.position]||99)-(order[b.position]||99)||a.player_name.localeCompare(b.player_name));
+  const maxRoster=maxRoster(t.id),open=Math.max(0,maxRoster-rows.length);
+  const groups=['QB','RB','WR','TE','K','DST'].map(pos=>{const ps=rows.filter(r=>r.position===pos);if(!ps.length)return '';return `<section class="myteam-group"><div class="myteam-group-head">${pos}<span>${ps.length}</span></div>${ps.map(r=>`<div class="myteam-player">${positionBadge(r.position)}<div class="myteam-player-main"><div class="myteam-player-name">${escapeHtml(r.player_name)}</div><div class="small muted">${escapeHtml(r.nfl_team||'')} • ${escapeHtml(rosterSourceLabel(r))}${r.acquisition_price!=null?` • $${Number(r.acquisition_price).toFixed(0)}`:''}</div></div></div>`).join('')}</section>`;}).join('');
+  return `<div class="row between gap-12 wrap myteam-header"><div><h2 class="section-title">${escapeHtml(t.name)}</h2><div class="small muted">My Team • live roster</div></div><div class="myteam-summary"><strong>${rows.length}/${maxRoster}</strong><span>${open} open</span></div></div><div class="myteam-budget card"><div><span class="small muted">Bid dollars remaining</span><strong>$${Number(t.remaining_budget||0).toFixed(0)}</strong></div><div><span class="small muted">Roster spots</span><strong>${open}</strong></div></div><div class="myteam-list">${groups||'<div class="card empty">No rostered players yet.</div>'}</div>`;
+}
 
 function toast(message,type='') {
   let wrap=document.querySelector('.toast-wrap');
@@ -102,15 +121,16 @@ async function loadData(){
   if(!settingsRes.data){state.migrationMissing=true;state.settings=null;state.loading=false;return;}
 
   state.migrationMissing=false;state.settings=settingsRes.data;
-  const [o,rs,re,p,pk]=await Promise.all([
+  const [o,rs,re,p,pk,lre]=await Promise.all([
     supabase.from('phase3_order').select('*').eq('room_id',state.room.id).order('slot'),
     supabase.from('phase3_roster_state').select('*').eq('room_id',state.room.id),
     supabase.from('phase3_roster_entries').select('*').eq('room_id',state.room.id).order('created_at'),
     supabase.from('phase3_players').select('*').eq('room_id',state.room.id).order('yahoo_rank'),
     supabase.from('phase3_picks').select('*').eq('room_id',state.room.id).order('pick_no'),
+    supabase.from('league_roster_entries').select('*').eq('room_id',state.room.id).eq('active',true).order('player_name'),
   ]);
-  for(const r of[o,rs,re,p,pk]) if(r.error) throw r.error;
-  state.order=o.data||[];state.rosterState=rs.data||[];state.rosterEntries=re.data||[];state.players=p.data||[];state.picks=pk.data||[];state.loading=false;
+  for(const r of[o,rs,re,p,pk,lre]) if(r.error) throw r.error;
+  state.order=o.data||[];state.rosterState=rs.data||[];state.rosterEntries=re.data||[];state.players=p.data||[];state.picks=pk.data||[];state.leagueRosterEntries=lre.data||[];state.loading=false;
   const curr=snapshot();if(prev)handleTransitions(prev,curr);
 }
 function scheduleRefresh(){clearTimeout(state.refreshTimer);state.refreshTimer=setTimeout(async()=>{try{await loadData();render();}catch(e){console.error(e);}},90);}
@@ -124,6 +144,7 @@ function subscribeRealtime(){
     .on('postgres_changes',{event:'*',schema:'public',table:'phase3_players',filter:`room_id=eq.${state.room.id}`},scheduleRefresh)
     .on('postgres_changes',{event:'*',schema:'public',table:'phase3_picks',filter:`room_id=eq.${state.room.id}`},scheduleRefresh)
     .on('postgres_changes',{event:'*',schema:'public',table:'phase3_roster_entries',filter:`room_id=eq.${state.room.id}`},scheduleRefresh)
+    .on('postgres_changes',{event:'*',schema:'public',table:'league_roster_entries',filter:`room_id=eq.${state.room.id}`},scheduleRefresh)
     .subscribe();
 }
 
@@ -212,7 +233,7 @@ function resultsView(){
   return `<div class="row between gap-12 wrap" style="margin-bottom:12px"><h2 class="section-title">Phase 3 Results</h2><button class="btn btn-sm btn-outline" data-action="export-p3">Export CSV</button></div><div class="list-stack">${rows.map(pk=>{const p=playerById(pk.player_id),t=teamById(pk.team_id);return `<div class="log-row"><div><div class="log-name">#${pk.pick_no} ${escapeHtml(p?.name||'—')}</div><div class="small muted">${escapeHtml(p?.nfl_team||'')} • ${escapeHtml(p?.position||'')} • ${escapeHtml(t?.name||'—')} • Snake R${pk.round}</div></div><div class="tag tag-queued">PICK</div></div>`;}).join('')||'<div class="card empty">No Phase 3 picks yet.</div>'}</div>`;
 }
 
-function bottomNav(){return `<nav class="bottom-nav"><div class="bottom-nav-inner"><button class="nav-btn ${state.tab==='draft'?'active':''}" data-tab="draft"><span>⚡</span>Draft</button><button class="nav-btn ${state.tab==='players'?'active':''}" data-tab="players"><span>☰</span>Players</button><button class="nav-btn ${state.tab==='order'?'active':''}" data-tab="order"><span>↕</span>Order</button><button class="nav-btn ${state.tab==='results'?'active':''}" data-tab="results"><span>▤</span>Results</button></div></nav>`;}
+function bottomNav(){return `<nav class="bottom-nav"><div class="bottom-nav-inner"><button class="nav-btn ${state.tab==='draft'?'active':''}" data-tab="draft"><span>⚡</span>Draft</button><button class="nav-btn ${state.tab==='players'?'active':''}" data-tab="players"><span>☰</span>Players</button><button class="nav-btn ${state.tab==='order'?'active':''}" data-tab="order"><span>↕</span>Order</button><button class="nav-btn ${state.tab==='results'?'active':''}" data-tab="results"><span>▤</span>Results</button><button class="nav-btn ${state.tab==='myteam'?'active':''}" data-tab="myteam"><span>♜</span>My Team</button></div></nav>`;}
 function loginView(){const opts=state.teams.map(t=>`<option value="${t.id}">${escapeHtml(t.name)}</option>`).join('');return `<div class="login-wrap"><div class="login-card"><div class="login-head"><h1>${escapeHtml(LEAGUE_NAME)}</h1><p>2026 Phase 3 • Roster-Fill Snake Draft</p></div><div class="login-body"><div class="field"><label>Your team</label><select id="join-team" class="input"><option value="">Select your team…</option>${opts}</select></div><div class="field"><label>Team PIN</label><input id="team-pin" class="input pin-input" inputmode="numeric" maxlength="6" placeholder="6-digit PIN"></div><div id="join-error"></div><button class="btn btn-primary btn-block" data-action="join">Enter Phase 3 Room</button><button class="btn-link btn-block" data-action="spectate">View as spectator</button><a class="btn-link btn-block" href="/supplemental" style="display:block;text-align:center;text-decoration:none">← Back to Supplemental</a></div></div></div>`;}
 function migrationView(){return `<div class="login-wrap"><div class="login-card"><div class="login-head"><h1>Phase 3 App Ready</h1><p>The Phase 3 database migration still needs to be installed.</p></div><div class="login-body"><div class="notice">Run <strong>supabase/phase3.sql</strong> in the GLSK Supabase SQL Editor, then refresh this page.</div><a class="btn-link btn-block" href="/supplemental" style="display:block;text-align:center;text-decoration:none">← Supplemental room</a></div></div></div>`;}
 function connectionView(e){return `<div class="login-wrap"><div class="login-card"><div class="login-head"><h1>Connection Error</h1><p>Phase 3 room could not load.</p></div><div class="login-body"><div class="error">${escapeHtml(e.message)}</div></div></div></div>`;}
@@ -222,7 +243,7 @@ function render(){
   if(state.loading){app.innerHTML='<div class="login-wrap"><div style="color:white;font-weight:900">Loading Phase 3…</div></div>';return;}
   if(state.migrationMissing){app.innerHTML=migrationView();return;}
   if(!state.session){app.innerHTML=loginView();bindEvents();return;}
-  const content=state.tab==='players'?playersView():state.tab==='order'?orderView():state.tab==='results'?resultsView():draftView();
+  const content=state.tab==='players'?playersView():state.tab==='order'?orderView():state.tab==='results'?resultsView():state.tab==='myteam'?myTeamView():draftView();
   app.innerHTML=`<div class="app-shell">${topBar()}<main class="main">${content}</main>${bottomNav()}</div>`;bindEvents();updateCountdown();
 }
 
