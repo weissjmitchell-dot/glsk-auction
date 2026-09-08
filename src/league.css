@@ -84,3 +84,8 @@
   .office-bottom-nav .nav-btn { font-size:8px; }
   .form-grid-2 { grid-template-columns:1fr; }
 }
+
+.contract-detail{margin-top:3px;font-size:12px;font-weight:800;color:#53627a}
+.owner-contract-card{padding:16px;border:2px solid #f0c400;background:linear-gradient(180deg,#fffbea 0%,#fff 62%)}
+.owner-contract-card .section-title{font-weight:950;font-size:16px}
+.owner-pending{margin-top:12px;padding-top:10px;border-top:1px solid var(--border)}
