@@ -3794,3 +3794,9 @@
 
 
 /* GLSK v7.2.0 — search inputs retain focus/caret during live filtering */
+
+
+/* GLSK v7.2.1 — current-season Google Group topics live on Current Board */
+.board-thread-title-row .board-sync-chip{
+  white-space:nowrap;
+}

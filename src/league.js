@@ -532,7 +532,7 @@ function teamHubView(){
     </section>`;
 }
 function communicationsHubView(){
-  const boardCurrent=state.boardThreads.filter(t=>t.source!=='google_groups'&&Number(t.season_year||state.season?.season_year||2026)===Number(state.season?.season_year||2026)).length;
+  const boardCurrent=state.boardThreads.filter(t=>Number(t.season_year||state.season?.season_year||2026)===Number(state.season?.season_year||2026)).length;
   const unread=Number(state.notificationUnread||0);
   return `${pageHeading('Communication','League Chat, Message Board and alerts in one place.','League Community')}
     <section class="nav-hub-grid nav-hub-grid-three">
@@ -708,21 +708,25 @@ function boardArchiveAttachments(item){
  const meta=raw&&typeof raw==='object'?raw:{};
  const attachments=Array.isArray(meta.attachments)?meta.attachments.filter(Boolean):[];
  if(!attachments.length)return '';
- return `<div class="board-archive-attachments"><strong>📎 Attachment${attachments.length===1?'':'s'} in Google Groups archive</strong>${attachments.map(a=>`<span>${esc(a)}</span>`).join('')}</div>`;
+ return `<div class="board-archive-attachments"><strong>📎 Attachment${attachments.length===1?'':'s'} from Google Groups</strong>${attachments.map(a=>`<span>${esc(a)}</span>`).join('')}</div>`;
 }
 function boardView(){
  const me=myTeam();
  const currentYear=Number(state.season?.season_year||2026);
  const archiveYears=[...new Set(
    state.boardThreads
-     .filter(t=>t.source==='google_groups')
+     .filter(t=>t.source==='google_groups' && Number(t.season_year||currentYear)!==currentYear)
      .map(t=>Number(t.season_year||currentYear))
  )].sort((a,b)=>b-a);
 
  if(!state.boardMode)state.boardMode='current';
 
  const archiveMatch=String(state.boardMode).match(/^archive:(\d{4})$/);
- const archiveYear=archiveMatch?Number(archiveMatch[1]):null;
+ let archiveYear=archiveMatch?Number(archiveMatch[1]):null;
+ if(archiveYear===currentYear){
+   state.boardMode='current';
+   archiveYear=null;
+ }
  const isArchive=Boolean(archiveYear);
 
  const search=String(state.boardSearch||'').trim().toLowerCase();
@@ -731,7 +735,7 @@ function boardView(){
    if(isArchive){
      return t.source==='google_groups' && Number(t.season_year||currentYear)===archiveYear;
    }
-   return t.source!=='google_groups' && Number(t.season_year||currentYear)===currentYear;
+   return Number(t.season_year||currentYear)===currentYear;
  });
 
  if(search){
@@ -746,7 +750,9 @@ function boardView(){
 
  const posts=selected?boardPostsFor(selected.id):[];
  const authorName=selected?boardAuthorName(selected):'';
- const imported=selected?.source==='google_groups';
+ const googleImported=selected?.source==='google_groups';
+ const imported=googleImported&&isArchive;
+ const currentGoogle=googleImported&&!isArchive;
  const synced=selected?.source==='google_groups_sync';
 
  const boardTitle=isArchive?`${archiveYear} Google Groups Archive`:'Current Message Board';
@@ -787,9 +793,9 @@ function boardView(){
      </div>
      <div class="board-thread-items">${threads.length?threads.map(t=>{
        const active=selected&&String(selected.id)===String(t.id);
-       const isImport=t.source==='google_groups',isSync=t.source==='google_groups_sync';
+       const isImport=t.source==='google_groups'&&isArchive,isCurrentGoogle=t.source==='google_groups'&&!isArchive,isSync=t.source==='google_groups_sync';
        return `<button class="board-thread-item ${active?'active':''}" data-board-thread="${t.id}">
-         <div class="board-thread-title-row"><strong>${t.pinned?'📌 ':''}${esc(t.title)}</strong>${isImport?'<span class="board-import-chip">ARCHIVE</span>':isSync?'<span class="board-sync-chip">GROUP SYNC</span>':t.status==='locked'?'<span class="board-status-chip">LOCKED</span>':''}</div>
+         <div class="board-thread-title-row"><strong>${t.pinned?'📌 ':''}${esc(t.title)}</strong>${isImport?'<span class="board-import-chip">ARCHIVE</span>':isCurrentGoogle?'<span class="board-sync-chip">GOOGLE GROUP</span>':isSync?'<span class="board-sync-chip">GROUP SYNC</span>':t.status==='locked'?'<span class="board-status-chip">LOCKED</span>':''}</div>
          <div class="board-thread-preview">${esc((t.body||'').length>115?t.body.slice(0,115)+'…':t.body||'')}</div>
          <div class="board-thread-meta"><span>${esc(boardAuthorName(t))}</span><span>${Number(t.reply_count||0)} repl${Number(t.reply_count||0)===1?'y':'ies'}</span><span>${fmtDate(t.last_activity_at)}</span></div>
        </button>`;
@@ -799,9 +805,9 @@ function boardView(){
    <section class="card board-discussion">
      ${selected?`<div class="board-discussion-head">
        <div>
-         <div class="board-thread-flags">${selected.pinned?'<span>PINNED</span>':''}${imported?'<span class="google">GOOGLE GROUPS ARCHIVE</span>':synced?'<span class="sync">GOOGLE GROUP SYNC</span>':selected.status==='locked'?'<span>LOCKED</span>':''}</div>
+         <div class="board-thread-flags">${selected.pinned?'<span>PINNED</span>':''}${imported?'<span class="google">GOOGLE GROUPS ARCHIVE</span>':currentGoogle?'<span class="sync">GOOGLE GROUP • CURRENT SEASON</span>':synced?'<span class="sync">GOOGLE GROUP SYNC</span>':selected.status==='locked'?'<span>LOCKED</span>':''}</div>
          <h2>${esc(selected.title)}</h2>
-         <div class="board-discussion-meta">Started by <strong>${esc(authorName)}</strong> • ${fmtDate(selected.created_at)}${imported?' • Original Google Groups timestamp':synced?' • Synced from Google Groups • GLSK replies stay here':''}</div>
+         <div class="board-discussion-meta">Started by <strong>${esc(authorName)}</strong> • ${fmtDate(selected.created_at)}${imported?' • Original Google Groups timestamp':currentGoogle?' • Imported from the 2026 Google Group • GLSK replies stay here':synced?' • Synced from Google Groups • GLSK replies stay here':''}</div>
        </div>
        ${isCommish()&&!imported?`<div class="board-mod-actions">
          <button class="btn btn-sm btn-outline" data-board-action="${selected.pinned?'unpin':'pin'}" data-thread-id="${selected.id}">${selected.pinned?'Unpin':'Pin'}</button>
@@ -810,10 +816,10 @@ function boardView(){
        </div>`:''}
      </div>
 
-     <article class="board-root-post ${imported?'board-imported-post':synced?'board-synced-post':''}">
+     <article class="board-root-post ${imported?'board-imported-post':(currentGoogle||synced)?'board-synced-post':''}">
        <div class="board-avatar">${esc(boardInitials(selected))}</div>
        <div>
-         <div class="board-post-author"><strong>${esc(authorName)}</strong><span>${fmtDate(selected.created_at)}</span>${imported?'<em>Imported</em>':synced?'<em class="sync">Synced</em>':''}</div>
+         <div class="board-post-author"><strong>${esc(authorName)}</strong><span>${fmtDate(selected.created_at)}</span>${imported?'<em>Imported</em>':currentGoogle?'<em class="sync">Google Group</em>':synced?'<em class="sync">Synced</em>':''}</div>
          <div class="board-post-body">${esc(selected.body||'').replaceAll('\n','<br>')}</div>
          ${boardArchiveAttachments(selected)}
        </div>
@@ -821,18 +827,18 @@ function boardView(){
 
      <div class="board-replies-head"><strong>${posts.length} ${posts.length===1?'Reply':'Replies'}</strong></div>
      <div class="board-replies">${posts.map(p=>{
-       const pImported=p.source==='google_groups',pSynced=p.source==='google_groups_sync';
-       return `<article class="board-reply ${pImported?'board-imported-post':pSynced?'board-synced-post':''}">
+       const pImported=p.source==='google_groups'&&isArchive,pCurrentGoogle=p.source==='google_groups'&&!isArchive,pSynced=p.source==='google_groups_sync';
+       return `<article class="board-reply ${pImported?'board-imported-post':(pCurrentGoogle||pSynced)?'board-synced-post':''}">
          <div class="board-avatar">${esc(boardInitials(p))}</div>
          <div>
-           <div class="board-post-author"><strong>${esc(boardAuthorName(p))}</strong><span>${fmtDate(p.created_at)}</span>${pImported?'<em>Imported</em>':pSynced?'<em class="sync">Synced</em>':''}</div>
+           <div class="board-post-author"><strong>${esc(boardAuthorName(p))}</strong><span>${fmtDate(p.created_at)}</span>${pImported?'<em>Imported</em>':pCurrentGoogle?'<em class="sync">Google Group</em>':pSynced?'<em class="sync">Synced</em>':''}</div>
            <div class="board-post-body">${esc(p.body||'').replaceAll('\n','<br>')}</div>
            ${boardArchiveAttachments(p)}
          </div>
        </article>`;
      }).join('')||'<div class="board-no-replies">No replies.</div>'}</div>
 
-     ${me&&!state.session?.spectator&&!isArchive&&['live','google_groups_sync'].includes(selected.source)&&selected.status!=='locked'?`<div class="board-reply-compose"><textarea id="board-reply-body" class="input board-textarea" maxlength="5000" placeholder="Reply as ${esc(state.chatDisplayName||me.name)}"></textarea><div><span>${selected.source==='google_groups_sync'?'This reply stays in GLSK and will not post back to Google Groups.':'Keep the discussion going.'}</span><button class="btn btn-primary" data-action="board-reply" data-thread-id="${selected.id}">Post Reply</button></div></div>`:
+     ${me&&!state.session?.spectator&&!isArchive&&['live','google_groups','google_groups_sync'].includes(selected.source)&&selected.status!=='locked'?`<div class="board-reply-compose"><textarea id="board-reply-body" class="input board-textarea" maxlength="5000" placeholder="Reply as ${esc(state.chatDisplayName||me.name)}"></textarea><div><span>${['google_groups','google_groups_sync'].includes(selected.source)?'This reply stays in GLSK and will not post back to Google Groups.':'Keep the discussion going.'}</span><button class="btn btn-primary" data-action="board-reply" data-thread-id="${selected.id}">Post Reply</button></div></div>`:
        imported?'<div class="board-locked-notice">Historical Google Groups discussion • preserved as read-only.</div>':
        selected.status==='locked'?'<div class="board-locked-notice">This discussion has been locked by the commissioner.</div>':''}
      `:'<div class="board-empty discussion-empty"><strong>Select a discussion</strong><span>Choose a thread from the left to read it.</span></div>'}
