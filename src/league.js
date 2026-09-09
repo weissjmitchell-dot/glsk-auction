@@ -161,6 +161,21 @@ async function disablePushNotifications(){
   }catch(e){toast(e.message,'error');}
   finally{state.pushBusy=false;render();}
 }
+function renderPreservingInputFocus(id,start=null,end=null){
+  render();
+  requestAnimationFrame(()=>{
+    const el=document.getElementById(id);
+    if(!el)return;
+    el.focus({preventScroll:true});
+    if(typeof el.setSelectionRange==='function'&&start!=null){
+      const len=String(el.value||'').length;
+      const s=Math.min(Number(start),len);
+      const e=Math.min(Number(end==null?start:end),len);
+      try{el.setSelectionRange(s,e);}catch{}
+    }
+  });
+}
+
 function setTab(tab){
   state.tab=tab||'home';
   const u=new URL(location.href);
@@ -1957,8 +1972,9 @@ function bind(){
  }));
  app.querySelector('#fa-search')?.addEventListener('input',e=>{
    state.waiverSearch=e.target.value;
+   const start=e.target.selectionStart,end=e.target.selectionEnd;
    clearTimeout(e.target._faTimer);
-   e.target._faTimer=setTimeout(render,120);
+   e.target._faTimer=setTimeout(()=>renderPreservingInputFocus('fa-search',start,end),120);
  });
  app.querySelector('#fa-position')?.addEventListener('change',e=>{state.waiverPosition=e.target.value;render();});
  app.querySelector('#fa-status')?.addEventListener('change',e=>{state.waiverStatus=e.target.value;render();});
@@ -2095,7 +2111,7 @@ function bind(){
  app.querySelectorAll('[data-select-matchup]').forEach(b=>b.addEventListener('click',()=>{state.selectedMatchupId=b.dataset.selectMatchup;render();}));
  app.querySelector('#schedule-team-select')?.addEventListener('change',e=>{state.scheduleTeamId=e.target.value;render();});
  app.querySelector('#board-mode')?.addEventListener('change',e=>{state.boardMode=e.target.value;state.boardSelectedThread=null;state.boardSearch='';render();});
- app.querySelector('#board-search')?.addEventListener('input',e=>{state.boardSearch=e.target.value;state.boardSelectedThread=null;clearTimeout(e.target._boardTimer);e.target._boardTimer=setTimeout(render,120);});
+ app.querySelector('#board-search')?.addEventListener('input',e=>{state.boardSearch=e.target.value;state.boardSelectedThread=null;const start=e.target.selectionStart,end=e.target.selectionEnd;clearTimeout(e.target._boardTimer);e.target._boardTimer=setTimeout(()=>renderPreservingInputFocus('board-search',start,end),120);});
  app.querySelectorAll('[data-board-thread]').forEach(b=>b.addEventListener('click',()=>{state.boardSelectedThread=b.dataset.boardThread;render();}));
  app.querySelector('[data-action="board-create-thread"]')?.addEventListener('click',async()=>{
    const t=myTeam(),title=document.getElementById('board-thread-title')?.value.trim(),body=document.getElementById('board-thread-body')?.value.trim();
@@ -2255,7 +2271,13 @@ function bind(){
  document.querySelectorAll('[data-cancel-trade]').forEach(b=>b.addEventListener('click',async()=>{const t=myTeam();if(!t||!confirm('Cancel this trade proposal?'))return;try{await rpc('league_owner_cancel_trade',{p_room_code:ROOM_CODE,p_team_id:t.id,p_pin:state.session.pin,p_trade_id:b.dataset.cancelTrade});toast('Trade cancelled.');await loadData();render();}catch(e){toast(e.message,'error');}}));
  document.querySelectorAll('[data-commish-trade]').forEach(b=>b.addEventListener('click',()=>{if(!confirm(`${b.dataset.commishTrade==='approve'?'Approve':'Deny'} this trade?`))return;commish('league_commish_trade_decision',{p_trade_id:b.dataset.tradeId,p_approve:b.dataset.commishTrade==='approve'},b.dataset.commishTrade==='approve'?'Trade approved and processed.':'Trade denied.');}));
  const updateTx=()=>{state.txFilters={team:document.getElementById('tx-team')?.value||'',type:document.getElementById('tx-type')?.value||'',search:document.getElementById('tx-search')?.value||''};render();};
- app.querySelector('#tx-team')?.addEventListener('change',updateTx);app.querySelector('#tx-type')?.addEventListener('change',updateTx);app.querySelector('#tx-search')?.addEventListener('change',updateTx);
+ app.querySelector('#tx-team')?.addEventListener('change',updateTx);app.querySelector('#tx-type')?.addEventListener('change',updateTx);
+ app.querySelector('#tx-search')?.addEventListener('input',e=>{
+   state.txFilters={team:document.getElementById('tx-team')?.value||'',type:document.getElementById('tx-type')?.value||'',search:e.target.value||''};
+   const start=e.target.selectionStart,end=e.target.selectionEnd;
+   clearTimeout(e.target._txTimer);
+   e.target._txTimer=setTimeout(()=>renderPreservingInputFocus('tx-search',start,end),120);
+ });
  app.querySelector('[data-action="save-correction"]')?.addEventListener('click',()=>{const desc=document.getElementById('corr-desc')?.value.trim();if(!desc)return toast('Enter a correction description.','error');commish('league_commish_correction',{p_team_id:document.getElementById('corr-team')?.value||null,p_bid_delta:Number(document.getElementById('corr-bids')?.value||0),p_description:desc,p_reverse_transaction_id:document.getElementById('corr-reverse')?.value||null},'Correction recorded.');});
 }
 

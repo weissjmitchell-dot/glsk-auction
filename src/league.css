@@ -3791,3 +3791,6 @@
 .board-reply-compose span{
   line-height:1.35;
 }
+
+
+/* GLSK v7.2.0 — search inputs retain focus/caret during live filtering */
