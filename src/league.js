@@ -655,6 +655,7 @@ function boardView(){
  const posts=selected?boardPostsFor(selected.id):[];
  const authorName=selected?boardAuthorName(selected):'';
  const imported=selected?.source==='google_groups';
+ const synced=selected?.source==='google_groups_sync';
 
  const boardTitle=isArchive?`${archiveYear} Google Groups Archive`:'Current Message Board';
  const boardSub=isArchive
@@ -694,9 +695,9 @@ function boardView(){
      </div>
      <div class="board-thread-items">${threads.length?threads.map(t=>{
        const active=selected&&String(selected.id)===String(t.id);
-       const isImport=t.source==='google_groups';
+       const isImport=t.source==='google_groups',isSync=t.source==='google_groups_sync';
        return `<button class="board-thread-item ${active?'active':''}" data-board-thread="${t.id}">
-         <div class="board-thread-title-row"><strong>${t.pinned?'📌 ':''}${esc(t.title)}</strong>${isImport?'<span class="board-import-chip">ARCHIVE</span>':t.status==='locked'?'<span class="board-status-chip">LOCKED</span>':''}</div>
+         <div class="board-thread-title-row"><strong>${t.pinned?'📌 ':''}${esc(t.title)}</strong>${isImport?'<span class="board-import-chip">ARCHIVE</span>':isSync?'<span class="board-sync-chip">GROUP SYNC</span>':t.status==='locked'?'<span class="board-status-chip">LOCKED</span>':''}</div>
          <div class="board-thread-preview">${esc((t.body||'').length>115?t.body.slice(0,115)+'…':t.body||'')}</div>
          <div class="board-thread-meta"><span>${esc(boardAuthorName(t))}</span><span>${Number(t.reply_count||0)} repl${Number(t.reply_count||0)===1?'y':'ies'}</span><span>${fmtDate(t.last_activity_at)}</span></div>
        </button>`;
@@ -706,9 +707,9 @@ function boardView(){
    <section class="card board-discussion">
      ${selected?`<div class="board-discussion-head">
        <div>
-         <div class="board-thread-flags">${selected.pinned?'<span>PINNED</span>':''}${imported?'<span class="google">GOOGLE GROUPS ARCHIVE</span>':selected.status==='locked'?'<span>LOCKED</span>':''}</div>
+         <div class="board-thread-flags">${selected.pinned?'<span>PINNED</span>':''}${imported?'<span class="google">GOOGLE GROUPS ARCHIVE</span>':synced?'<span class="sync">GOOGLE GROUP SYNC</span>':selected.status==='locked'?'<span>LOCKED</span>':''}</div>
          <h2>${esc(selected.title)}</h2>
-         <div class="board-discussion-meta">Started by <strong>${esc(authorName)}</strong> • ${fmtDate(selected.created_at)}${imported?' • Original Google Groups timestamp':''}</div>
+         <div class="board-discussion-meta">Started by <strong>${esc(authorName)}</strong> • ${fmtDate(selected.created_at)}${imported?' • Original Google Groups timestamp':synced?' • Synced from Google Groups':''}</div>
        </div>
        ${isCommish()&&!imported?`<div class="board-mod-actions">
          <button class="btn btn-sm btn-outline" data-board-action="${selected.pinned?'unpin':'pin'}" data-thread-id="${selected.id}">${selected.pinned?'Unpin':'Pin'}</button>
@@ -717,10 +718,10 @@ function boardView(){
        </div>`:''}
      </div>
 
-     <article class="board-root-post ${imported?'board-imported-post':''}">
+     <article class="board-root-post ${imported?'board-imported-post':synced?'board-synced-post':''}">
        <div class="board-avatar">${esc(boardInitials(selected))}</div>
        <div>
-         <div class="board-post-author"><strong>${esc(authorName)}</strong><span>${fmtDate(selected.created_at)}</span>${imported?'<em>Imported</em>':''}</div>
+         <div class="board-post-author"><strong>${esc(authorName)}</strong><span>${fmtDate(selected.created_at)}</span>${imported?'<em>Imported</em>':synced?'<em class="sync">Synced</em>':''}</div>
          <div class="board-post-body">${esc(selected.body||'').replaceAll('\n','<br>')}</div>
          ${boardArchiveAttachments(selected)}
        </div>
@@ -728,11 +729,11 @@ function boardView(){
 
      <div class="board-replies-head"><strong>${posts.length} ${posts.length===1?'Reply':'Replies'}</strong></div>
      <div class="board-replies">${posts.map(p=>{
-       const pImported=p.source==='google_groups';
-       return `<article class="board-reply ${pImported?'board-imported-post':''}">
+       const pImported=p.source==='google_groups',pSynced=p.source==='google_groups_sync';
+       return `<article class="board-reply ${pImported?'board-imported-post':pSynced?'board-synced-post':''}">
          <div class="board-avatar">${esc(boardInitials(p))}</div>
          <div>
-           <div class="board-post-author"><strong>${esc(boardAuthorName(p))}</strong><span>${fmtDate(p.created_at)}</span>${pImported?'<em>Imported</em>':''}</div>
+           <div class="board-post-author"><strong>${esc(boardAuthorName(p))}</strong><span>${fmtDate(p.created_at)}</span>${pImported?'<em>Imported</em>':pSynced?'<em class="sync">Synced</em>':''}</div>
            <div class="board-post-body">${esc(p.body||'').replaceAll('\n','<br>')}</div>
            ${boardArchiveAttachments(p)}
          </div>

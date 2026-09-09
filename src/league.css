@@ -3516,3 +3516,32 @@
     grid-template-columns:minmax(0,1fr) 132px;
   }
 }
+
+
+/* GLSK v7.1.4 — current Google Groups one-way sync */
+.board-sync-chip{
+  display:inline-flex;
+  align-items:center;
+  border-radius:999px;
+  padding:3px 6px;
+  background:#e8f7ef;
+  color:#256744;
+  border:1px solid #bee2cc;
+  font-size:7px;
+  font-weight:1000;
+  text-transform:uppercase;
+  letter-spacing:.045em;
+  white-space:nowrap;
+}
+.board-thread-flags .sync{
+  background:#e8f7ef;
+  color:#256744;
+  border-color:#bee2cc;
+}
+.board-post-author em.sync{
+  background:#e8f7ef;
+  color:#256744;
+}
+.board-synced-post{
+  background:linear-gradient(90deg,rgba(231,248,238,.35),transparent 42%);
+}
