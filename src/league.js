@@ -4,6 +4,39 @@ import { supabase, configured } from './supabase.js';
 import { ROOM_CODE, LEAGUE_NAME } from './config.js';
 import { requireOwnerAccount, legacySessionFromAccount, signOutOwner, sendPasswordResetEmail, promptOwnerPush } from './auth.js';
 
+// Keep the interaction styles with the controls so a stale stylesheet cannot
+// expose the transparent native selectors as duplicate dropdowns.
+const lineupInteractionStyle = document.createElement('style');
+lineupInteractionStyle.id = 'glsk-lineup-interactions-v724';
+lineupInteractionStyle.textContent = `
+.lineup-card-data .lineup-position-target,
+.lineup-card-data .lineup-bench-target { position: relative; }
+.lineup-card-data .lineup-hit-select {
+  position: absolute !important;
+  inset: 0 !important;
+  width: 100% !important;
+  height: 100% !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  opacity: 0 !important;
+  cursor: pointer;
+  z-index: 1;
+  font-size: 16px;
+}
+.lineup-card-data .lineup-hit-select:disabled { cursor: default; }
+.lineup-card-data .lineup-position-target:focus-within,
+.lineup-card-data .lineup-bench-target:focus-within {
+  outline: 2px solid #1266c2;
+  outline-offset: 2px;
+  border-radius: 5px;
+}
+.lineup-card-data .lineup-bench-target:has(select:not(:disabled)):hover strong {
+  text-decoration: underline;
+}
+`;
+document.getElementById(lineupInteractionStyle.id)?.remove();
+document.head.appendChild(lineupInteractionStyle);
+
 const app = document.querySelector('#app');
 const STORAGE_KEY = `glsk-auction-session-${ROOM_CODE}`;
 const COMMISH_TEAM_NAME = 'Weiss Tea & Lemonade';
@@ -1453,10 +1486,10 @@ function lineupView(){
    const destinations=isBench?benchStartingSlots(rp.player_key,t.id,week):[];
    const moveSelect=isBench?`<select class="lineup-hit-select lineup-bench-move" data-bench-player="${esc(rp.player_key)}" aria-label="Move ${esc(rp.player_name)} to a starting position" ${!destinations.length?'disabled':''}><option value="">${locked?'Player locked':!editable?'Lineup read-only':!destinations.length?'No eligible unlocked starting slots':'Move to starting position…'}</option>${destinations.map(dest=>{const occupant=lineup.find(l=>l.slot_code===dest.slot_code);const name=occupant?rosterFor(t.id).find(r=>r.player_key===occupant.player_key)?.player_name:null;return `<option value="${esc(dest.slot_code)}">${esc(dest.label)} (${esc(dest.slot_code)}) — ${name?'Replace '+esc(name):'Empty'}</option>`;}).join('')}</select>`:'';
    const playerCell=isBench
-     ?`<div class="lineup-player-static lineup-bench-target"><strong>${esc(rp.player_name)}</strong><span>${esc(rp.nfl_team||'')} • ${esc(rp.position||'')}${locked?' • Locked':destinations.length?' • Move ▾':' • No available move'}</span>${moveSelect}</div>`
+     ?`<div class="lineup-player-static lineup-bench-target"><strong>${esc(rp.player_name)}</strong><span>${esc(rp.nfl_team||'')} • ${esc(rp.position||'')}${locked?' • Locked':''}</span>${moveSelect}</div>`
      :`<select class="lineup-player-select lineup-select" aria-label="Choose player for ${esc(slot.label)} (${esc(slot.slot_code)})" data-slot-code="${esc(slot.slot_code)}" ${(!editable||locked)?'disabled':''}>${optionHtml}</select><div class="lineup-player-sub">${rp?`${esc(rp.nfl_team||'')} • ${esc(rp.position||'')}${locked?' • Locked':''}`:'Open starter'}</div>`;
    return `<div class="lineup-data-row ${isBench?'bench-row':'starter-row'} ${locked?'is-locked':''}">
-     <div class="lineup-yahoo-pos lineup-position-target"><span class="${isBench?'yahoo-pos yahoo-pos-BN':posClass(slot.label)}" aria-hidden="${!isBench}">${esc(isBench?'BN':slot.label)}${!isBench&&!selectDisabled?' ▾':''}</span>${!isBench?`<select class="lineup-hit-select lineup-position-select" data-position-slot="${esc(slot.slot_code)}" aria-label="Change ${esc(slot.label)} (${esc(slot.slot_code)}) player" ${selectDisabled?'disabled':''}>${optionHtml}</select>`:''}</div>
+     <div class="lineup-yahoo-pos lineup-position-target"><span class="${isBench?'yahoo-pos yahoo-pos-BN':posClass(slot.label)}" aria-hidden="${!isBench}">${esc(isBench?'BN':slot.label)}</span>${!isBench?`<select class="lineup-hit-select lineup-position-select" data-position-slot="${esc(slot.slot_code)}" aria-label="Change ${esc(slot.label)} (${esc(slot.slot_code)}) player" ${selectDisabled?'disabled':''}>${optionHtml}</select>`:''}</div>
      <div class="lineup-yahoo-player">${playerCell}</div>
      <div class="lineup-data-game"><strong>${esc(game.main)}</strong><small>${esc(game.sub)}</small></div>
      <div class="lineup-num main-points">${fmtStat(dataTab==='stats'?d?.fantasy_points:d?.projected_fantasy_points,2)}</div>
