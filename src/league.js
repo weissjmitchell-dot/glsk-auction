@@ -1,3 +1,4 @@
+import {bidBankView,historicalBidView} from './bid-bank.js';
 import './autocomplete.js';
 import {rolloverView,bindRollover} from './season-rollover.js';
 import './player-profile.js';
@@ -312,6 +313,10 @@ function setTab(tab){
   if(state.tab==='chat')setTimeout(()=>markChatRead(),60);
 }
 
+async function loadBidBank(){
+ state.bidBank=null;
+ try{const {data,error}=await supabase.rpc('league_get_bid_bank',{p_room_code:ROOM_CODE});if(error)throw error;state.bidBank=data;}catch(e){console.warn('Bid bank load',e.message);}
+}
 async function loadFinance(){
   state.finance=[];
   if(!state.session||state.session.spectator)return;
@@ -487,7 +492,7 @@ async function loadData(){
   if(state.boardSelectedThread&&!state.boardThreads.some(t=>String(t.id)===String(state.boardSelectedThread)))state.boardSelectedThread=null;
   state.notificationPlayers=notificationPlayers.slice().sort((a,b)=>String(a.name).localeCompare(String(b.name)));
   state.playerStatusUpdates=playerStatusUpdates.filter(x=>x.season_id===sid);
-  await loadFinance();
+  await Promise.all([loadFinance(),loadBidBank()]);
   await loadReconciliation();
   await loadNotifications();
   await loadWaiverCenter();
@@ -622,7 +627,7 @@ function navGroupForTab(tab){
   if(['communications','chat','board','notifications'].includes(tab))return 'communications';
   if(['leaguehub','teams','team','matchups','schedule','standings','transactions','history'].includes(tab))return 'leaguehub';
   if(['settingshub','commissioner','reconcile','rules','deadlines','finances'].includes(tab))return 'settingshub';
-  if(tab==='draft')return 'draft';
+  if(['draft','biddollars','bidbank','bidhistory'].includes(tab))return 'draft';
   if(tab==='home')return 'home';
   return '';
 }
@@ -721,10 +726,15 @@ function commissionerHubView(){
  return `${heading}<div class="row gap-8 wrap" style="margin-bottom:20px"><button class="btn btn-outline" data-commissioner-section="">‹ All Commissioner Tools</button><label>Section <select class="input" id="commissioner-section">${commissionerSections.map(([key,title])=>`<option value="${key}" ${key===section[0]?'selected':''}>${esc(title)}</option>`).join('')}</select></label></div>${views[section[0]]()}`;
 }
 
-function draftHubView(){
+function draftRoomsView(){
  if(state.draftPreparation)return `${pageHeading('Draft','Next-season draft preparation.','League Drafts')}<section class="card card-pad"><h2>Previous draft rooms archived</h2><p>The new season is in setup. Its player pools and draft rooms must be prepared before drafting resumes. The previous draft records have been preserved.</p></section>`;
  return `${pageHeading('Draft','Auction, supplemental and roster-fill draft rooms.','League Drafts')}<section class="office-section"><div class="office-section-head"><div><h2>Draft Rooms</h2><div class="section-caption">Choose a draft phase to open its room.</div></div></div><div class="draft-links"><a class="draft-link" href="/"><strong>⚡</strong><span>Auction</span><small>Top 40</small></a><a class="draft-link" href="/supplemental"><strong>↔</strong><span>Supplemental</span><small>2-round snake</small></a><a class="draft-link" href="/phase3"><strong>⇅</strong><span>Snake</span><small>Roster fill to 18</small></a></div></section>`;
 }
+
+function draftHubView(){return draftRoomsView()+`<div class="hub-grid" style="margin-top:20px">${hubCard('biddollars','$','Bid Dollars','Bid bank total and historical data.')}</div>`;}
+function bidDollarsView(){return `${pageHeading('Bid Dollars','League bid bank and historical accounting.','Draft')}<div class="hub-grid">${hubCard('bidbank','$','Bid Bank total','Starting pool, spending, penalties and remaining balance.')}${hubCard('bidhistory','↗','Historical Data','Auction stats, bid pool size by year and beginning bid trend.')}</div>`;}
+function bidBankPage(){return `${pageHeading('Bid Bank total','Starting pool less recorded spending and penalties.','Draft → Bid Dollars')}<button class="btn btn-outline" data-tab="biddollars" style="margin-bottom:16px">‹ Bid Dollars</button>${bidBankView(state.bidBank)}`;}
+function bidHistoryPage(){return `${pageHeading('Historical Data','Pre-auction workbook history.','Draft → Bid Dollars')}<button class="btn btn-outline" data-tab="biddollars" style="margin-bottom:16px">‹ Bid Dollars</button>${historicalBidView(state.bidHistoryTab||'auction')}`;}
 
 function dashboard(){
  const rosterLimit=state.season?.roster_limit||18,full=state.teams.filter(t=>activeRosterFor(t.id).length>=rosterLimit).length,totalBids=state.teams.reduce((s,t)=>s+Number(t.remaining_budget||0),0),open=state.deadlines.filter(d=>d.status==='open').length;
@@ -2161,12 +2171,13 @@ function accountView(){
 }
 
 function setupError(){return `<div class="login-wrap"><div class="login-card"><div class="login-head"><h1>League Office Ready</h1><p>Database connection is missing.</p></div></div></div>`;}
-function render(){if(!configured){app.innerHTML=setupError();return;}if(state.loading){app.innerHTML='<div class="login-wrap"><div style="color:white;font-weight:900">Loading League Office…</div></div>';return;}if(!state.session){app.innerHTML=loginView();bind();return;}if(state.tab==='reconcile'){state.commissionerSection='reconcile';state.tab='commissioner';}let content=state.tab==='team'?teamPageView():state.tab==='draft'?draftHubView():state.tab==='teamhub'?teamHubView():state.tab==='communications'?communicationsHubView():state.tab==='leaguehub'?leagueHubView():state.tab==='settingshub'?settingsHubView():state.tab==='commissioner'?commissionerHubView():state.tab==='lineup'?lineupView():state.tab==='freeagents'?freeAgencyView():state.tab==='chat'?chatView():state.tab==='matchups'?matchupsView():state.tab==='schedule'?scheduleView():state.tab==='standings'?standingsView():state.tab==='board'?boardView():state.tab==='notifications'?notificationView():state.tab==='teams'?teamsView():state.tab==='contracts'?contractsView():state.tab==='trades'?tradesView():state.tab==='transactions'?transactionsView():state.tab==='history'?historyView():state.tab==='rules'?rulesView():state.tab==='deadlines'?deadlinesView():state.tab==='finances'?financesView():state.tab==='account'?accountView():state.tab==='reconcile'?reconcileView():dashboard();app.innerHTML=`<div class="office-shell">${topBar()}<main class="main">${content}</main>${bottomNav()}</div>`;bind();}
+function render(){if(!configured){app.innerHTML=setupError();return;}if(state.loading){app.innerHTML='<div class="login-wrap"><div style="color:white;font-weight:900">Loading League Office…</div></div>';return;}if(!state.session){app.innerHTML=loginView();bind();return;}if(state.tab==='reconcile'){state.commissionerSection='reconcile';state.tab='commissioner';}let content=state.tab==='team'?teamPageView():state.tab==='biddollars'?bidDollarsView():state.tab==='bidbank'?bidBankPage():state.tab==='bidhistory'?bidHistoryPage():state.tab==='draft'?draftHubView():state.tab==='teamhub'?teamHubView():state.tab==='communications'?communicationsHubView():state.tab==='leaguehub'?leagueHubView():state.tab==='settingshub'?settingsHubView():state.tab==='commissioner'?commissionerHubView():state.tab==='lineup'?lineupView():state.tab==='freeagents'?freeAgencyView():state.tab==='chat'?chatView():state.tab==='matchups'?matchupsView():state.tab==='schedule'?scheduleView():state.tab==='standings'?standingsView():state.tab==='board'?boardView():state.tab==='notifications'?notificationView():state.tab==='teams'?teamsView():state.tab==='contracts'?contractsView():state.tab==='trades'?tradesView():state.tab==='transactions'?transactionsView():state.tab==='history'?historyView():state.tab==='rules'?rulesView():state.tab==='deadlines'?deadlinesView():state.tab==='finances'?financesView():state.tab==='account'?accountView():state.tab==='reconcile'?reconcileView():dashboard();app.innerHTML=`<div class="office-shell">${topBar()}<main class="main">${content}</main>${bottomNav()}</div>`;bind();}
 
 async function logout(){const t=myTeam();await signOutOwner({roomCode:ROOM_CODE,teamId:t?.id||null,legacyStorageKey:STORAGE_KEY});location.reload();}
 async function commish(name,args={},msg='Saved.'){try{await rpc(name,{p_room_code:ROOM_CODE,p_commish_pin:state.session.commishPin,...args});toast(msg);await loadData();render();}catch(e){toast(e.message,'error');}}
 
 function bind(){
+ app.querySelectorAll("[data-bid-history]").forEach(b=>b.addEventListener("click",()=>{state.bidHistoryTab=b.dataset.bidHistory;render();}));
  bindRollover({state,rpc,refresh:async()=>{await loadData();render();}});
  app.querySelectorAll('[data-open-team]').forEach(link=>link.addEventListener('click',event=>{
    if(event.button!==0||event.ctrlKey||event.metaKey||event.shiftKey||event.altKey)return;
