@@ -3567,3 +3567,221 @@
     min-width:48px;
   }
 }
+
+
+/* ============================================================
+   GLSK v7.1.6 — consolidated League Office navigation
+   ============================================================ */
+.office-bottom-nav.consolidated-nav .bottom-nav-inner{
+  grid-template-columns:repeat(5,minmax(0,1fr));
+  max-width:720px;
+}
+.office-bottom-nav.consolidated-nav .nav-btn{
+  font-size:10px;
+  min-width:0;
+}
+.office-bottom-nav.consolidated-nav .nav-btn span{
+  font-size:19px;
+}
+.nav-hub-summary{
+  display:grid;
+  grid-template-columns:repeat(3,minmax(0,1fr));
+  gap:1px;
+  margin-bottom:14px;
+  overflow:hidden;
+}
+.nav-hub-summary>div{
+  padding:14px 15px;
+  background:#fff;
+  border-right:1px solid var(--line);
+}
+.nav-hub-summary>div:last-child{
+  border-right:0;
+}
+.nav-hub-summary span,
+.nav-hub-summary strong{
+  display:block;
+}
+.nav-hub-summary span{
+  color:#7a8799;
+  font-size:9px;
+  font-weight:1000;
+  text-transform:uppercase;
+  letter-spacing:.06em;
+}
+.nav-hub-summary strong{
+  margin-top:4px;
+  color:#203650;
+  font-size:17px;
+}
+.nav-hub-grid{
+  display:grid;
+  grid-template-columns:repeat(2,minmax(0,1fr));
+  gap:12px;
+}
+.nav-hub-grid-three{
+  grid-template-columns:repeat(3,minmax(0,1fr));
+}
+.nav-hub-card{
+  min-height:108px;
+  border:1px solid var(--line);
+  border-radius:14px;
+  background:#fff;
+  display:grid;
+  grid-template-columns:44px minmax(0,1fr) auto 20px;
+  gap:11px;
+  align-items:center;
+  padding:15px;
+  text-align:left;
+  box-shadow:0 2px 8px rgba(24,39,62,.04);
+}
+.nav-hub-card:hover{
+  border-color:#c9b31c;
+  background:#fffdf1;
+  transform:translateY(-1px);
+}
+.nav-hub-icon{
+  width:44px;
+  height:44px;
+  border-radius:12px;
+  display:grid;
+  place-items:center;
+  background:#1f3551;
+  color:#fff;
+  font-size:20px;
+  font-weight:1000;
+}
+.nav-hub-copy{
+  min-width:0;
+}
+.nav-hub-copy strong,
+.nav-hub-copy span{
+  display:block;
+}
+.nav-hub-copy strong{
+  color:#203650;
+  font-size:15px;
+  font-weight:1000;
+}
+.nav-hub-copy span{
+  margin-top:4px;
+  color:#748195;
+  font-size:10px;
+  line-height:1.4;
+  font-weight:750;
+}
+.nav-hub-badge{
+  align-self:start;
+  border-radius:999px;
+  padding:4px 7px;
+  background:#fff2a8;
+  color:#675400;
+  border:1px solid #e1ca59;
+  font-size:8px;
+  font-weight:1000;
+  white-space:nowrap;
+}
+.nav-hub-arrow{
+  color:#8995a6;
+  font-size:25px;
+  font-weight:700;
+}
+.nav-hub-commissioner{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:16px;
+  padding:15px 16px;
+  margin-bottom:14px;
+  border:1px solid #dbc653;
+  background:linear-gradient(90deg,#fff8ce,#fff);
+}
+.nav-hub-commissioner span,
+.nav-hub-commissioner strong{
+  display:block;
+}
+.nav-hub-commissioner span{
+  color:#715e00;
+  font-size:9px;
+  font-weight:1000;
+  text-transform:uppercase;
+  letter-spacing:.08em;
+}
+.nav-hub-commissioner strong{
+  margin-top:3px;
+  color:#233851;
+  font-size:16px;
+}
+.nav-hub-commissioner p{
+  margin:4px 0 0;
+  color:#68758a;
+  font-size:10px;
+  line-height:1.4;
+}
+@media(max-width:760px){
+  .office-bottom-nav.consolidated-nav .bottom-nav-inner{
+    grid-template-columns:repeat(5,minmax(0,1fr));
+  }
+  .office-bottom-nav.consolidated-nav .nav-btn{
+    font-size:8px;
+  }
+  .office-bottom-nav.consolidated-nav .nav-btn span{
+    font-size:17px;
+  }
+  .nav-hub-grid,
+  .nav-hub-grid-three{
+    grid-template-columns:1fr;
+    gap:9px;
+  }
+  .nav-hub-card{
+    min-height:86px;
+    grid-template-columns:40px minmax(0,1fr) auto 18px;
+    padding:12px;
+  }
+  .nav-hub-icon{
+    width:40px;
+    height:40px;
+    font-size:18px;
+  }
+  .nav-hub-summary{
+    grid-template-columns:1fr 1fr;
+  }
+  .nav-hub-summary>div{
+    border-bottom:1px solid var(--line);
+  }
+  .nav-hub-summary>div:first-child{
+    grid-column:1/-1;
+    border-right:0;
+  }
+  .nav-hub-commissioner{
+    align-items:flex-start;
+    flex-direction:column;
+  }
+}
+
+
+/* ============================================================
+   GLSK v7.1.7 — navigation reorganization
+   Home | Team | Free Agents | Communication | League | Settings
+   ============================================================ */
+.office-bottom-nav.consolidated-nav .bottom-nav-inner{
+  grid-template-columns:repeat(6,minmax(0,1fr));
+  max-width:860px;
+}
+.office-bottom-nav.consolidated-nav .nav-btn{
+  font-size:9px;
+}
+@media(max-width:620px){
+  .office-bottom-nav.consolidated-nav .bottom-nav-inner{
+    grid-template-columns:repeat(6,minmax(0,1fr));
+    max-width:none;
+  }
+  .office-bottom-nav.consolidated-nav .nav-btn{
+    font-size:7px;
+    padding-left:2px;
+    padding-right:2px;
+  }
+  .office-bottom-nav.consolidated-nav .nav-btn span{
+    font-size:16px;
+  }
+}

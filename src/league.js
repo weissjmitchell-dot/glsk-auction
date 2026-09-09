@@ -472,17 +472,91 @@ function topBar(){
    </div>
  </div></header>`;
 }
+function navGroupForTab(tab){
+  if(['teamhub','lineup','contracts','trades'].includes(tab))return 'teamhub';
+  if(['freeagents'].includes(tab))return 'freeagents';
+  if(['communications','chat','board','notifications'].includes(tab))return 'communications';
+  if(['leaguehub','teams','matchups','schedule','standings','transactions','history','reconcile'].includes(tab))return 'leaguehub';
+  if(['settingshub','rules','deadlines','finances'].includes(tab))return 'settingshub';
+  if(tab==='home')return 'home';
+  return '';
+}
 function bottomNav(){
- const items=[['home','⌂','Home'],['lineup','☑','Lineup'],['freeagents','+','Free Agents'],['chat','💬','Chat'],['matchups','VS','Matchups'],['schedule','◫','Schedule'],['standings','≡','Standings'],['board','✎','Board'],['teams','♟','Teams'],['contracts','▤','Contracts'],['trades','⇄','Trades'],['transactions','☷','Transactions'],['history','★','History'],['rules','⚙','Rules'],['deadlines','◷','Deadlines'],['finances','$','Finances'],['account','●','Account']];
- if(isCommish())items.push(['reconcile','✓','Reconcile']);
- return `<nav class="bottom-nav office-bottom-nav"><div class="bottom-nav-inner">${items.map(([t,i,l])=>`<button class="nav-btn ${state.tab===t?'active':''}" data-tab="${t}"><span class="nav-icon-wrap">${i}${t==='chat'&&state.chatUnread?`<b class="chat-nav-badge">${state.chatUnread>99?'99+':state.chatUnread}</b>`:''}</span>${l}</button>`).join('')}</div></nav>`;
+ const active=navGroupForTab(state.tab);
+ const items=[
+   ['home','⌂','Home'],
+   ['teamhub','♟','Team'],
+   ['freeagents','+','Free Agents'],
+   ['communications','💬','Communication'],
+   ['leaguehub','☷','League'],
+   ['settingshub','⚙','Settings']
+ ];
+ return `<nav class="bottom-nav office-bottom-nav consolidated-nav"><div class="bottom-nav-inner">${items.map(([t,i,l])=>`<button class="nav-btn ${active===t?'active':''}" data-tab="${t}"><span class="nav-icon-wrap">${i}${t==='communications'&&state.chatUnread?`<b class="chat-nav-badge">${state.chatUnread>99?'99+':state.chatUnread}</b>`:''}</span>${l}</button>`).join('')}</div></nav>`;
+}
+
+function hubCard(tab,icon,title,body,badge=''){
+  return `<button class="nav-hub-card" data-tab="${tab}">
+    <div class="nav-hub-icon">${icon}</div>
+    <div class="nav-hub-copy"><strong>${esc(title)}</strong><span>${esc(body)}</span></div>
+    ${badge?`<b class="nav-hub-badge">${esc(badge)}</b>`:''}
+    <div class="nav-hub-arrow">›</div>
+  </button>`;
+}
+function teamHubView(){
+  const me=myTeam();
+  return `${pageHeading('My Team','Everything directly related to managing your franchise.','Team Management')}
+    ${me?`<section class="card nav-hub-summary">
+      <div><span>${esc(me.name)}</span><strong>${activeRosterFor(me.id).length}/${state.season?.roster_limit||18} active${irRosterFor(me.id).length?` + ${irRosterFor(me.id).length} IR`:''}</strong></div>
+      <div><span>Bid Dollars</span><strong>${bidMoney(me.remaining_budget)}</strong></div>
+      <div><span>Contract Cap</span><strong>${capUsed(me.id)}/100</strong></div>
+    </section>`:''}
+    <section class="nav-hub-grid nav-hub-grid-three">
+      ${hubCard('lineup','☑','Lineup','Set starters, bench and weekly lineup decisions.')}
+      ${hubCard('contracts','▤','Contracts','Contract years, salary-cap usage and contract actions.')}
+      ${hubCard('trades','⇄','Trades','Build, send and review player, pick and bid-dollar trades.')}
+    </section>`;
+}
+function communicationsHubView(){
+  const boardCurrent=state.boardThreads.filter(t=>t.source!=='google_groups'&&Number(t.season_year||state.season?.season_year||2026)===Number(state.season?.season_year||2026)).length;
+  const unread=Number(state.notificationUnread||0);
+  return `${pageHeading('Communication','League Chat, Message Board and alerts in one place.','League Community')}
+    <section class="nav-hub-grid nav-hub-grid-three">
+      ${hubCard('chat','💬','League Chat','Fast, realtime group conversation.',state.chatUnread?`${state.chatUnread} unread`:'')}
+      ${hubCard('board','✎','Message Board','Longer-form discussions plus the Google Groups archive.',boardCurrent?`${boardCurrent} current`:'')}
+      ${hubCard('notifications','♢','Notifications','League alerts, player watches and push preferences.',unread?`${unread} unread`:'')}
+    </section>`;
+}
+function leagueHubView(){
+  const week=Number(state.gameSettings?.current_week||1);
+  return `${pageHeading('League','League-wide competition, rosters, activity and history.','League Information')}
+    ${isCommish()?`<section class="card nav-hub-commissioner">
+      <div><span>Commissioner</span><strong>Weekly Reconciliation</strong><p>Compare GLSK matchup data with Yahoo and finalize weekly results.</p></div>
+      <button class="btn btn-primary" data-tab="reconcile">Open Reconcile</button>
+    </section>`:''}
+    <section class="nav-hub-grid">
+      ${hubCard('teams','♟','Teams & Rosters','View every franchise roster, IR, bids and ownership.')}
+      ${hubCard('matchups','VS','Matchups',`Week ${week} scores, projections and starting lineups.`)}
+      ${hubCard('schedule','◫','Schedule','Full regular-season schedule and team-by-team results.')}
+      ${hubCard('standings','≡','Standings','League records, rankings and playoff positioning.')}
+      ${hubCard('transactions','☷','Transactions','Adds, drops, trades, contracts, corrections and draft activity.')}
+      ${hubCard('history','★','History','Champions, season records and franchise accomplishments.')}
+    </section>`;
+}
+function settingsHubView(){
+  const open=state.deadlines.filter(d=>d.status==='open').length;
+  return `${pageHeading('Settings','League rules, deadlines and financial administration.','League Administration')}
+    <section class="nav-hub-grid nav-hub-grid-three">
+      ${hubCard('rules','⚙','Rules','Constitution, league settings and season configuration.')}
+      ${hubCard('deadlines','◷','Deadlines','Contract, extension and commissioner deadlines.',open?`${open} open`:'')}
+      ${hubCard('finances','$','Finances','League financial ledger and bid-dollar accounting.')}
+    </section>`;
 }
 
 function dashboard(){
  const rosterLimit=state.season?.roster_limit||18,full=state.teams.filter(t=>activeRosterFor(t.id).length>=rosterLimit).length,totalBids=state.teams.reduce((s,t)=>s+Number(t.remaining_budget||0),0),open=state.deadlines.filter(d=>d.status==='open').length;
  const next=state.deadlines.find(d=>d.status==='open'&&new Date(d.due_at)>new Date());
  const me=myTeam();
- return `<section class="office-hero office-home-hero"><div><div class="office-kicker">${state.season?.season_year||2026} League Year</div><h1>League Office</h1><p>One home for rosters, free agency, League Chat, contracts, transactions, rules, deadlines, finances and league history.</p></div>${me?`<div class="home-team-summary"><span>Your Team</span><strong>${esc(me.name)}</strong><div>${activeRosterFor(me.id).length}/${rosterLimit} roster${irRosterFor(me.id).length?` + ${irRosterFor(me.id).length} IR`:''} • ${bidMoney(me.remaining_budget)} bids • ${capUsed(me.id)}/100 cap</div></div>`:''}</section>
+ return `<section class="office-hero office-home-hero"><div><div class="office-kicker">${state.season?.season_year||2026} League Year</div><h1>League Office</h1><p>Your GLSK home base. Team, Free Agents, Communication, League and Settings keep the League Office organized without overcrowding the task bar.</p></div>${me?`<div class="home-team-summary"><span>Your Team</span><strong>${esc(me.name)}</strong><div>${activeRosterFor(me.id).length}/${rosterLimit} roster${irRosterFor(me.id).length?` + ${irRosterFor(me.id).length} IR`:''} • ${bidMoney(me.remaining_budget)} bids • ${capUsed(me.id)}/100 cap</div></div>`:''}</section>
  <div class="kpi-grid office-kpi-grid"><div class="card kpi"><div class="kpi-label">Full Rosters</div><div class="kpi-value">${full}<span class="kpi-denom">/12</span></div><div class="kpi-sub">${rosterLimit}-player limit</div></div><div class="card kpi"><div class="kpi-label">Bid Dollars</div><div class="kpi-value">${totalBids}</div><div class="kpi-sub">remaining league-wide</div></div><div class="card kpi"><div class="kpi-label">Contracts</div><div class="kpi-value">${state.contracts.filter(c=>c.status==='active').length}</div><div class="kpi-sub">active contracts</div></div><div class="card kpi"><div class="kpi-label">Open Deadlines</div><div class="kpi-value">${open}</div><div class="kpi-sub">need attention</div></div></div>
  ${next?`<div class="owner-banner office-deadline-banner"><div><span class="banner-label">NEXT DEADLINE</span><strong>${esc(next.title)}</strong></div><div>${fmtDate(next.due_at)}</div></div>`:''}
  <div class="office-grid two office-home-grid"><section class="office-section"><div class="office-section-head"><div><h2>League Snapshot</h2><div class="section-caption">Roster, bid and cap status at a glance</div></div><button class="btn btn-sm btn-outline" data-tab="teams">View Rosters</button></div>${teamCards()}</section><div><section class="office-section"><div class="office-section-head"><div><h2>Draft Rooms</h2><div class="section-caption">Jump back into any 2026 draft phase</div></div></div><div class="draft-links"><a class="draft-link" href="/"><strong>⚡</strong><span>Auction</span><small>Top 40</small></a><a class="draft-link" href="/supplemental"><strong>↔</strong><span>Supplemental</span><small>2-round snake</small></a><a class="draft-link" href="/phase3"><strong>⇅</strong><span>Snake</span><small>Roster fill to 18</small></a></div></section><section class="office-section"><div class="office-section-head"><div><h2>${isCommish()?'Commissioner Center':'League Access'}</h2><div class="section-caption">${isCommish()?'Management controls are unlocked':'Commissioner-only controls stay protected'}</div></div></div><div class="card card-pad office-info-card">${isCommish()?'<strong>Commissioner mode active</strong><p>Manage rosters, contracts, trades, rules, deadlines and finances from the tabs below.</p>':'<strong>Owner mode</strong><p>You can manage your team, submit contracts, propose trades and review league records.</p>'}</div></section></div></div>`;
@@ -1723,7 +1797,7 @@ function accountView(){
 }
 
 function setupError(){return `<div class="login-wrap"><div class="login-card"><div class="login-head"><h1>League Office Ready</h1><p>Database connection is missing.</p></div></div></div>`;}
-function render(){if(!configured){app.innerHTML=setupError();return;}if(state.loading){app.innerHTML='<div class="login-wrap"><div style="color:white;font-weight:900">Loading League Office…</div></div>';return;}if(!state.session){app.innerHTML=loginView();bind();return;}let content=state.tab==='lineup'?lineupView():state.tab==='freeagents'?freeAgencyView():state.tab==='chat'?chatView():state.tab==='matchups'?matchupsView():state.tab==='schedule'?scheduleView():state.tab==='standings'?standingsView():state.tab==='board'?boardView():state.tab==='notifications'?notificationView():state.tab==='teams'?teamsView():state.tab==='contracts'?contractsView():state.tab==='trades'?tradesView():state.tab==='transactions'?transactionsView():state.tab==='history'?historyView():state.tab==='rules'?rulesView():state.tab==='deadlines'?deadlinesView():state.tab==='finances'?financesView():state.tab==='account'?accountView():state.tab==='reconcile'?reconcileView():dashboard();app.innerHTML=`<div class="office-shell">${topBar()}<main class="main">${content}</main>${bottomNav()}</div>`;bind();}
+function render(){if(!configured){app.innerHTML=setupError();return;}if(state.loading){app.innerHTML='<div class="login-wrap"><div style="color:white;font-weight:900">Loading League Office…</div></div>';return;}if(!state.session){app.innerHTML=loginView();bind();return;}let content=state.tab==='teamhub'?teamHubView():state.tab==='communications'?communicationsHubView():state.tab==='leaguehub'?leagueHubView():state.tab==='settingshub'?settingsHubView():state.tab==='lineup'?lineupView():state.tab==='freeagents'?freeAgencyView():state.tab==='chat'?chatView():state.tab==='matchups'?matchupsView():state.tab==='schedule'?scheduleView():state.tab==='standings'?standingsView():state.tab==='board'?boardView():state.tab==='notifications'?notificationView():state.tab==='teams'?teamsView():state.tab==='contracts'?contractsView():state.tab==='trades'?tradesView():state.tab==='transactions'?transactionsView():state.tab==='history'?historyView():state.tab==='rules'?rulesView():state.tab==='deadlines'?deadlinesView():state.tab==='finances'?financesView():state.tab==='account'?accountView():state.tab==='reconcile'?reconcileView():dashboard();app.innerHTML=`<div class="office-shell">${topBar()}<main class="main">${content}</main>${bottomNav()}</div>`;bind();}
 
 async function logout(){const t=myTeam();await signOutOwner({roomCode:ROOM_CODE,teamId:t?.id||null,legacyStorageKey:STORAGE_KEY});location.reload();}
 async function commish(name,args={},msg='Saved.'){try{await rpc(name,{p_room_code:ROOM_CODE,p_commish_pin:state.session.commishPin,...args});toast(msg);await loadData();render();}catch(e){toast(e.message,'error');}}
