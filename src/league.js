@@ -35,6 +35,9 @@ function teamById(id){return state.teams.find(t=>t.id===id);}
 function myTeam(){return state.session?.teamId?teamById(state.session.teamId):null;}
 function isCommish(){return Boolean(state.session?.commishPin);}
 function rosterFor(id){return state.roster.filter(r=>r.team_id===id&&r.active!==false);}
+function activeRosterFor(id){return rosterFor(id).filter(r=>String(r.roster_slot||'ACTIVE').toUpperCase()!=='IR');}
+function irRosterFor(id){return rosterFor(id).filter(r=>String(r.roster_slot||'ACTIVE').toUpperCase()==='IR');}
+function irLimit(){return Number(state.weeklyHostSettings?.ir_slots??2);}
 function contractsFor(id){return state.contracts.filter(c=>c.team_id===id&&c.status==='active');}
 function capUsed(id){return contractsFor(id).reduce((s,c)=>s+Number(c.cap_cost||0),0);}
 function contractForPlayer(teamId,playerKey){return state.contracts.find(c=>c.team_id===teamId&&c.player_key===playerKey&&c.status==='active')||null;}
@@ -387,7 +390,7 @@ function weeklyPlayerLine(playerKey,week=currentWeek()){
   return `<span class="weekly-player-score ${s.game_final?'final':s.game_started?'live':'upcoming'}"><b>${Number(s.fantasy_points||0).toFixed(2)}</b><small>${esc(st)}</small></span>`;
 }
 function slotEligibleRoster(slot,teamId){
-  return rosterFor(teamId).filter(r=>(slot.allowed_positions||[]).includes(String(r.position||'').toUpperCase())).sort((a,b)=>a.player_name.localeCompare(b.player_name));
+  return activeRosterFor(teamId).filter(r=>(slot.allowed_positions||[]).includes(String(r.position||'').toUpperCase())).sort((a,b)=>a.player_name.localeCompare(b.player_name));
 }
 function lineupSlotCounts(){const c={QB:0,RB:0,WR:0,TE:0,FLEX:0,K:0,DST:0};for(const s of state.lineupSlots){const code=String(s.slot_code||'').replace(/[0-9]+$/,'');if(code.startsWith('FLEX'))c.FLEX++;else if(c[code]!=null)c[code]++;}return c;}
 function browseWeek(){return Math.max(1,Math.min(18,Number(state.lineupBrowseWeek||currentWeek())));}
@@ -457,14 +460,14 @@ function projectedTeamTotal(teamId,range='week',week=browseWeek()){
 }
 
 function topBar(){
- const t=myTeam(),rosterCount=t?rosterFor(t.id).length:0,limit=state.season?.roster_limit||18,cap=t?capUsed(t.id):0;
+ const t=myTeam(),rosterCount=t?activeRosterFor(t.id).length:0,irCount=t?irRosterFor(t.id).length:0,limit=state.season?.roster_limit||18,cap=t?capUsed(t.id):0;
  return `<header class="topbar office-topbar"><div class="topbar-inner office-topbar-inner">
    <button class="office-brand-button" data-tab="home" aria-label="League Office home">
      <div class="office-mark">GL</div>
      <div class="brand"><div class="brand-kicker">${state.season?.season_year||2026} • League Office</div><div class="brand-title">${esc(LEAGUE_NAME)}</div></div>
    </button>
    <div class="office-user-area">
-     ${t?`<div class="office-user-stats"><span><b>${bidMoney(t.remaining_budget)}</b> bids</span><span><b>${rosterCount}/${limit}</b> roster</span><span><b>${cap}/100</b> cap</span></div><button class="notification-bell ${state.notificationUnread?'has-unread':''}" data-tab="notifications" aria-label="Notifications"><span class="notification-bell-icon">♢</span>${state.notificationUnread?`<b>${state.notificationUnread>99?'99+':state.notificationUnread}</b>`:''}</button>`:''}
+     ${t?`<div class="office-user-stats"><span><b>${bidMoney(t.remaining_budget)}</b> bids</span><span><b>${rosterCount}/${limit}</b> roster${irCount?` + ${irCount} IR`:''}</span><span><b>${cap}/100</b> cap</span></div><button class="notification-bell ${state.notificationUnread?'has-unread':''}" data-tab="notifications" aria-label="Notifications"><span class="notification-bell-icon">♢</span>${state.notificationUnread?`<b>${state.notificationUnread>99?'99+':state.notificationUnread}</b>`:''}</button>`:''}
      <div class="user-chip"><span class="status-dot live"></span><div class="user-chip-text"><div class="user-team">${t?`${esc(t.name)}${isCommish()?' • Commissioner':''}`:'Account Required'}</div><div class="user-budget">${t?'Connected':'League view'}</div></div><button class="btn-link office-account-link" data-tab="account">Account</button><button class="btn-link office-leave" data-action="leave">Sign Out</button></div>
    </div>
  </div></header>`;
@@ -476,10 +479,10 @@ function bottomNav(){
 }
 
 function dashboard(){
- const rosterLimit=state.season?.roster_limit||18,full=state.teams.filter(t=>rosterFor(t.id).length>=rosterLimit).length,totalBids=state.teams.reduce((s,t)=>s+Number(t.remaining_budget||0),0),open=state.deadlines.filter(d=>d.status==='open').length;
+ const rosterLimit=state.season?.roster_limit||18,full=state.teams.filter(t=>activeRosterFor(t.id).length>=rosterLimit).length,totalBids=state.teams.reduce((s,t)=>s+Number(t.remaining_budget||0),0),open=state.deadlines.filter(d=>d.status==='open').length;
  const next=state.deadlines.find(d=>d.status==='open'&&new Date(d.due_at)>new Date());
  const me=myTeam();
- return `<section class="office-hero office-home-hero"><div><div class="office-kicker">${state.season?.season_year||2026} League Year</div><h1>League Office</h1><p>One home for rosters, free agency, League Chat, contracts, transactions, rules, deadlines, finances and league history.</p></div>${me?`<div class="home-team-summary"><span>Your Team</span><strong>${esc(me.name)}</strong><div>${rosterFor(me.id).length}/${rosterLimit} roster • ${bidMoney(me.remaining_budget)} bids • ${capUsed(me.id)}/100 cap</div></div>`:''}</section>
+ return `<section class="office-hero office-home-hero"><div><div class="office-kicker">${state.season?.season_year||2026} League Year</div><h1>League Office</h1><p>One home for rosters, free agency, League Chat, contracts, transactions, rules, deadlines, finances and league history.</p></div>${me?`<div class="home-team-summary"><span>Your Team</span><strong>${esc(me.name)}</strong><div>${activeRosterFor(me.id).length}/${rosterLimit} roster${irRosterFor(me.id).length?` + ${irRosterFor(me.id).length} IR`:''} • ${bidMoney(me.remaining_budget)} bids • ${capUsed(me.id)}/100 cap</div></div>`:''}</section>
  <div class="kpi-grid office-kpi-grid"><div class="card kpi"><div class="kpi-label">Full Rosters</div><div class="kpi-value">${full}<span class="kpi-denom">/12</span></div><div class="kpi-sub">${rosterLimit}-player limit</div></div><div class="card kpi"><div class="kpi-label">Bid Dollars</div><div class="kpi-value">${totalBids}</div><div class="kpi-sub">remaining league-wide</div></div><div class="card kpi"><div class="kpi-label">Contracts</div><div class="kpi-value">${state.contracts.filter(c=>c.status==='active').length}</div><div class="kpi-sub">active contracts</div></div><div class="card kpi"><div class="kpi-label">Open Deadlines</div><div class="kpi-value">${open}</div><div class="kpi-sub">need attention</div></div></div>
  ${next?`<div class="owner-banner office-deadline-banner"><div><span class="banner-label">NEXT DEADLINE</span><strong>${esc(next.title)}</strong></div><div>${fmtDate(next.due_at)}</div></div>`:''}
  <div class="office-grid two office-home-grid"><section class="office-section"><div class="office-section-head"><div><h2>League Snapshot</h2><div class="section-caption">Roster, bid and cap status at a glance</div></div><button class="btn btn-sm btn-outline" data-tab="teams">View Rosters</button></div>${teamCards()}</section><div><section class="office-section"><div class="office-section-head"><div><h2>Draft Rooms</h2><div class="section-caption">Jump back into any 2026 draft phase</div></div></div><div class="draft-links"><a class="draft-link" href="/"><strong>⚡</strong><span>Auction</span><small>Top 40</small></a><a class="draft-link" href="/supplemental"><strong>↔</strong><span>Supplemental</span><small>2-round snake</small></a><a class="draft-link" href="/phase3"><strong>⇅</strong><span>Snake</span><small>Roster fill to 18</small></a></div></section><section class="office-section"><div class="office-section-head"><div><h2>${isCommish()?'Commissioner Center':'League Access'}</h2><div class="section-caption">${isCommish()?'Management controls are unlocked':'Commissioner-only controls stay protected'}</div></div></div><div class="card card-pad office-info-card">${isCommish()?'<strong>Commissioner mode active</strong><p>Manage rosters, contracts, trades, rules, deadlines and finances from the tabs below.</p>':'<strong>Owner mode</strong><p>You can manage your team, submit contracts, propose trades and review league records.</p>'}</div></section></div></div>`;
@@ -487,8 +490,8 @@ function dashboard(){
 function teamCards(){
  const lim=state.season?.roster_limit||18,cap=state.season?.salary_cap_points||100;
  return `<div class="team-office-grid compact-team-grid">${state.teams.map(t=>{
-   const rc=rosterFor(t.id).length,cu=capUsed(t.id);
-   return `<div class="card office-team-card compact-team-card"><div class="team-card-top"><div class="office-team-name">${esc(t.name)}</div><span class="team-roster-pill">${rc}/${lim}</span></div><div class="team-card-bars"><div class="mini-progress"><span style="width:${Math.min(100,rc/lim*100)}%"></span></div><div class="team-card-meta"><span><b>${bidMoney(t.remaining_budget)}</b> bids</span><span><b>${cu}/${cap}</b> cap</span><span><b>${contractsFor(t.id).length}</b> contracts</span></div></div></div>`;
+   const rc=activeRosterFor(t.id).length,irc=irRosterFor(t.id).length,cu=capUsed(t.id);
+   return `<div class="card office-team-card compact-team-card"><div class="team-card-top"><div class="office-team-name">${esc(t.name)}</div><span class="team-roster-pill">${rc}/${lim}${irc?` +${irc} IR`:''}</span></div><div class="team-card-bars"><div class="mini-progress"><span style="width:${Math.min(100,rc/lim*100)}%"></span></div><div class="team-card-meta"><span><b>${bidMoney(t.remaining_budget)}</b> bids</span><span><b>${cu}/${cap}</b> cap</span><span><b>${contractsFor(t.id).length}</b> contracts</span></div></div></div>`;
  }).join('')}</div>`;
 }
 function commissionerAddPlayerForm(){
@@ -891,7 +894,7 @@ function freeAgencyView(){
   const claims=wc.claims||[];
   const priority=wc.priority||[];
   const rank=waiverPriorityRank();
-  const rosterCount=rosterFor(me.id).length;
+  const rosterCount=activeRosterFor(me.id).length;
   const limit=Number(state.season?.roster_limit||18);
   const pending=claims.filter(c=>c.status==='pending');
   const search=String(state.waiverSearch||'').trim().toLowerCase();
@@ -959,7 +962,7 @@ function freeAgencyView(){
   return `${pageHeading('Free Agency & Waivers','Immediate free-agent adds, blind FAAB claims and continual rolling priority.','Player Market')}
     <div class="fa-summary-grid">
       <div class="card fa-summary"><span>Bid Dollars</span><strong>${bidMoney(me.remaining_budget)}</strong><small>available</small></div>
-      <div class="card fa-summary"><span>Roster</span><strong>${rosterCount}/${limit}</strong><small>${full?'full roster':`${limit-rosterCount} open`}</small></div>
+      <div class="card fa-summary"><span>Roster</span><strong>${rosterCount}/${limit}</strong><small>${full?'full active roster':`${limit-rosterCount} open`}${irRosterFor(me.id).length?` • ${irRosterFor(me.id).length}/${irLimit()} IR`:''}</small></div>
       <div class="card fa-summary"><span>Waiver Priority</span><strong>${rank?`#${rank}`:'—'}</strong><small>rolling tiebreak</small></div>
       <div class="card fa-summary"><span>Pending Claims</span><strong>${pending.length}</strong><small>private to ${esc(me.name)}</small></div>
     </div>
@@ -1053,13 +1056,14 @@ function freeAgencyView(){
 function teamsView(){
  const lim=state.season?.roster_limit||18,cap=state.season?.salary_cap_points||100;
  return `${pageHeading('Teams & Rosters','Live roster, bid-dollar and contract status for every franchise.','League Management')}${commissionerAddPlayerForm()}<div class="team-office-grid roster-team-grid">${state.teams.map(t=>{
-   const roster=rosterFor(t.id).slice().sort((a,b)=>(a.position||'').localeCompare(b.position||'')||a.player_name.localeCompare(b.player_name));
+   const roster=rosterFor(t.id).slice().sort((a,b)=>(String(a.roster_slot||'ACTIVE')==='IR')-(String(b.roster_slot||'ACTIVE')==='IR')||(a.position||'').localeCompare(b.position||'')||a.player_name.localeCompare(b.player_name));
+   const activeCount=activeRosterFor(t.id).length,irCount=irRosterFor(t.id).length;
    const cu=capUsed(t.id);
-   return `<details class="card office-team-card roster-team-card"><summary class="team-summary"><div class="team-summary-main"><div class="office-team-name">${esc(t.name)}</div><div class="team-summary-sub">${roster.length===lim?'Roster full':`${lim-roster.length} roster spot${lim-roster.length===1?'':'s'} open`}</div></div><div class="team-summary-metrics"><span><b>${roster.length}/${lim}</b><small>Roster</small></span><span><b>${bidMoney(t.remaining_budget)}</b><small>Bids</small></span><span><b>${cu}/${cap}</b><small>Cap</small></span></div><span class="details-chevron">⌄</span></summary><div class="team-roster-body">${roster.map(r=>{
+   return `<details class="card office-team-card roster-team-card"><summary class="team-summary"><div class="team-summary-main"><div class="office-team-name">${esc(t.name)}</div><div class="team-summary-sub">${activeCount===lim?'Active roster full':`${lim-activeCount} active roster spot${lim-activeCount===1?'':'s'} open`}${irCount?` • ${irCount}/${irLimit()} IR`:''}</div></div><div class="team-summary-metrics"><span><b>${activeCount}/${lim}</b><small>Roster</small></span><span><b>${irCount}/${irLimit()}</b><small>IR</small></span><span><b>${bidMoney(t.remaining_budget)}</b><small>Bids</small></span><span><b>${cu}/${cap}</b><small>Cap</small></span></div><span class="details-chevron">⌄</span></summary><div class="team-roster-body">${roster.map(r=>{
      const c=contractForPlayer(t.id,r.player_key);
      const canDrop=myTeam()?.id===t.id&&!state.session?.spectator;
      const penalty=c?(contractYear(c)===1?Number(c.cap_cost||0)*2:({2:5,3:10,4:20}[Number(c.length_years)]||0)):0;
-     return `<div class="roster-player-row"><span class="${rosterPositionClass(r.position)}">${esc(r.position||'—')}</span><div class="roster-player-main"><div class="contract-player">${esc(r.player_name)}</div><div class="roster-player-meta">${esc(r.nfl_team||'')} <span>•</span> ${esc(acquisitionLabel(r.acquisition_type))}</div>${playerStatLine(r)}${c?`<div class="contract-detail contract-active">${esc(contractLabel(c))}${penalty?` <span>• Drop fine ${penalty}</span>`:''}</div>`:'<div class="contract-detail contract-none">No active contract</div>'}</div><div class="roster-player-actions">${c?'<span class="status-chip contract-chip">Contract</span>':''}${canDrop?`<button class="btn btn-sm btn-reset" data-drop-player="${esc(r.player_key)}" data-drop-name="${esc(r.player_name)}" data-drop-penalty="${penalty}">Drop</button>`:''}${isCommish()?`<button class="btn btn-sm btn-outline" data-exception-drop="${esc(r.player_key)}" data-exception-team="${t.id}" data-drop-name="${esc(r.player_name)}">Retire/Ban</button>`:''}</div></div>`;
+     return `<div class="roster-player-row"><span class="${rosterPositionClass(r.position)}">${esc(r.position||'—')}</span><div class="roster-player-main"><div class="contract-player">${esc(r.player_name)}</div><div class="roster-player-meta">${esc(r.nfl_team||'')} <span>•</span> ${esc(acquisitionLabel(r.acquisition_type))}</div>${playerStatLine(r)}${c?`<div class="contract-detail contract-active">${esc(contractLabel(c))}${penalty?` <span>• Drop fine ${penalty}</span>`:''}</div>`:'<div class="contract-detail contract-none">No active contract</div>'}</div><div class="roster-player-actions">${String(r.roster_slot||'ACTIVE')==='IR'?'<span class="status-chip roster-ir-chip">IR</span>':''}${c?'<span class="status-chip contract-chip">Contract</span>':''}${canDrop?`<button class="btn btn-sm btn-reset" data-drop-player="${esc(r.player_key)}" data-drop-name="${esc(r.player_name)}" data-drop-penalty="${penalty}">Drop</button>`:''}${isCommish()?`<button class="btn btn-sm btn-outline" data-exception-drop="${esc(r.player_key)}" data-exception-team="${t.id}" data-drop-name="${esc(r.player_name)}">Retire/Ban</button>`:''}</div></div>`;
    }).join('')||'<div class="empty-tight">No roster entries.</div>'}</div></details>`;
  }).join('')}</div>`;
 }
@@ -1258,7 +1262,7 @@ function lineupView(){
 
  const lineup=lineupFor(t.id,week);
  const starterKeys=new Set(lineup.map(l=>l.player_key));
- const bench=rosterFor(t.id).filter(r=>!starterKeys.has(r.player_key)).sort((a,b)=>{
+ const bench=activeRosterFor(t.id).filter(r=>!starterKeys.has(r.player_key)).sort((a,b)=>{
    const p={QB:1,RB:2,WR:3,TE:4,K:5,DST:6};
    return (p[String(a.position||'').toUpperCase()]||9)-(p[String(b.position||'').toUpperCase()]||9)||a.player_name.localeCompare(b.player_name);
  });
@@ -1889,7 +1893,7 @@ function bind(){
    const t=myTeam(),p=(state.waiverCenter?.players||[]).find(x=>x.player_key===state.waiverSelectedPlayer);
    if(!t||!p)return;
    const drop=document.getElementById('fa-drop-player')?.value||null;
-   if(rosterFor(t.id).length>=Number(state.season?.roster_limit||18)&&!drop)return toast('Roster is full. Select a player to drop.','error');
+   if(activeRosterFor(t.id).length>=Number(state.season?.roster_limit||18)&&!drop)return toast('Roster is full. Select a player to drop.','error');
    if(!confirm(`Add ${p.player_name} as a free agent for $0${drop?' and complete the selected drop':''}?`))return;
    try{
      await rpc('league_owner_add_free_agent',{
@@ -1908,7 +1912,7 @@ function bind(){
    const bid=Number(document.getElementById('fa-waiver-bid')?.value);
    const drop=document.getElementById('fa-drop-player')?.value||null;
    if(!Number.isInteger(bid)||bid<0)return toast('Enter a whole-number FAAB bid.','error');
-   if(rosterFor(t.id).length>=Number(state.season?.roster_limit||18)&&!drop)return toast('Roster is full. Select a player to drop if the claim wins.','error');
+   if(activeRosterFor(t.id).length>=Number(state.season?.roster_limit||18)&&!drop)return toast('Roster is full. Select a player to drop if the claim wins.','error');
    try{
      await rpc('league_owner_submit_waiver_claim',{
        p_room_code:ROOM_CODE,p_team_id:t.id,p_pin:state.session.pin,

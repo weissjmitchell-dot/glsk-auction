@@ -3545,3 +3545,25 @@
 .board-synced-post{
   background:linear-gradient(90deg,rgba(231,248,238,.35),transparent 42%);
 }
+
+
+/* GLSK v7.1.5 — Yahoo final roster sync + IR */
+.roster-ir-chip{
+  background:#e8f3ff;
+  color:#225f9d;
+  border:1px solid #b9d6f3;
+}
+.roster-player-row:has(.roster-ir-chip){
+  background:linear-gradient(90deg,rgba(226,241,255,.42),transparent 45%);
+}
+.team-summary-metrics{
+  flex-wrap:wrap;
+}
+@media(max-width:620px){
+  .team-summary-metrics{
+    gap:7px;
+  }
+  .team-summary-metrics>span{
+    min-width:48px;
+  }
+}
