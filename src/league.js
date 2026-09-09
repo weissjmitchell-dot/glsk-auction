@@ -599,14 +599,14 @@ function projectedTeamTotal(teamId,range='week',week=browseWeek()){
 }
 
 function topBar(){
- const t=myTeam(),rosterCount=t?activeRosterFor(t.id).length:0,irCount=t?irRosterFor(t.id).length:0,limit=state.season?.roster_limit||18,cap=t?capUsed(t.id):0;
+ const t=myTeam();
  return `<header class="topbar office-topbar"><div class="topbar-inner office-topbar-inner">
    <button class="office-brand-button" data-tab="home" aria-label="League Office home">
      <div class="office-mark">GL</div>
      <div class="brand"><div class="brand-kicker">${state.season?.season_year||2026} • League Office</div><div class="brand-title">${esc(LEAGUE_NAME)}</div></div>
    </button>
    <div class="office-user-area">
-     ${t?`<div class="office-user-stats"><span><b>${bidMoney(t.remaining_budget)}</b> bids</span><span><b>${rosterCount}/${limit}</b> roster${irCount?` + ${irCount} IR`:''}</span><span><b>${cap}/100</b> cap</span></div><button class="notification-bell ${state.notificationUnread?'has-unread':''}" data-tab="notifications" aria-label="Notifications"><span class="notification-bell-icon">♢</span>${state.notificationUnread?`<b>${state.notificationUnread>99?'99+':state.notificationUnread}</b>`:''}</button>`:''}
+     ${t?`<button class="notification-bell ${state.notificationUnread?'has-unread':''}" data-tab="notifications" aria-label="Notifications"><span class="notification-bell-icon">♢</span>${state.notificationUnread?`<b>${state.notificationUnread>99?'99+':state.notificationUnread}</b>`:''}</button>`:''}
      <div class="user-chip"><span class="status-dot live"></span><div class="user-chip-text"><div class="user-team">${t?`${esc(t.name)}${isCommish()?' • Commissioner':''}`:'Account Required'}</div><div class="user-budget">${t?'Connected':'League view'}</div></div><button class="btn-link office-account-link" data-tab="account">Account</button><button class="btn-link office-leave" data-action="leave">Sign Out</button></div>
    </div>
  </div></header>`;
