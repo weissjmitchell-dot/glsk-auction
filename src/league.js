@@ -15,7 +15,7 @@ const state = {
   gameSettings:null, lineupSlots:[], weekStates:[], schedule:[], lineups:[], weeklyScores:[], matchupScores:[], shadowStandings:[], reconciliation:[], scoringRules:[], weeklyHostSettings:null, playerProjections:[],
   lineupDataTab:'stats', lineupStatsRange:'week', lineupProjectionRange:'week', lineupBrowseWeek:null,
   matchupBrowseWeek:null, selectedMatchupId:null, scheduleTeamId:null,
-  boardThreads:[], boardPosts:[], boardSelectedThread:null,
+  boardThreads:[], boardPosts:[], boardSelectedThread:null, boardYear:null, boardSearch:'',
   chatMessages:[], chatYears:[], chatYear:null, chatUnread:0, chatHasMore:false, chatOldestAt:null,
   chatDisplayName:'', chatDraft:'', chatReplyTo:null, chatEditingId:null, chatReactionTarget:null, chatAutoScroll:true, chatError:null,
   notifications:[], notificationPrefs:[], notificationUnread:0, playerWatches:[], notificationPlayers:[], playerStatusUpdates:[],
@@ -335,8 +335,10 @@ async function loadData(){
   if(state.lineupBrowseWeek==null)state.lineupBrowseWeek=Number(state.gameSettings?.current_week||1);
   if(state.matchupBrowseWeek==null)state.matchupBrowseWeek=Number(state.gameSettings?.current_week||1);
   if(state.scheduleTeamId==null&&myTeam())state.scheduleTeamId=myTeam().id;
-  state.boardThreads=boardThreads.filter(x=>x.season_id===sid).sort((a,b)=>(Number(b.pinned)-Number(a.pinned))||(new Date(b.last_activity_at)-new Date(a.last_activity_at)));
-  state.boardPosts=boardPosts.filter(x=>x.season_id===sid&&x.status==='active').sort((a,b)=>new Date(a.created_at)-new Date(b.created_at));
+  const currentBoardYear=Number(state.season?.season_year||2026);
+  if(state.boardYear==null)state.boardYear=currentBoardYear;
+  state.boardThreads=boardThreads.filter(x=>x.status!=='archived').sort((a,b)=>(Number(b.pinned)-Number(a.pinned))||(new Date(b.last_activity_at)-new Date(a.last_activity_at)));
+  state.boardPosts=boardPosts.filter(x=>x.status==='active').sort((a,b)=>new Date(a.created_at)-new Date(b.created_at));
   if(state.boardSelectedThread&&!state.boardThreads.some(t=>String(t.id)===String(state.boardSelectedThread)))state.boardSelectedThread=null;
   state.notificationPlayers=notificationPlayers.slice().sort((a,b)=>String(a.name).localeCompare(String(b.name)));
   state.playerStatusUpdates=playerStatusUpdates.filter(x=>x.season_id===sid);
@@ -604,52 +606,121 @@ function chatView(){
 
 function boardThreadById(id){return state.boardThreads.find(t=>String(t.id)===String(id))||null;}
 function boardPostsFor(threadId){return state.boardPosts.filter(p=>String(p.thread_id)===String(threadId));}
+function boardAuthorName(item){
+ const team=item?.author_team_id?teamById(item.author_team_id):null;
+ return item?.author_display_name||team?.name||'GLSK Member';
+}
+function boardInitials(item){
+ return boardAuthorName(item).split(/\s+/).filter(Boolean).map(x=>x[0]).join('').slice(0,2).toUpperCase()||'GL';
+}
+function boardArchiveAttachments(item){
+ const raw=item?.source_metadata;
+ const meta=raw&&typeof raw==='object'?raw:{};
+ const attachments=Array.isArray(meta.attachments)?meta.attachments.filter(Boolean):[];
+ if(!attachments.length)return '';
+ return `<div class="board-archive-attachments"><strong>📎 Attachment${attachments.length===1?'':'s'} in Google Groups archive</strong>${attachments.map(a=>`<span>${esc(a)}</span>`).join('')}</div>`;
+}
 function boardView(){
  const me=myTeam();
- const threads=state.boardThreads;
- const selected=boardThreadById(state.boardSelectedThread)||threads[0]||null;
- if(selected&&!state.boardSelectedThread)state.boardSelectedThread=selected.id;
- const posts=selected?boardPostsFor(selected.id):[];
- const author=selected?teamById(selected.author_team_id):null;
+ const currentYear=Number(state.season?.season_year||2026);
+ const years=[...new Set([currentYear,...state.boardThreads.map(t=>Number(t.season_year||currentYear))])].sort((a,b)=>b-a);
+ if(!years.includes(Number(state.boardYear)))state.boardYear=currentYear;
 
- return `${pageHeading('Message Board','League discussions, announcements and trash talk in one place.','League Community')}
- ${me&&!state.session?.spectator?`<section class="card card-pad office-section board-compose-card">
-   <div class="office-section-head"><div><h2>Start a Discussion</h2><div class="section-caption">Posting as ${esc(me.name)}</div></div></div>
+ const search=String(state.boardSearch||'').trim().toLowerCase();
+ let threads=state.boardThreads.filter(t=>Number(t.season_year||currentYear)===Number(state.boardYear));
+ if(search){
+   threads=threads.filter(t=>`${t.title||''} ${t.body||''} ${boardAuthorName(t)} ${t.source_subject||''}`.toLowerCase().includes(search));
+ }
+ threads=threads.sort((a,b)=>(Number(b.pinned)-Number(a.pinned))||(new Date(b.last_activity_at)-new Date(a.last_activity_at)));
+
+ let selected=threads.find(t=>String(t.id)===String(state.boardSelectedThread))||threads[0]||null;
+ if(selected&&String(state.boardSelectedThread)!==String(selected.id))state.boardSelectedThread=selected.id;
+ if(!selected)state.boardSelectedThread=null;
+
+ const posts=selected?boardPostsFor(selected.id):[];
+ const authorName=selected?boardAuthorName(selected):'';
+ const archiveYear=Number(state.boardYear)!==currentYear;
+ const imported=selected?.source==='google_groups';
+
+ return `${pageHeading('Message Board','Structured league discussions plus the complete Google Groups discussion archive. League Chat remains separate for realtime conversation.','League Community')}
+
+ <section class="card board-archive-toolbar">
+   <div class="board-archive-summary">
+     <strong>${state.boardYear===currentYear?'Current Message Board':`${state.boardYear} Google Groups Archive`}</strong>
+     <span>${threads.length} discussion${threads.length===1?'':'s'}${state.boardYear===currentYear?'':' • historical/read-only'}</span>
+   </div>
+   <div class="board-archive-controls">
+     <input id="board-search" class="input" placeholder="Search discussions" value="${esc(state.boardSearch)}">
+     <select id="board-year" class="input">${years.map(y=>`<option value="${y}" ${Number(state.boardYear)===Number(y)?'selected':''}>${y}${y===currentYear?' • Current':''}</option>`).join('')}</select>
+   </div>
+ </section>
+
+ ${me&&!state.session?.spectator&&Number(state.boardYear)===currentYear?`<section class="card card-pad office-section board-compose-card">
+   <div class="office-section-head"><div><h2>Start a Discussion</h2><div class="section-caption">Posting as ${esc(state.chatDisplayName||me.name)} • ${esc(me.name)}</div></div></div>
    <div class="board-compose-grid">
      <input id="board-thread-title" class="input" maxlength="120" placeholder="Discussion title">
      <textarea id="board-thread-body" class="input board-textarea" maxlength="5000" placeholder="What do you want to talk about?"></textarea>
-     <div class="board-compose-actions"><span>Team name and timestamp will be shown with your post.</span><button class="btn btn-primary" data-action="board-create-thread">Post Discussion</button></div>
+     <div class="board-compose-actions"><span>Use League Chat for quick conversation; use the Board for longer topics and announcements.</span><button class="btn btn-primary" data-action="board-create-thread">Post Discussion</button></div>
    </div>
  </section>`:''}
 
  <div class="board-layout">
    <section class="card board-thread-list">
-     <div class="board-list-head"><div><strong>Discussions</strong><span>${threads.length} active thread${threads.length===1?'':'s'}</span></div></div>
+     <div class="board-list-head">
+       <div><strong>Discussions</strong><span>${threads.length} shown</span></div>
+       ${archiveYear?'<span class="board-google-archive-chip">Google Groups Archive</span>':''}
+     </div>
      <div class="board-thread-items">${threads.length?threads.map(t=>{
-       const team=teamById(t.author_team_id);
        const active=selected&&String(selected.id)===String(t.id);
+       const isImport=t.source==='google_groups';
        return `<button class="board-thread-item ${active?'active':''}" data-board-thread="${t.id}">
-         <div class="board-thread-title-row"><strong>${t.pinned?'📌 ':''}${esc(t.title)}</strong>${t.status==='locked'?'<span class="board-status-chip">LOCKED</span>':''}</div>
-         <div class="board-thread-preview">${esc(t.body.length>115?t.body.slice(0,115)+'…':t.body)}</div>
-         <div class="board-thread-meta"><span>${esc(team?.name||'League')}</span><span>${Number(t.reply_count||0)} repl${Number(t.reply_count||0)===1?'y':'ies'}</span><span>${fmtDate(t.last_activity_at)}</span></div>
+         <div class="board-thread-title-row"><strong>${t.pinned?'📌 ':''}${esc(t.title)}</strong>${isImport?'<span class="board-import-chip">ARCHIVE</span>':t.status==='locked'?'<span class="board-status-chip">LOCKED</span>':''}</div>
+         <div class="board-thread-preview">${esc((t.body||'').length>115?t.body.slice(0,115)+'…':t.body||'')}</div>
+         <div class="board-thread-meta"><span>${esc(boardAuthorName(t))}</span><span>${Number(t.reply_count||0)} repl${Number(t.reply_count||0)===1?'y':'ies'}</span><span>${fmtDate(t.last_activity_at)}</span></div>
        </button>`;
-     }).join(''):'<div class="board-empty"><strong>No discussions yet.</strong><span>Start the first GLSK message-board thread.</span></div>'}</div>
+     }).join(''):`<div class="board-empty"><strong>No discussions found.</strong><span>${search?'Try a different search.':archiveYear?'No Google Groups topics were found for this year.':'Start the first GLSK message-board thread.'}</span></div>`}</div>
    </section>
 
    <section class="card board-discussion">
      ${selected?`<div class="board-discussion-head">
-       <div><div class="board-thread-flags">${selected.pinned?'<span>PINNED</span>':''}${selected.status==='locked'?'<span>LOCKED</span>':''}</div><h2>${esc(selected.title)}</h2><div class="board-discussion-meta">Started by <strong>${esc(author?.name||'League')}</strong> • ${fmtDate(selected.created_at)}</div></div>
-       ${isCommish()?`<div class="board-mod-actions">
+       <div>
+         <div class="board-thread-flags">${selected.pinned?'<span>PINNED</span>':''}${imported?'<span class="google">GOOGLE GROUPS ARCHIVE</span>':selected.status==='locked'?'<span>LOCKED</span>':''}</div>
+         <h2>${esc(selected.title)}</h2>
+         <div class="board-discussion-meta">Started by <strong>${esc(authorName)}</strong> • ${fmtDate(selected.created_at)}${imported?' • Original Google Groups timestamp':''}</div>
+       </div>
+       ${isCommish()&&!imported?`<div class="board-mod-actions">
          <button class="btn btn-sm btn-outline" data-board-action="${selected.pinned?'unpin':'pin'}" data-thread-id="${selected.id}">${selected.pinned?'Unpin':'Pin'}</button>
          <button class="btn btn-sm btn-outline" data-board-action="${selected.status==='locked'?'unlock':'lock'}" data-thread-id="${selected.id}">${selected.status==='locked'?'Unlock':'Lock'}</button>
          <button class="btn btn-sm btn-reset" data-board-action="archive" data-thread-id="${selected.id}">Archive</button>
        </div>`:''}
      </div>
-     <article class="board-root-post"><div class="board-avatar">${esc((author?.name||'GL').split(/\s+/).map(x=>x[0]).join('').slice(0,2).toUpperCase())}</div><div><div class="board-post-author"><strong>${esc(author?.name||'League')}</strong><span>${fmtDate(selected.created_at)}</span></div><div class="board-post-body">${esc(selected.body).replaceAll('\n','<br>')}</div></div></article>
+
+     <article class="board-root-post ${imported?'board-imported-post':''}">
+       <div class="board-avatar">${esc(boardInitials(selected))}</div>
+       <div>
+         <div class="board-post-author"><strong>${esc(authorName)}</strong><span>${fmtDate(selected.created_at)}</span>${imported?'<em>Imported</em>':''}</div>
+         <div class="board-post-body">${esc(selected.body||'').replaceAll('\n','<br>')}</div>
+         ${boardArchiveAttachments(selected)}
+       </div>
+     </article>
+
      <div class="board-replies-head"><strong>${posts.length} ${posts.length===1?'Reply':'Replies'}</strong></div>
-     <div class="board-replies">${posts.map(p=>{const team=teamById(p.author_team_id);return `<article class="board-reply"><div class="board-avatar">${esc((team?.name||'GL').split(/\s+/).map(x=>x[0]).join('').slice(0,2).toUpperCase())}</div><div><div class="board-post-author"><strong>${esc(team?.name||'League')}</strong><span>${fmtDate(p.created_at)}</span></div><div class="board-post-body">${esc(p.body).replaceAll('\n','<br>')}</div></div></article>`;}).join('')||'<div class="board-no-replies">No replies yet.</div>'}</div>
-     ${me&&!state.session?.spectator&&selected.status!=='locked'?`<div class="board-reply-compose"><textarea id="board-reply-body" class="input board-textarea" maxlength="5000" placeholder="Reply as ${esc(me.name)}"></textarea><div><span>Keep the discussion going.</span><button class="btn btn-primary" data-action="board-reply" data-thread-id="${selected.id}">Post Reply</button></div></div>`:selected.status==='locked'?'<div class="board-locked-notice">This discussion has been locked by the commissioner.</div>':''}
-     `:'<div class="board-empty discussion-empty"><strong>Select a discussion</strong><span>Choose a thread from the left to read and reply.</span></div>'}
+     <div class="board-replies">${posts.map(p=>{
+       const pImported=p.source==='google_groups';
+       return `<article class="board-reply ${pImported?'board-imported-post':''}">
+         <div class="board-avatar">${esc(boardInitials(p))}</div>
+         <div>
+           <div class="board-post-author"><strong>${esc(boardAuthorName(p))}</strong><span>${fmtDate(p.created_at)}</span>${pImported?'<em>Imported</em>':''}</div>
+           <div class="board-post-body">${esc(p.body||'').replaceAll('\n','<br>')}</div>
+           ${boardArchiveAttachments(p)}
+         </div>
+       </article>`;
+     }).join('')||'<div class="board-no-replies">No replies.</div>'}</div>
+
+     ${me&&!state.session?.spectator&&selected.source==='live'&&selected.status!=='locked'&&Number(state.boardYear)===currentYear?`<div class="board-reply-compose"><textarea id="board-reply-body" class="input board-textarea" maxlength="5000" placeholder="Reply as ${esc(state.chatDisplayName||me.name)}"></textarea><div><span>Keep the discussion going.</span><button class="btn btn-primary" data-action="board-reply" data-thread-id="${selected.id}">Post Reply</button></div></div>`:
+       imported?'<div class="board-locked-notice">Historical Google Groups discussion • preserved as read-only.</div>':
+       selected.status==='locked'?'<div class="board-locked-notice">This discussion has been locked by the commissioner.</div>':''}
+     `:'<div class="board-empty discussion-empty"><strong>Select a discussion</strong><span>Choose a thread from the left to read it.</span></div>'}
    </section>
  </div>`;
 }
@@ -1923,6 +1994,8 @@ function bind(){
  app.querySelectorAll('[data-matchup-week]').forEach(b=>b.addEventListener('click',()=>{state.matchupBrowseWeek=Number(b.dataset.matchupWeek);state.selectedMatchupId=null;render();}));
  app.querySelectorAll('[data-select-matchup]').forEach(b=>b.addEventListener('click',()=>{state.selectedMatchupId=b.dataset.selectMatchup;render();}));
  app.querySelector('#schedule-team-select')?.addEventListener('change',e=>{state.scheduleTeamId=e.target.value;render();});
+ app.querySelector('#board-year')?.addEventListener('change',e=>{state.boardYear=Number(e.target.value);state.boardSelectedThread=null;state.boardSearch='';render();});
+ app.querySelector('#board-search')?.addEventListener('input',e=>{state.boardSearch=e.target.value;state.boardSelectedThread=null;clearTimeout(e.target._boardTimer);e.target._boardTimer=setTimeout(render,120);});
  app.querySelectorAll('[data-board-thread]').forEach(b=>b.addEventListener('click',()=>{state.boardSelectedThread=b.dataset.boardThread;render();}));
  app.querySelector('[data-action="board-create-thread"]')?.addEventListener('click',async()=>{
    const t=myTeam(),title=document.getElementById('board-thread-title')?.value.trim(),body=document.getElementById('board-thread-body')?.value.trim();

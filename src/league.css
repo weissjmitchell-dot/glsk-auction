@@ -3396,3 +3396,112 @@
   }
 }
 
+/* ============================================================
+   GLSK v7.1.2 — Google Groups Message Board Archive
+   ============================================================ */
+.board-archive-toolbar{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:12px;
+  padding:11px 13px;
+  margin-bottom:13px;
+}
+.board-archive-summary{
+  min-width:0;
+}
+.board-archive-summary strong,
+.board-archive-summary span{
+  display:block;
+}
+.board-archive-summary strong{
+  color:#203650;
+  font-size:13px;
+  font-weight:1000;
+}
+.board-archive-summary span{
+  margin-top:2px;
+  color:#7a8797;
+  font-size:10px;
+  font-weight:800;
+}
+.board-archive-controls{
+  display:grid;
+  grid-template-columns:minmax(180px,260px) 135px;
+  gap:7px;
+}
+.board-google-archive-chip,
+.board-import-chip{
+  display:inline-flex;
+  align-items:center;
+  border-radius:999px;
+  text-transform:uppercase;
+  letter-spacing:.045em;
+  font-weight:1000;
+  white-space:nowrap;
+}
+.board-google-archive-chip{
+  padding:5px 8px;
+  background:#f0e8ff;
+  color:#654594;
+  border:1px solid #d7c5f1;
+  font-size:8px;
+}
+.board-import-chip{
+  padding:3px 6px;
+  background:#efe8ff;
+  color:#6c4c9b;
+  border:1px solid #d8c8ee;
+  font-size:7px;
+}
+.board-thread-flags .google{
+  background:#eee6ff;
+  color:#67468f;
+  border-color:#d8c5f0;
+}
+.board-post-author em{
+  font-style:normal;
+  margin-left:6px;
+  border-radius:999px;
+  padding:2px 6px;
+  background:#efe8ff;
+  color:#684994;
+  font-size:7px;
+  font-weight:1000;
+  text-transform:uppercase;
+  letter-spacing:.04em;
+}
+.board-imported-post{
+  background:linear-gradient(90deg,rgba(240,233,255,.30),transparent 42%);
+}
+.board-archive-attachments{
+  margin-top:10px;
+  padding:8px 9px;
+  border:1px solid #ddd6ed;
+  border-radius:9px;
+  background:#faf8ff;
+}
+.board-archive-attachments strong{
+  display:block;
+  margin-bottom:5px;
+  color:#66517f;
+  font-size:9px;
+  text-transform:uppercase;
+  letter-spacing:.035em;
+}
+.board-archive-attachments span{
+  display:block;
+  color:#6e7380;
+  font-size:9px;
+  line-height:1.4;
+  overflow-wrap:anywhere;
+}
+@media(max-width:680px){
+  .board-archive-toolbar{
+    align-items:stretch;
+    flex-direction:column;
+  }
+  .board-archive-controls{
+    grid-template-columns:minmax(0,1fr) 116px;
+  }
+}
