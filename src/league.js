@@ -9,6 +9,10 @@ import { requireOwnerAccount, legacySessionFromAccount, signOutOwner, sendPasswo
 const lineupInteractionStyle = document.createElement('style');
 lineupInteractionStyle.id = 'glsk-lineup-interactions-v724';
 lineupInteractionStyle.textContent = `
+.lineup-team-heading { display:flex; align-items:center; gap:10px; flex-wrap:wrap; }
+.lineup-team-heading .btn { flex:none; min-height:36px; font-size:13px; }
+.lineup-optimize-note { display:block; margin:5px 0; color:#68758a; font-size:12px; font-weight:500; }
+
 .lineup-card-data .lineup-position-target,
 .lineup-card-data .lineup-bench-target { position: relative; }
 .lineup-card-data .lineup-hit-select {
@@ -1441,6 +1445,65 @@ function changeLineupPlayer(slotCode,playerKey){
  else rows.push({slot_code:slotCode,player_key:playerKey||null,team_id:t.id,week});
  state.lineupDrafts[lineupDraftKey(t.id,week)]=rows.filter(l=>l.player_key);
 }
+// Maximum-weight assignment across ALL starter slots, including FLEX.
+// Dummy columns permit empty slots when the roster cannot fill every position.
+function bestLineupAssignment(slots,players){
+ const n=slots.length,m=players.length+n;
+ if(!n)return [];
+ const bonus=players.reduce((total,p)=>total+Math.abs(p.points),0)*2+1;
+ const costs=slots.map(slot=>Array.from({length:m},(_,j)=>j>=players.length?0:
+   (slot.allowed_positions||[]).includes(String(players[j].position||'').toUpperCase())?-(bonus+players[j].points):bonus*(n+1)));
+ const u=Array(n+1).fill(0),v=Array(m+1).fill(0),p=Array(m+1).fill(0),way=Array(m+1).fill(0);
+ for(let i=1;i<=n;i++){
+   p[0]=i;let j0=0;
+   const minv=Array(m+1).fill(Infinity),used=Array(m+1).fill(false);
+   do{
+     used[j0]=true;const i0=p[j0];let delta=Infinity,j1=0;
+     for(let j=1;j<=m;j++)if(!used[j]){
+       const cur=costs[i0-1][j-1]-u[i0]-v[j];
+       if(cur<minv[j]){minv[j]=cur;way[j]=j0;}
+       if(minv[j]<delta){delta=minv[j];j1=j;}
+     }
+     for(let j=0;j<=m;j++)if(used[j]){u[p[j]]+=delta;v[j]-=delta;}else minv[j]-=delta;
+     j0=j1;
+   }while(p[j0]!==0);
+   do{const j1=way[j0];p[j0]=p[j1];j0=j1;}while(j0!==0);
+ }
+ const result=[];
+ for(let j=1;j<=players.length;j++)if(p[j]&&costs[p[j]-1][j-1]<0)
+   result.push({slot_code:slots[p[j]-1].slot_code,player_key:players[j-1].player_key});
+ return result;
+}
+function lineupOptimizationInput(teamId,week){
+ const started=key=>{
+   const date=projectionFor(key,week)?.game_start_at;
+   return Boolean(scoreFor(key,week)?.game_started||(date&&Number.isFinite(Date.parse(date))&&Date.parse(date)<=Date.now()));
+ };
+ const fixed=lineupFor(teamId,week).filter(l=>started(l.player_key)).map(l=>({...l}));
+ const fixedSlots=new Set(fixed.map(l=>l.slot_code)),fixedPlayers=new Set(fixed.map(l=>l.player_key));
+ const slots=state.lineupSlots.filter(s=>!fixedSlots.has(s.slot_code));
+ const players=[],missing=[];
+ for(const r of activeRosterFor(teamId)){
+   const projection=projectionFor(r.player_key,week);
+   if(fixedPlayers.has(r.player_key)||started(r.player_key)||Number(projection?.bye_week)===week)continue;
+   if(!slots.some(slot=>(slot.allowed_positions||[]).includes(String(r.position||'').toUpperCase())))continue;
+   const value=projection?.projected_fantasy_points;
+   if(value==null||value===''||!Number.isFinite(Number(value))){missing.push(r.player_name);continue;}
+   players.push({...r,points:Number(value)});
+ }
+ return {fixed,slots,players,missing};
+}
+function optimizeCurrentLineup(){
+ const t=myTeam(),week=browseWeek();
+ if(!t||state.session?.spectator||week!==currentWeek()||state.lineupSaving)throw new Error('This lineup is read-only.');
+ const input=lineupOptimizationInput(t.id,week);
+ if(!input.slots.length)throw new Error('All starting positions are locked.');
+ if(input.missing.length)throw new Error(`Weekly projections are missing for ${input.missing.length} eligible player${input.missing.length===1?'':'s'}. Your lineup has not changed.`);
+ if(!input.players.length)throw new Error('No eligible unlocked players with weekly projections.');
+ const picks=bestLineupAssignment(input.slots,input.players);
+ state.lineupDrafts[lineupDraftKey(t.id,week)]=input.fixed.concat(picks.map(p=>({...p,team_id:t.id,week})));
+ return picks.length<input.slots.length?'Lineup optimized. Some slots could not be filled. Review and Save Lineup.':'Lineup optimized. Review your starters and Save Lineup.';
+}
 function lineupView(){
  const t=myTeam(),week=browseWeek(),slots=state.lineupSlots,current=currentWeek();
  if(!t)return `${pageHeading('Set Lineup',`Week ${week} lineup and player data.`,`Weekly Play`)}<div class="card empty">Sign in as a team owner to manage a lineup.</div>`;
@@ -1452,6 +1515,8 @@ function lineupView(){
    return (p[String(a.position||'').toUpperCase()]||9)-(p[String(b.position||'').toUpperCase()]||9)||a.player_name.localeCompare(b.player_name);
  });
  const editable=week===current&&!state.session?.spectator&&!state.lineupSaving;
+ const optimizer=editable?lineupOptimizationInput(t.id,week):null;
+ const optimizeReason=!optimizer?'':!optimizer.slots.length?'All starters locked':optimizer.missing.length?'Weekly projections needed':!optimizer.players.length?'No eligible players':'';
  const dataTab=state.lineupDataTab||'stats';
  const statRange=state.lineupStatsRange||'week';
  const projRange=state.lineupProjectionRange||'week';
@@ -1528,7 +1593,7 @@ function lineupView(){
 
  <section class="card lineup-card lineup-card-data">
    <div class="lineup-card-head lineup-yahoo-head">
-     <div><strong>${esc(t.name)}</strong><span>${lineup.length}/${slots.length} starters filled${opp?` • vs ${esc(opp.name)}`:''}${!editable?' • read-only week':''}</span></div>
+     <div><div class="lineup-team-heading"><strong>${esc(t.name)}</strong>${editable?`<button class="btn btn-sm btn-outline" data-action="optimize-lineup" ${optimizeReason?'disabled':''} title="${esc(optimizeReason||'Choose the highest-projected eligible lineup for Week '+week)}">Optimize Lineup</button>`:''}</div>${editable?`<small class="lineup-optimize-note">${esc(optimizeReason||'Uses Week '+week+' projections • review before saving')}</small>`:''}<span>${lineup.length}/${slots.length} starters filled${opp?` • vs ${esc(opp.name)}`:''}${!editable?' • read-only week':''}</span></div>
      <div class="lineup-score-duo">
        <div><span>${dataTab==='projected'?'PROJECTED':'WEEK SCORE'}</span><strong>${Number(teamDisplayPoints||0).toFixed(2)}</strong></div>
        ${dataTab==='stats'?`<div><span>PROJ WEEK ${week}</span><strong>${projectedTeamTotal(t.id,'week',week).toFixed(2)}</strong></div>`:''}
@@ -1918,6 +1983,10 @@ async function logout(){const t=myTeam();await signOutOwner({roomCode:ROOM_CODE,
 async function commish(name,args={},msg='Saved.'){try{await rpc(name,{p_room_code:ROOM_CODE,p_commish_pin:state.session.commishPin,...args});toast(msg);await loadData();render();}catch(e){toast(e.message,'error');}}
 
 function bind(){
+ app.querySelector('[data-action="optimize-lineup"]')?.addEventListener('click',()=>{
+   try{const message=optimizeCurrentLineup();render();toast(message);}
+   catch(e){toast(e.message,'error');}
+ });
  app.querySelectorAll('[data-tab]').forEach(b=>b.addEventListener('click',()=>setTab(b.dataset.tab)));
  app.querySelector('#chat-year')?.addEventListener('change',async e=>{
    state.chatYear=Number(e.target.value);
