@@ -55,6 +55,7 @@ export default async function handler(req,res){
     p_body: text || '[No message text]',
     p_sent_at: sentAt,
     p_metadata: {
+      backfill: body.backfill === true,
       gmail_message_id: cleanString(body.gmail_message_id,200) || null,
       gmail_thread_id: cleanString(body.gmail_thread_id,200) || null,
       list_id: cleanString(body.list_id,500) || null,
@@ -73,7 +74,7 @@ export default async function handler(req,res){
     });
 
     const data = await r.json().catch(()=>({}));
-    if(!r.ok){
+    if(!r.ok || data?.ok !== true){
       console.error('Google Groups ingest RPC failed',r.status,data);
       return json(res,502,{ok:false,error:data?.message||data?.error||'Supabase ingest failed'});
     }

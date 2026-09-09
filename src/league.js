@@ -59,6 +59,23 @@ function toast(msg,type=''){let w=document.querySelector('.toast-wrap');if(!w){w
 async function rpc(name,args={}){const {data,error}=await supabase.rpc(name,args);if(error)throw new Error(error.message);if(data&&data.ok===false)throw new Error(data.error||'Request failed.');return data;}
 async function q(table,select='*',eq=[]){let x=supabase.from(table).select(select);for(const [k,v] of eq)x=x.eq(k,v);const {data,error}=await x;if(error)throw error;return data||[];}
 
+// Walk stable IDs until an empty page: even a server cap below 500 cannot
+// silently truncate the imported board. Scope every page to this league.
+async function qBoardAll(table,roomId){
+ const rows=[];let after=null;
+ for(;;){
+   let query=supabase.from(table).select('*').eq('room_id',roomId).is('deleted_at',null).order('id',{ascending:true}).limit(500);
+   if(after!==null)query=query.gt('id',after);
+   const {data,error}=await query;
+   if(error)throw error;
+   if(!data?.length)return rows;
+   const next=data[data.length-1].id;
+   if(String(next)===String(after))throw new Error('Unable to load the complete message board. Please refresh.');
+   rows.push(...data);after=next;
+ }
+}
+
+
 
 function ensurePwaMetadata(){
   if(!document.querySelector('link[rel="manifest"]')){
@@ -321,7 +338,7 @@ async function loadData(){
     q('league_transactions','*'),q('league_trades','*'),q('league_trade_assets','*'),q('league_future_picks','*',[['room_id',room.id]]),q('league_rookie_rights','*',[['room_id',room.id]]),q('league_extension_costs','*'),q('league_contract_extension_eligibility','*'),
     q('league_history_seasons','*',[['room_id',room.id]]),q('league_history_team_seasons','*'),q('league_history_all_time','*',[['room_id',room.id]]),q('league_franchises','*',[['room_id',room.id]]),q('league_history_import_runs','*',[['room_id',room.id]]),q('league_player_stats','*',[['room_id',room.id]]),
     q('league_game_settings','*'),q('league_lineup_slots','*'),q('league_week_states','*'),q('league_schedule','*'),q('league_lineups','*'),q('league_weekly_player_scores','*'),q('league_matchup_live_scores','*'),q('league_shadow_standings','*'),q('league_scoring_rules','*'),q('league_weekly_host_settings','*'),q('league_player_projections','*',[['room_id',room.id]]),
-    q('league_message_threads','*',[['room_id',room.id]]),q('league_message_posts','*',[['room_id',room.id]]),
+    qBoardAll('league_message_threads',room.id),qBoardAll('league_message_posts',room.id),
     q('phase3_players','id,name,nfl_team,position,status',[['room_id',room.id]]),q('league_player_status_updates','*',[['room_id',room.id]])
   ]);
   state.teams=teams.sort((a,b)=>a.sort_order-b.sort_order); state.season=seasons.find(s=>s.is_current)||seasons.sort((a,b)=>b.season_year-a.season_year)[0]||null;
@@ -809,10 +826,12 @@ function boardView(){
          <h2>${esc(selected.title)}</h2>
          <div class="board-discussion-meta">Started by <strong>${esc(authorName)}</strong> • ${fmtDate(selected.created_at)}${imported?' • Original Google Groups timestamp':currentGoogle?' • Imported from the 2026 Google Group • GLSK replies stay here':synced?' • Synced from Google Groups • GLSK replies stay here':''}</div>
        </div>
-       ${isCommish()&&!imported?`<div class="board-mod-actions">
+       ${isCommish()?`<div class="board-mod-actions">
+         ${!imported?`
          <button class="btn btn-sm btn-outline" data-board-action="${selected.pinned?'unpin':'pin'}" data-thread-id="${selected.id}">${selected.pinned?'Unpin':'Pin'}</button>
          <button class="btn btn-sm btn-outline" data-board-action="${selected.status==='locked'?'unlock':'lock'}" data-thread-id="${selected.id}">${selected.status==='locked'?'Unlock':'Lock'}</button>
-         <button class="btn btn-sm btn-reset" data-board-action="archive" data-thread-id="${selected.id}">Archive</button>
+         <button class="btn btn-sm btn-reset" data-board-action="archive" data-thread-id="${selected.id}">Archive</button>`:''}
+         <button class="btn btn-sm btn-reset" data-board-delete-thread="${selected.id}">Delete Thread</button>
        </div>`:''}
      </div>
 
@@ -833,6 +852,7 @@ function boardView(){
          <div>
            <div class="board-post-author"><strong>${esc(boardAuthorName(p))}</strong><span>${fmtDate(p.created_at)}</span>${pImported?'<em>Imported</em>':pCurrentGoogle?'<em class="sync">Google Group</em>':pSynced?'<em class="sync">Synced</em>':''}</div>
            <div class="board-post-body">${esc(p.body||'').replaceAll('\n','<br>')}</div>
+           ${isCommish()?`<button class="btn btn-sm btn-reset board-delete-message" data-board-delete-post="${p.id}" data-thread-id="${selected.id}">Delete Message</button>`:''}
            ${boardArchiveAttachments(p)}
          </div>
        </article>`;
@@ -2140,6 +2160,22 @@ function bind(){
      await loadData();render();
    }catch(e){toast(e.message,'error');}
  });
+ app.querySelectorAll('[data-board-delete-thread],[data-board-delete-post]').forEach(b=>b.addEventListener('click',async()=>{
+   if(!isCommish()||b.disabled)return;
+   const isThread=Boolean(b.dataset.boardDeleteThread);
+   const question=isThread?'Delete this entire thread and all its replies from the GLSK message board? This does not delete the original Google Groups emails.':'Delete this message from the GLSK message board? Other replies will remain. This does not delete the original Google Groups email.';
+   if(!confirm(question))return;
+   b.disabled=true;
+   try{
+     await rpc('league_commish_delete_board_item',{
+       p_room_code:ROOM_CODE,p_commish_pin:state.session.commishPin,
+       p_thread_id:b.dataset.boardDeleteThread||b.dataset.threadId,
+       p_post_id:isThread?null:b.dataset.boardDeletePost
+     });
+     if(isThread)state.boardSelectedThread=null;
+     await loadData();render();toast(isThread?'Thread deleted.':'Message deleted.');
+   }catch(e){toast(e.message,'error');b.disabled=false;}
+ }));
  app.querySelectorAll('[data-board-action]').forEach(b=>b.addEventListener('click',()=>{
    const action=b.dataset.boardAction,id=Number(b.dataset.threadId);
    if(action==='archive'&&!confirm('Archive this discussion? It will disappear from the active message board.'))return;

@@ -1,0 +1,481 @@
+-- GLSK v7.2.2 — commissioner deletion and complete board loading
+-- Apply AFTER v7.2.1, in the existing Supabase SQL Editor.
+-- Deletion removes content from the board but retains private records/Google IDs
+-- so a later sync cannot recreate deleted messages. No content is deleted by
+-- running this migration; deletion only occurs through a commissioner action.
+begin;
+alter table public.league_message_threads add column if not exists deleted_at timestamptz;
+alter table public.league_message_posts add column if not exists deleted_at timestamptz;
+
+-- Restrictive policies combine with existing room/account access policies.
+drop policy if exists board_hide_deleted_threads on public.league_message_threads;
+create policy board_hide_deleted_threads on public.league_message_threads
+  as restrictive for select to anon,authenticated using(deleted_at is null);
+drop policy if exists board_hide_deleted_posts on public.league_message_posts;
+create policy board_hide_deleted_posts on public.league_message_posts
+  as restrictive for select to anon,authenticated using(deleted_at is null);
+revoke insert,update,delete on public.league_message_threads,public.league_message_posts from anon,authenticated;
+
+create or replace function public.league_commish_delete_board_item(
+  p_room_code text,p_commish_pin text,p_thread_id bigint,p_post_id bigint default null
+) returns jsonb language plpgsql security definer
+set search_path=public,auth,pg_temp as $$
+declare v_room uuid; v_thread public.league_message_threads%rowtype;
+begin
+  select id into v_room from public.rooms where code=p_room_code;
+  if v_room is null or auth.uid() is null then
+    return jsonb_build_object('ok',false,'error','Commissioner authorization failed.');
+  end if;
+  if not exists(select 1 from public.league_owner_accounts
+    where room_id=v_room and user_id=auth.uid() and active=true and is_commissioner=true)
+    or public._valid_commish_pin(v_room,p_commish_pin) is distinct from true then
+    return jsonb_build_object('ok',false,'error','Commissioner authorization failed.');
+  end if;
+  select * into v_thread from public.league_message_threads
+    where id=p_thread_id and room_id=v_room for update;
+  if not found then
+    return jsonb_build_object('ok',false,'error','Discussion not found.');
+  end if;
+  if p_post_id is null then
+    update public.league_message_threads
+      set deleted_at=coalesce(deleted_at,now()),status='archived',pinned=false,reply_count=0,updated_at=now()
+      where id=p_thread_id and room_id=v_room;
+    update public.league_message_posts
+      set deleted_at=coalesce(deleted_at,now()),status='removed',updated_at=now()
+      where thread_id=p_thread_id and room_id=v_room;
+  else
+    if not exists(select 1 from public.league_message_posts
+      where id=p_post_id and thread_id=p_thread_id and room_id=v_room) then
+      return jsonb_build_object('ok',false,'error','Message not found in this discussion.');
+    end if;
+    update public.league_message_posts
+      set deleted_at=coalesce(deleted_at,now()),status='removed',updated_at=now()
+      where id=p_post_id and thread_id=p_thread_id and room_id=v_room;
+    update public.league_message_threads t
+      set reply_count=(select count(*) from public.league_message_posts p
+            where p.thread_id=t.id and p.status='active' and p.deleted_at is null),
+          last_activity_at=greatest(t.created_at,coalesce((select max(p.created_at)
+            from public.league_message_posts p where p.thread_id=t.id
+              and p.status='active' and p.deleted_at is null),t.created_at)),
+          updated_at=now()
+      where t.id=p_thread_id and t.room_id=v_room;
+  end if;
+  return jsonb_build_object('ok',true);
+end; $$;
+revoke all on function public.league_commish_delete_board_item(text,text,bigint,bigint) from public,anon;
+grant execute on function public.league_commish_delete_board_item(text,text,bigint,bigint) to authenticated;
+
+-- Serialize incoming replies with deletion. This also guards any old reply RPC.
+create or replace function public._league_guard_deleted_board_thread()
+returns trigger language plpgsql security definer set search_path=public,pg_temp as $$
+declare v_deleted timestamptz;
+begin
+  select deleted_at into v_deleted from public.league_message_threads
+    where id=new.thread_id and room_id=new.room_id for update;
+  if not found then raise exception 'Discussion not found.'; end if;
+  if v_deleted is not null then raise exception 'This discussion has been deleted.'; end if;
+  return new;
+end; $$;
+revoke all on function public._league_guard_deleted_board_thread() from public,anon,authenticated;
+drop trigger if exists league_guard_deleted_board_thread on public.league_message_posts;
+create trigger league_guard_deleted_board_thread before insert on public.league_message_posts
+  for each row execute function public._league_guard_deleted_board_thread();
+
+create or replace function public.league_ingest_google_group_message(
+  p_room_code text,
+  p_bridge_secret text,
+  p_message_id text,
+  p_reference_ids text[],
+  p_in_reply_to text,
+  p_subject text,
+  p_author_display_name text,
+  p_author_email text,
+  p_body text,
+  p_sent_at timestamptz,
+  p_metadata jsonb default '{}'::jsonb
+)
+returns jsonb
+language plpgsql
+security definer
+set search_path=public,extensions,pg_temp
+as $$
+declare
+  v_room uuid;
+  v_cfg public.league_google_groups_sync_config%rowtype;
+  v_season public.league_seasons%rowtype;
+  v_mid text:=btrim(coalesce(p_message_id,''));
+  v_subject text:=btrim(coalesce(p_subject,''));
+  v_author text:=btrim(coalesce(p_author_display_name,''));
+  v_body text:=btrim(coalesce(p_body,''));
+  v_thread_id bigint;
+  v_existing_thread bigint;
+  v_existing_post bigint;
+  v_ref text;
+  v_parent_thread bigint;
+  v_title text;
+  v_normalized_subject text;
+  v_now timestamptz:=now();
+begin
+  select id into v_room from public.rooms where code=p_room_code;
+
+  if v_room is null then
+    return jsonb_build_object('ok',false,'error','Room not found.');
+  end if;
+
+  select * into v_cfg
+  from public.league_google_groups_sync_config
+  where room_id=v_room;
+
+  if v_cfg.room_id is null
+     or v_cfg.enabled is distinct from true
+     or encode(
+          extensions.digest(
+            convert_to(coalesce(p_bridge_secret,''),'UTF8'),
+            'sha256'
+          ),
+          'hex'
+        ) is distinct from v_cfg.secret_sha256 then
+    return jsonb_build_object('ok',false,'error','Bridge authorization failed.');
+  end if;
+
+  perform pg_advisory_xact_lock(hashtextextended(v_room::text,722));
+
+  if v_mid='' then
+    return jsonb_build_object('ok',false,'error','Message-ID is required.');
+  end if;
+
+  select id into v_existing_thread
+  from public.league_message_threads
+  where room_id=v_room
+    and source in ('google_groups','google_groups_sync')
+    and source_message_id=v_mid
+  limit 1;
+
+  if v_existing_thread is not null then
+    return jsonb_build_object(
+      'ok',true,'duplicate',true,'kind','thread','thread_id',v_existing_thread
+    );
+  end if;
+
+  select id into v_existing_post
+  from public.league_message_posts
+  where room_id=v_room
+    and source in ('google_groups','google_groups_sync')
+    and source_message_id=v_mid
+  limit 1;
+
+  if v_existing_post is not null then
+    return jsonb_build_object(
+      'ok',true,'duplicate',true,'kind','reply','post_id',v_existing_post
+    );
+  end if;
+
+  select * into v_season
+  from public.league_seasons
+  where room_id=v_room and is_current
+  order by season_year desc
+  limit 1;
+
+  if v_season.id is null then
+    return jsonb_build_object('ok',false,'error','Current season not found.');
+  end if;
+
+  v_author:=coalesce(
+    nullif(v_author,''),
+    nullif(btrim(coalesce(p_author_email,'')),''),
+    'Google Groups Member'
+  );
+  v_subject:=coalesce(nullif(v_subject,''),'Google Groups Discussion');
+  v_body:=coalesce(nullif(v_body,''),'[No message text]');
+
+  if char_length(v_body)>20000 then
+    v_body:=left(v_body,19999)||'…';
+  end if;
+
+  v_normalized_subject:=btrim(
+    regexp_replace(v_subject,'^\s*((re|fw|fwd)\s*:\s*|\[[^]]+\]\s*)+','','i')
+  );
+
+  if nullif(btrim(coalesce(p_in_reply_to,'')),'') is not null then
+    select t.id into v_parent_thread
+    from public.league_message_threads t
+    where t.room_id=v_room
+      and t.source in ('google_groups','google_groups_sync')
+      and (
+        t.source_message_id=p_in_reply_to
+        or t.source_thread_id=p_in_reply_to
+      )
+    order by t.id desc
+    limit 1;
+
+    if v_parent_thread is null then
+      select p.thread_id into v_parent_thread
+      from public.league_message_posts p
+      where p.room_id=v_room
+        and p.source in ('google_groups','google_groups_sync')
+        and p.source_message_id=p_in_reply_to
+      order by p.id desc
+      limit 1;
+    end if;
+  end if;
+
+  if v_parent_thread is null and coalesce(array_length(p_reference_ids,1),0)>0 then
+    for v_ref in
+      select x.ref
+      from unnest(p_reference_ids) with ordinality as x(ref,ord)
+      order by x.ord desc
+    loop
+      select t.id into v_parent_thread
+      from public.league_message_threads t
+      where t.room_id=v_room
+        and t.source in ('google_groups','google_groups_sync')
+        and (t.source_message_id=v_ref or t.source_thread_id=v_ref)
+      order by t.id desc
+      limit 1;
+
+      if v_parent_thread is null then
+        select p.thread_id into v_parent_thread
+        from public.league_message_posts p
+        where p.room_id=v_room
+          and p.source in ('google_groups','google_groups_sync')
+          and p.source_message_id=v_ref
+        order by p.id desc
+        limit 1;
+      end if;
+
+      exit when v_parent_thread is not null;
+    end loop;
+  end if;
+
+  -- Gmail's thread id is stable across messages in the same inbox thread.
+  -- This catches Google deliveries whose RFC Message-ID references were rewritten.
+  if v_parent_thread is null
+     and nullif(btrim(coalesce(p_metadata->>'gmail_thread_id','')),'') is not null then
+    select t.id into v_parent_thread
+    from public.league_message_threads t
+    where t.room_id=v_room
+      and t.season_year=v_season.season_year
+      and t.source in ('google_groups','google_groups_sync')
+      and (t.status<>'archived' or t.deleted_at is not null)
+      and t.source_metadata->>'gmail_thread_id'=p_metadata->>'gmail_thread_id'
+    order by t.last_activity_at desc,t.id desc
+    limit 1;
+
+    if v_parent_thread is null then
+      select p.thread_id into v_parent_thread
+      from public.league_message_posts p
+      where p.room_id=v_room
+        and p.season_year=v_season.season_year
+        and p.source in ('google_groups','google_groups_sync')
+        and p.source_metadata->>'gmail_thread_id'=p_metadata->>'gmail_thread_id'
+      order by p.created_at desc,p.id desc
+      limit 1;
+    end if;
+  end if;
+
+  -- Last-resort threading fallback for an actual email reply: match the
+  -- normalized subject against a current-season Google discussion.
+  if v_parent_thread is null
+     and (
+       nullif(btrim(coalesce(p_in_reply_to,'')),'') is not null
+       or coalesce(array_length(p_reference_ids,1),0)>0
+     )
+     and nullif(v_normalized_subject,'') is not null then
+    select t.id into v_parent_thread
+    from public.league_message_threads t
+    where t.room_id=v_room
+      and t.season_year=v_season.season_year
+      and t.source in ('google_groups','google_groups_sync')
+      and (t.status<>'archived' or t.deleted_at is not null)
+      and lower(btrim(regexp_replace(coalesce(t.source_subject,t.title),'^\s*((re|fw|fwd)\s*:\s*|\[[^]]+\]\s*)+','','i')))
+          =lower(v_normalized_subject)
+    order by t.last_activity_at desc,t.id desc
+    limit 1;
+  end if;
+
+  -- Keep deleted Google identities as tombstones. A successful ignored response
+  -- allows Gmail polling to advance without resurrecting commissioner deletions.
+  if v_parent_thread is not null then
+    perform 1 from public.league_message_threads where id=v_parent_thread for update;
+    if exists(select 1 from public.league_message_threads
+      where id=v_parent_thread and deleted_at is not null) then
+      return jsonb_build_object('ok',true,'ignored',true,'reason','deleted_thread');
+    end if;
+  end if;
+
+  -- Older-season Google Group archives remain read-only. A reply to one of
+  -- those starts a new current discussion. The CURRENT season is different:
+  -- 2026 imported topics now live on Current Board and accept new replies.
+  if v_parent_thread is not null and exists(
+    select 1
+    from public.league_message_threads
+    where id=v_parent_thread
+      and source='google_groups'
+      and season_year<>v_season.season_year
+  ) then
+    p_metadata:=coalesce(p_metadata,'{}'::jsonb)
+      || jsonb_build_object('continued_from_archive_thread_id',v_parent_thread);
+    v_parent_thread:=null;
+  end if;
+
+  if v_parent_thread is null then
+    v_title:=v_normalized_subject;
+    if char_length(v_title)<3 then
+      v_title:='Google Groups Discussion';
+    end if;
+    v_title:=left(v_title,120);
+
+    insert into public.league_message_threads(
+      room_id,season_id,season_year,author_team_id,author_display_name,
+      title,body,pinned,status,reply_count,last_activity_at,created_at,updated_at,
+      source,source_message_id,source_thread_id,source_subject,source_metadata
+    )
+    values(
+      v_room,v_season.id,v_season.season_year,null,v_author,
+      v_title,v_body,false,'active',0,p_sent_at,p_sent_at,v_now,
+      'google_groups_sync',v_mid,v_mid,v_subject,
+      coalesce(p_metadata,'{}'::jsonb)
+        || jsonb_build_object(
+             'author_email',p_author_email,
+             'bridge','gmail_apps_script'
+           )
+    )
+    returning id into v_thread_id;
+
+    return jsonb_build_object(
+      'ok',true,'duplicate',false,'kind','thread','thread_id',v_thread_id
+    );
+  end if;
+
+  insert into public.league_message_posts(
+    thread_id,room_id,season_id,season_year,author_team_id,author_display_name,
+    body,status,created_at,updated_at,source,source_message_id,source_thread_id,
+    source_subject,source_metadata
+  )
+  select
+    v_parent_thread,v_room,v_season.id,v_season.season_year,null,v_author,
+    v_body,'active',p_sent_at,v_now,'google_groups_sync',v_mid,
+    t.source_thread_id,v_subject,
+    coalesce(p_metadata,'{}'::jsonb)
+      || jsonb_build_object(
+           'author_email',p_author_email,
+           'in_reply_to',p_in_reply_to,
+           'references',coalesce(to_jsonb(p_reference_ids),'[]'::jsonb),
+           'bridge','gmail_apps_script'
+         )
+  from public.league_message_threads t
+  where t.id=v_parent_thread
+  returning id into v_existing_post;
+
+  update public.league_message_threads
+  set reply_count=(
+        select count(*)
+        from public.league_message_posts
+        where thread_id=v_parent_thread and status='active'
+      ),
+      last_activity_at=greatest(last_activity_at,p_sent_at),
+      updated_at=v_now
+  where id=v_parent_thread;
+
+  return jsonb_build_object(
+    'ok',true,'duplicate',false,'kind','reply',
+    'thread_id',v_parent_thread,'post_id',v_existing_post
+  );
+end;
+$$;
+
+revoke all on function public.league_ingest_google_group_message(
+  text,text,text,text[],text,text,text,text,text,timestamptz,jsonb
+) from public;
+
+grant execute on function public.league_ingest_google_group_message(
+  text,text,text,text[],text,text,text,text,text,timestamptz,jsonb
+) to anon,authenticated;
+
+create or replace function public._league_notify_message_thread()
+returns trigger
+language plpgsql
+security definer
+set search_path=public,pg_temp
+as $$
+declare
+  v_team text;
+  v_prefix text:='';
+begin
+  if coalesce(new.source_metadata->>'backfill','false')='true' then return new; end if;
+
+  if coalesce(new.source,'live') not in ('live','google_groups_sync') then
+    return new;
+  end if;
+
+  select name into v_team from public.teams where id=new.author_team_id;
+
+  if new.source='google_groups_sync' then
+    v_prefix:='Google Group • ';
+  end if;
+
+  perform public._league_emit_event(
+    new.season_id,'message_board','message_thread',
+    v_prefix||coalesce(new.author_display_name,v_team,'A manager')||' posted: '||new.title,
+    left(new.body,300),
+    new.author_team_id,new.author_team_id,null,null,
+    'league',null,'league_message_threads',new.id::text,
+    'message-thread:'||new.id::text,
+    jsonb_build_object('source',new.source)
+  );
+
+  return new;
+end;
+$$;
+
+create or replace function public._league_notify_message_reply()
+returns trigger
+language plpgsql
+security definer
+set search_path=public,pg_temp
+as $$
+declare
+  v_team text;
+  v_title text;
+  v_prefix text:='';
+begin
+  if coalesce(new.source_metadata->>'backfill','false')='true' then return new; end if;
+
+  if coalesce(new.source,'live') not in ('live','google_groups_sync') then
+    return new;
+  end if;
+
+  select name into v_team from public.teams where id=new.author_team_id;
+  select title into v_title from public.league_message_threads where id=new.thread_id;
+
+  if new.source='google_groups_sync' then
+    v_prefix:='Google Group • ';
+  end if;
+
+  perform public._league_emit_event(
+    new.season_id,'message_board','message_reply',
+    v_prefix||coalesce(new.author_display_name,v_team,'A manager')||
+      ' replied to '||coalesce(v_title,'a discussion'),
+    left(new.body,300),
+    new.author_team_id,new.author_team_id,null,null,
+    'league',null,'league_message_threads',new.thread_id::text,
+    'message-reply:'||new.id::text,
+    jsonb_build_object('post_id',new.id,'source',new.source)
+  );
+
+  return new;
+end;
+$$;
+
+commit;
+
+-- Diagnostic: compare these with the reply count shown by the updated app.
+select t.id,t.title,t.reply_count,
+       count(p.id) filter(where p.status='active' and p.deleted_at is null) as stored_replies,
+       max(p.created_at) filter(where p.status='active' and p.deleted_at is null) as latest_reply
+from public.league_message_threads t
+join public.rooms r on r.id=t.room_id
+left join public.league_message_posts p on p.thread_id=t.id
+where r.code='GLSK26' and t.season_year=2026 and t.deleted_at is null
+  and lower(t.title) like '%transaction%'
+group by t.id,t.title,t.reply_count;

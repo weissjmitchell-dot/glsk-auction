@@ -1,0 +1,102 @@
+/**
+ * ADD this function BELOW the existing v7.1.4 Google Apps Script code.
+ * Do not replace existing code or secrets. Deploy v7.2.2 SQL + API first.
+ * Run catchUpGLSK2026TransactionThread manually. If prompted in the execution
+ * log, rerun until complete. Existing messages are deduplicated by Message-ID.
+ * Reads only group email with the exact normalized 2026 Transaction Thread
+ * subject. Sends to GLSK only, never to Google Groups. Catch-up is silent.
+ */
+function catchUpGLSK2026TransactionThread() {
+  const lock = LockService.getScriptLock();
+  if(!lock.tryLock(1000)) throw new Error('Catch-up already running; try again later.');
+  try {
+    const props = PropertiesService.getScriptProperties();
+    const cursorKey = 'GLSK_2026_TRANSACTION_CATCHUP_CURSOR';
+    const cursor = props.getProperty(cursorKey) || '';
+    const query = '{list:' + GLSK_LIST_ID + ' to:' + GLSK_GROUP_EMAIL +
+      '} subject:(2026 Transaction Thread) after:2025/12/31 before:2027/01/01';
+    const byId = new Map();
+    for(let offset=0;;offset+=100) {
+      const threads = GmailApp.search(query,offset,100);
+      threads.forEach(t => t.getMessages().forEach(m => {
+        const subject = String(m.getSubject() || '')
+          .replace(/^\s*((re|fw|fwd)\s*:\s*|\[[^\]]+\]\s*)+/i,'').trim().toLowerCase();
+        if(subject === '2026 transaction thread') byId.set(m.getId(),m);
+      }));
+      if(threads.length<100) break;
+    }
+    const key = m => String(m.getDate().getTime()).padStart(16,'0') + ':' + m.getId();
+    const pending = [...byId.values()].sort((a,b)=>key(a).localeCompare(key(b)))
+      .filter(m=>key(m)>cursor);
+    const started = Date.now();let processed=0;
+    for(const message of pending) {
+      if(processed>=40 || Date.now()-started>180000) {
+        Logger.log('Catch-up paused safely. Run catchUpGLSK2026TransactionThread again to continue.');
+        return;
+      }
+    const raw = message.getRawContent();
+    const headers = parseHeaders_(raw);
+
+    // Safety check: never forward unrelated inbox mail.
+    const listId = String(headers['list-id'] || '').toLowerCase();
+    const to = String(message.getTo() || '').toLowerCase();
+    const cc = String(message.getCc() || '').toLowerCase();
+    if(
+      listId.indexOf(GLSK_LIST_ID.toLowerCase()) === -1 &&
+      to.indexOf(GLSK_GROUP_EMAIL.toLowerCase()) === -1 &&
+      cc.indexOf(GLSK_GROUP_EMAIL.toLowerCase()) === -1
+    ) {
+      continue;
+    }
+
+    const from = parseMailbox_(message.getFrom());
+    const rfcMessageId =
+      String(headers['message-id'] || '').trim() ||
+      ('gmail:' + message.getId());
+
+    const references = extractMessageIds_(headers['references'] || '');
+    const inReplyTo = extractMessageIds_(headers['in-reply-to'] || '')[0] || null;
+
+    const payload = {
+      message_id: rfcMessageId,
+      reference_ids: references,
+      in_reply_to: inReplyTo,
+      subject: message.getSubject() || 'Google Groups Discussion',
+      author_display_name: from.name || from.email || 'Google Groups Member',
+      author_email: from.email || '',
+      body: cleanGoogleGroupsBody_(message.getPlainBody() || ''),
+      sent_at: message.getDate().toISOString(),
+      gmail_message_id: message.getId(),
+      gmail_thread_id: message.getThread().getId(),
+      list_id: headers['list-id'] || '',
+      delivered_to: headers['delivered-to'] || '',
+      backfill: true
+    };
+
+    const response = UrlFetchApp.fetch(GLSK_ENDPOINT, {
+      method: 'post',
+      contentType: 'application/json',
+      headers: {
+        'x-glsk-ingest-secret': GLSK_INGEST_SECRET
+      },
+      payload: JSON.stringify(payload),
+      muteHttpExceptions: true
+    });
+
+    const code = response.getResponseCode();
+    let result;
+    try { result = JSON.parse(response.getContentText()); } catch(e) {}
+    if(code < 200 || code >= 300 || !result || result.ok !== true) {
+      throw new Error(
+        'GLSK ingest failed (' + code + '): ' + response.getContentText()
+      );
+    }
+
+
+      props.setProperty(cursorKey,key(message));processed++;
+    }
+    props.deleteProperty(cursorKey);
+    Logger.log('Catch-up complete. Checked ' + byId.size + ' matching emails. Refresh the GLSK board.');
+    if(!byId.size) Logger.log('No matching mail found. Use the Google account receiving Each email from the group; missing inbox mail needs a fresh Google Groups export.');
+  } finally { lock.releaseLock(); }
+}

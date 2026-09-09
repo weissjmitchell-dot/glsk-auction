@@ -1,0 +1,62 @@
+GLSK v7.2.2 — Commissioner deletion + complete Message Board replies
+
+Based on the saved v7.2.1 League Office. This is an update package for the
+existing weissjmitchell-dot/glsk-auction project, not a standalone app.
+
+INSTALL
+1. In the existing Supabase SQL Editor, run
+   GLSK26-message-board-v722-migration.txt AFTER the v7.2.1 migration.
+   Running the migration does not delete any threads or messages.
+2. Unzip the update and replace these files in the existing GitHub project:
+     src/league.js
+     src/league.css
+     api/google-groups-ingest.js
+   Keep all other project files. Commit to main and wait for the automatic
+   Vercel production deployment to become Ready.
+3. Reload League Office > Communication > Message Board.
+   Commissioner accounts have Delete Thread and Delete Message buttons.
+   Delete Thread removes the entire discussion and replies from the board.
+   Delete Message removes one reply and updates the reply count.
+   Both ask for confirmation and are authorized by the server using the
+   signed-in commissioner account and the existing commissioner validation.
+   Deletions are local to GLSK; Google Groups originals remain untouched.
+   Private deletion records retain Google IDs to prevent sync resurrection.
+
+2026 TRANSACTION THREAD
+The old frontend made a single request for the entire reply archive, which
+could silently hit the Supabase row limit. The new frontend pages through
+all replies. First check the thread after installing and reloading.
+
+The SQL's final diagnostic lists stored replies and the latest reply date
+for 2026 transaction discussions. Compare stored_replies with the app.
+If the missing replies are already stored, the loading fix reveals them.
+
+If newer Google replies are still absent from the database:
+1. Open the EXISTING Google Apps Script project used by the Gmail bridge.
+2. ADD GLSK-v722-Transaction-Thread-catchup.gs.txt below the existing code.
+   Do not replace the old code, change secrets, or rerun the installer.
+3. Run catchUpGLSK2026TransactionThread. Approve Google's authorization if
+   prompted. If the execution log says paused, run it again until complete.
+4. Refresh GLSK. The routine reads matching group emails from your Gmail
+   account, checks message IDs, and imports missing messages silently.
+   It never sends email or posts to Google Groups. Normal future sync stays
+   on its existing one-minute trigger.
+
+The catch-up can only recover messages present in that Gmail account.
+If it reports no matching emails, use the account receiving Each email from
+this group. Messages never delivered there require a fresh Google Groups
+export. The script matches the normalized subject '2026 Transaction Thread'.
+
+The API now returns a failure when Supabase reports ok:false, so the Gmail
+poller cannot mistake a rejected import for success and skip past it.
+
+VERIFICATION
+JavaScript syntax checks passed. Isolated checks passed for 1,505 replies
+with a simulated 137-row server cap, room/deletion filtering, commissioner
+and non-commissioner board rendering (current and archive), and API error,
+authorization, deduplication, and silent catch-up handling.
+
+No live deployment, database migration execution, or Gmail catch-up was
+performed from this session. The stored replies and live sync have not been
+verified. The available saved source is a partial update package, so a full
+application build could not be run here.
