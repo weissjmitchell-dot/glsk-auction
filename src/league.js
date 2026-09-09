@@ -485,10 +485,10 @@ function bottomNav(){
  const active=navGroupForTab(state.tab);
  const items=[
    ['home','⌂','Home'],
+   ['leaguehub','☷','League'],
    ['teamhub','♟','Team'],
    ['freeagents','+','Free Agents'],
    ['communications','💬','Communication'],
-   ['leaguehub','☷','League'],
    ['settingshub','⚙','Settings']
  ];
  return `<nav class="bottom-nav office-bottom-nav consolidated-nav"><div class="bottom-nav-inner">${items.map(([t,i,l])=>`<button class="nav-btn ${active===t?'active':''}" data-tab="${t}"><span class="nav-icon-wrap">${i}${t==='communications'&&state.chatUnread?`<b class="chat-nav-badge">${state.chatUnread>99?'99+':state.chatUnread}</b>`:''}</span>${l}</button>`).join('')}</div></nav>`;
