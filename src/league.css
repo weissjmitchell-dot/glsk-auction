@@ -3785,3 +3785,9 @@
     font-size:16px;
   }
 }
+
+
+/* GLSK v7.1.9 — allow GLSK replies on live Google Group synced threads */
+.board-reply-compose span{
+  line-height:1.35;
+}

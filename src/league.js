@@ -786,7 +786,7 @@ function boardView(){
        <div>
          <div class="board-thread-flags">${selected.pinned?'<span>PINNED</span>':''}${imported?'<span class="google">GOOGLE GROUPS ARCHIVE</span>':synced?'<span class="sync">GOOGLE GROUP SYNC</span>':selected.status==='locked'?'<span>LOCKED</span>':''}</div>
          <h2>${esc(selected.title)}</h2>
-         <div class="board-discussion-meta">Started by <strong>${esc(authorName)}</strong> • ${fmtDate(selected.created_at)}${imported?' • Original Google Groups timestamp':synced?' • Synced from Google Groups':''}</div>
+         <div class="board-discussion-meta">Started by <strong>${esc(authorName)}</strong> • ${fmtDate(selected.created_at)}${imported?' • Original Google Groups timestamp':synced?' • Synced from Google Groups • GLSK replies stay here':''}</div>
        </div>
        ${isCommish()&&!imported?`<div class="board-mod-actions">
          <button class="btn btn-sm btn-outline" data-board-action="${selected.pinned?'unpin':'pin'}" data-thread-id="${selected.id}">${selected.pinned?'Unpin':'Pin'}</button>
@@ -817,7 +817,7 @@ function boardView(){
        </article>`;
      }).join('')||'<div class="board-no-replies">No replies.</div>'}</div>
 
-     ${me&&!state.session?.spectator&&!isArchive&&selected.source==='live'&&selected.status!=='locked'?`<div class="board-reply-compose"><textarea id="board-reply-body" class="input board-textarea" maxlength="5000" placeholder="Reply as ${esc(state.chatDisplayName||me.name)}"></textarea><div><span>Keep the discussion going.</span><button class="btn btn-primary" data-action="board-reply" data-thread-id="${selected.id}">Post Reply</button></div></div>`:
+     ${me&&!state.session?.spectator&&!isArchive&&['live','google_groups_sync'].includes(selected.source)&&selected.status!=='locked'?`<div class="board-reply-compose"><textarea id="board-reply-body" class="input board-textarea" maxlength="5000" placeholder="Reply as ${esc(state.chatDisplayName||me.name)}"></textarea><div><span>${selected.source==='google_groups_sync'?'This reply stays in GLSK and will not post back to Google Groups.':'Keep the discussion going.'}</span><button class="btn btn-primary" data-action="board-reply" data-thread-id="${selected.id}">Post Reply</button></div></div>`:
        imported?'<div class="board-locked-notice">Historical Google Groups discussion • preserved as read-only.</div>':
        selected.status==='locked'?'<div class="board-locked-notice">This discussion has been locked by the commissioner.</div>':''}
      `:'<div class="board-empty discussion-empty"><strong>Select a discussion</strong><span>Choose a thread from the left to read it.</span></div>'}
