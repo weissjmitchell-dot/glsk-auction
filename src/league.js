@@ -1,4 +1,5 @@
 import './autocomplete.js';
+import './player-profile.js';
 import './league.css';
 import './auth.css';
 import { supabase, configured } from './supabase.js';
@@ -1147,7 +1148,7 @@ function faMarketTable(players,all,me,settings){
  <tr><th aria-label="Player actions"></th><th><button data-fa-sort="name">Offense</button></th><th>Roster Status</th><th>GP</th><th>Bye</th>${cols.map(([key,label])=>`<th aria-sort="${state.faSort===key?(state.faSortDesc?'descending':'ascending'):'none'}"><button data-fa-sort="${key}">${label}${state.faSort===key?(state.faSortDesc?' ↓':' ↑'):''}</button></th>`).join('')}</tr></thead><tbody>
  ${players.map(p=>{const d=faData(p),proj=projectionFor(p.player_key,week)||{},actual=statForPlayer(p.player_key)||{},watched=faWatchFor(p);const available=['free_agent','waivers'].includes(p.availability);const game=lineupGameLabel(p.player_key,week);const image=p.headshot_url||p.photo_url;const safeImage=typeof image==='string'&&/^https:\/\//.test(image)?image:null;const name=esc(p.player_name);const vals=cols.map(([key])=>key==='points'?(state.faStats==='projected'?d.projected_fantasy_points:d.fantasy_points):key==='position_rank'?(d.projected_position_rank??d.position_rank):key==='rank'?p.yahoo_rank:key==='overall_rank'?actual.overall_rank:d[key]);
  return `<tr class="${state.waiverSelectedPlayer===p.player_key?'selected':''}"><td><div class="fa-row-actions"><button class="fa-add-icon" data-fa-select="${esc(p.player_key)}" aria-label="${p.availability==='waivers'?'Claim':'Add'} ${name}" ${!available||settings.enabled===false?'disabled':''}>+</button><button class="fa-watch-icon" data-fa-watch="${esc(p.player_key)}" aria-label="${watched?'Unwatch':'Watch'} ${name}" aria-pressed="${Boolean(watched)}">${watched?'★':'☆'}</button></div></td>
- <td><div class="fa-player-identity">${safeImage?`<img src="${esc(safeImage)}" alt="" loading="lazy">`:`<span class="fa-player-initials" aria-hidden="true">${esc(p.player_name.split(/\s+/).map(n=>n[0]).slice(0,2).join(''))}</span>`}<div><button class="fa-player-link" ${available?`data-fa-select="${esc(p.player_key)}"`: 'disabled'}>${name}</button><span>${esc(p.nfl_team||'FA')} - ${esc(p.position)}</span><small>${esc(game.main)}${game.sub&&game.sub!=='Open starter'?' • '+esc(game.sub):''}</small></div></div></td>
+ <td><div class="fa-player-identity">${safeImage?`<img src="${esc(safeImage)}" alt="" loading="lazy">`:`<span class="fa-player-initials" aria-hidden="true">${esc(p.player_name.split(/\s+/).map(n=>n[0]).slice(0,2).join(''))}</span>`}<div><button class="fa-player-link" data-profile-key="${esc(p.player_key)}">${name}</button><span>${esc(p.nfl_team||'FA')} - ${esc(p.position)}</span><small>${esc(game.main)}${game.sub&&game.sub!=='Open starter'?' • '+esc(game.sub):''}</small></div></div></td>
  <td>${p.availability==='rostered'?esc(teamById(p.owner_team_id)?.name||'Rostered'):p.availability==='waivers'?`Waivers<br><small>${waiverDate(p.waiver_ends_at)}</small>`:'FA'}</td><td>${fmtStat(d.games_played??d.gp,0)}</td><td>${fmtStat(d.bye_week??proj.bye_week??actual.bye_week,0)}</td>${vals.map((v,i)=>`<td class="${i===0?'fa-points':''}">${fmtStat(v,i===0?2:state.faStats==='projected'&&i>=4?1:0)}</td>`).join('')}</tr>`;}).join('')||'<tr><td colspan="22">No players match these filters.</td></tr>'}
  </tbody></table></div></section>`;
 }
@@ -1662,7 +1663,7 @@ function lineupView(){
    const faded=selection&&!selected&&!eligible;
    const label=isBench?'BN':String(slot.label).replace(/[0-9]+$/,'');
    const disabled=!editable||locked||Boolean(faded);
-   const playerCell=`<div class="lineup-player-static"><button type="button" class="lineup-name-button" data-lineup-pick ${disabled?'disabled':''}>${esc(rp?.player_name||'Empty position')}</button><span>${rp?`${esc(rp.nfl_team||'')} • ${esc(rp.position||'')}`:'Select an eligible player'}${locked?' • Locked':''}</span><small class="lineup-inline-game">${esc(game.main)}${game.sub&&game.sub!=='Open starter'?' • '+esc(game.sub):''}</small></div>`;
+   const playerCell=`<div class="lineup-player-static"><button type="button" class="lineup-name-button" ${rp?`data-profile-key="${esc(rp.player_key)}"`:`data-lineup-pick ${disabled?'disabled':''}`}>${esc(rp?.player_name||'Empty position')}</button><span>${rp?`${esc(rp.nfl_team||'')} • ${esc(rp.position||'')}`:'Select an eligible player'}${locked?' • Locked':''}</span><small class="lineup-inline-game">${esc(game.main)}${game.sub&&game.sub!=='Open starter'?' • '+esc(game.sub):''}</small></div>`;
    return `<div class="lineup-data-row ${isBench?'bench-row':'starter-row'} ${locked?'is-locked':''} ${selected?'lineup-selected':eligible?'lineup-eligible':faded?'lineup-faded':''}" data-lineup-row data-row-slot="${esc(descriptor.slotCode||'')}" data-row-player="${esc(descriptor.playerKey||'')}">
      <div class="lineup-yahoo-pos"><button type="button" class="yahoo-pos lineup-position-button" data-lineup-pick aria-label="${selected?'Cancel selection':eligible?'Swap with':'Select'} ${esc(rp?.player_name||slot.label)}" aria-pressed="${Boolean(selected)}" ${disabled?'disabled':''}>${esc(label)}</button></div>
      <div class="lineup-yahoo-player">${playerCell}</div>
@@ -2098,6 +2099,10 @@ async function logout(){const t=myTeam();await signOutOwner({roomCode:ROOM_CODE,
 async function commish(name,args={},msg='Saved.'){try{await rpc(name,{p_room_code:ROOM_CODE,p_commish_pin:state.session.commishPin,...args});toast(msg);await loadData();render();}catch(e){toast(e.message,'error');}}
 
 function bind(){
+ window.GLSKPlayerProfiles?.register({
+   read:()=>({...state,catalog:state.notificationPlayers}),
+   refresh:async()=>{await loadData();render();}
+ });
  window.GLSKAutocomplete?.addNames([...state.roster.map(p=>p.player_name),...(state.waiverCenter?.players||[]).map(p=>p.player_name),...state.notificationPlayers.map(p=>p.name),...state.teams.map(t=>t.name)]);
  app.querySelector('[data-action="optimize-lineup"]')?.addEventListener('click',()=>{
    try{const message=optimizeCurrentLineup();state.lineupSelection=null;render();toast(message);}
