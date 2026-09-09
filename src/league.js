@@ -15,7 +15,7 @@ const state = {
   gameSettings:null, lineupSlots:[], weekStates:[], schedule:[], lineups:[], weeklyScores:[], matchupScores:[], shadowStandings:[], reconciliation:[], scoringRules:[], weeklyHostSettings:null, playerProjections:[],
   lineupDataTab:'stats', lineupStatsRange:'week', lineupProjectionRange:'week', lineupBrowseWeek:null,
   matchupBrowseWeek:null, selectedMatchupId:null, scheduleTeamId:null,
-  boardThreads:[], boardPosts:[], boardSelectedThread:null, boardYear:null, boardSearch:'',
+  boardThreads:[], boardPosts:[], boardSelectedThread:null, boardMode:'current', boardSearch:'',
   chatMessages:[], chatYears:[], chatYear:null, chatUnread:0, chatHasMore:false, chatOldestAt:null,
   chatDisplayName:'', chatDraft:'', chatReplyTo:null, chatEditingId:null, chatReactionTarget:null, chatAutoScroll:true, chatError:null,
   notifications:[], notificationPrefs:[], notificationUnread:0, playerWatches:[], notificationPlayers:[], playerStatusUpdates:[],
@@ -335,8 +335,6 @@ async function loadData(){
   if(state.lineupBrowseWeek==null)state.lineupBrowseWeek=Number(state.gameSettings?.current_week||1);
   if(state.matchupBrowseWeek==null)state.matchupBrowseWeek=Number(state.gameSettings?.current_week||1);
   if(state.scheduleTeamId==null&&myTeam())state.scheduleTeamId=myTeam().id;
-  const currentBoardYear=Number(state.season?.season_year||2026);
-  if(state.boardYear==null)state.boardYear=currentBoardYear;
   state.boardThreads=boardThreads.filter(x=>x.status!=='archived').sort((a,b)=>(Number(b.pinned)-Number(a.pinned))||(new Date(b.last_activity_at)-new Date(a.last_activity_at)));
   state.boardPosts=boardPosts.filter(x=>x.status==='active').sort((a,b)=>new Date(a.created_at)-new Date(b.created_at));
   if(state.boardSelectedThread&&!state.boardThreads.some(t=>String(t.id)===String(state.boardSelectedThread)))state.boardSelectedThread=null;
@@ -623,14 +621,31 @@ function boardArchiveAttachments(item){
 function boardView(){
  const me=myTeam();
  const currentYear=Number(state.season?.season_year||2026);
- const years=[...new Set([currentYear,...state.boardThreads.map(t=>Number(t.season_year||currentYear))])].sort((a,b)=>b-a);
- if(!years.includes(Number(state.boardYear)))state.boardYear=currentYear;
+ const archiveYears=[...new Set(
+   state.boardThreads
+     .filter(t=>t.source==='google_groups')
+     .map(t=>Number(t.season_year||currentYear))
+ )].sort((a,b)=>b-a);
+
+ if(!state.boardMode)state.boardMode='current';
+
+ const archiveMatch=String(state.boardMode).match(/^archive:(\d{4})$/);
+ const archiveYear=archiveMatch?Number(archiveMatch[1]):null;
+ const isArchive=Boolean(archiveYear);
 
  const search=String(state.boardSearch||'').trim().toLowerCase();
- let threads=state.boardThreads.filter(t=>Number(t.season_year||currentYear)===Number(state.boardYear));
+
+ let threads=state.boardThreads.filter(t=>{
+   if(isArchive){
+     return t.source==='google_groups' && Number(t.season_year||currentYear)===archiveYear;
+   }
+   return t.source!=='google_groups' && Number(t.season_year||currentYear)===currentYear;
+ });
+
  if(search){
    threads=threads.filter(t=>`${t.title||''} ${t.body||''} ${boardAuthorName(t)} ${t.source_subject||''}`.toLowerCase().includes(search));
  }
+
  threads=threads.sort((a,b)=>(Number(b.pinned)-Number(a.pinned))||(new Date(b.last_activity_at)-new Date(a.last_activity_at)));
 
  let selected=threads.find(t=>String(t.id)===String(state.boardSelectedThread))||threads[0]||null;
@@ -639,23 +654,30 @@ function boardView(){
 
  const posts=selected?boardPostsFor(selected.id):[];
  const authorName=selected?boardAuthorName(selected):'';
- const archiveYear=Number(state.boardYear)!==currentYear;
  const imported=selected?.source==='google_groups';
+
+ const boardTitle=isArchive?`${archiveYear} Google Groups Archive`:'Current Message Board';
+ const boardSub=isArchive
+   ?`${threads.length} historical discussion${threads.length===1?'':'s'} • read-only`
+   :`${threads.length} current discussion${threads.length===1?'':'s'}`;
 
  return `${pageHeading('Message Board','Structured league discussions plus the complete Google Groups discussion archive. League Chat remains separate for realtime conversation.','League Community')}
 
  <section class="card board-archive-toolbar">
    <div class="board-archive-summary">
-     <strong>${state.boardYear===currentYear?'Current Message Board':`${state.boardYear} Google Groups Archive`}</strong>
-     <span>${threads.length} discussion${threads.length===1?'':'s'}${state.boardYear===currentYear?'':' • historical/read-only'}</span>
+     <strong>${boardTitle}</strong>
+     <span>${boardSub}</span>
    </div>
    <div class="board-archive-controls">
      <input id="board-search" class="input" placeholder="Search discussions" value="${esc(state.boardSearch)}">
-     <select id="board-year" class="input">${years.map(y=>`<option value="${y}" ${Number(state.boardYear)===Number(y)?'selected':''}>${y}${y===currentYear?' • Current':''}</option>`).join('')}</select>
+     <select id="board-mode" class="input">
+       <option value="current" ${!isArchive?'selected':''}>Current Board</option>
+       ${archiveYears.map(y=>`<option value="archive:${y}" ${archiveYear===y?'selected':''}>${y} Archive</option>`).join('')}
+     </select>
    </div>
  </section>
 
- ${me&&!state.session?.spectator&&Number(state.boardYear)===currentYear?`<section class="card card-pad office-section board-compose-card">
+ ${me&&!state.session?.spectator&&!isArchive?`<section class="card card-pad office-section board-compose-card">
    <div class="office-section-head"><div><h2>Start a Discussion</h2><div class="section-caption">Posting as ${esc(state.chatDisplayName||me.name)} • ${esc(me.name)}</div></div></div>
    <div class="board-compose-grid">
      <input id="board-thread-title" class="input" maxlength="120" placeholder="Discussion title">
@@ -668,7 +690,7 @@ function boardView(){
    <section class="card board-thread-list">
      <div class="board-list-head">
        <div><strong>Discussions</strong><span>${threads.length} shown</span></div>
-       ${archiveYear?'<span class="board-google-archive-chip">Google Groups Archive</span>':''}
+       ${isArchive?'<span class="board-google-archive-chip">Google Groups Archive</span>':''}
      </div>
      <div class="board-thread-items">${threads.length?threads.map(t=>{
        const active=selected&&String(selected.id)===String(t.id);
@@ -678,7 +700,7 @@ function boardView(){
          <div class="board-thread-preview">${esc((t.body||'').length>115?t.body.slice(0,115)+'…':t.body||'')}</div>
          <div class="board-thread-meta"><span>${esc(boardAuthorName(t))}</span><span>${Number(t.reply_count||0)} repl${Number(t.reply_count||0)===1?'y':'ies'}</span><span>${fmtDate(t.last_activity_at)}</span></div>
        </button>`;
-     }).join(''):`<div class="board-empty"><strong>No discussions found.</strong><span>${search?'Try a different search.':archiveYear?'No Google Groups topics were found for this year.':'Start the first GLSK message-board thread.'}</span></div>`}</div>
+     }).join(''):`<div class="board-empty"><strong>${isArchive?'No archived discussions found.':'No current discussions yet.'}</strong><span>${search?'Try a different search.':isArchive?'No Google Groups topics were found for this year.':'Start the first current GLSK message-board thread.'}</span></div>`}</div>
    </section>
 
    <section class="card board-discussion">
@@ -717,14 +739,13 @@ function boardView(){
        </article>`;
      }).join('')||'<div class="board-no-replies">No replies.</div>'}</div>
 
-     ${me&&!state.session?.spectator&&selected.source==='live'&&selected.status!=='locked'&&Number(state.boardYear)===currentYear?`<div class="board-reply-compose"><textarea id="board-reply-body" class="input board-textarea" maxlength="5000" placeholder="Reply as ${esc(state.chatDisplayName||me.name)}"></textarea><div><span>Keep the discussion going.</span><button class="btn btn-primary" data-action="board-reply" data-thread-id="${selected.id}">Post Reply</button></div></div>`:
+     ${me&&!state.session?.spectator&&!isArchive&&selected.source==='live'&&selected.status!=='locked'?`<div class="board-reply-compose"><textarea id="board-reply-body" class="input board-textarea" maxlength="5000" placeholder="Reply as ${esc(state.chatDisplayName||me.name)}"></textarea><div><span>Keep the discussion going.</span><button class="btn btn-primary" data-action="board-reply" data-thread-id="${selected.id}">Post Reply</button></div></div>`:
        imported?'<div class="board-locked-notice">Historical Google Groups discussion • preserved as read-only.</div>':
        selected.status==='locked'?'<div class="board-locked-notice">This discussion has been locked by the commissioner.</div>':''}
      `:'<div class="board-empty discussion-empty"><strong>Select a discussion</strong><span>Choose a thread from the left to read it.</span></div>'}
    </section>
  </div>`;
 }
-
 
 function notificationCategoryMeta(category){
  const map={
@@ -1994,7 +2015,7 @@ function bind(){
  app.querySelectorAll('[data-matchup-week]').forEach(b=>b.addEventListener('click',()=>{state.matchupBrowseWeek=Number(b.dataset.matchupWeek);state.selectedMatchupId=null;render();}));
  app.querySelectorAll('[data-select-matchup]').forEach(b=>b.addEventListener('click',()=>{state.selectedMatchupId=b.dataset.selectMatchup;render();}));
  app.querySelector('#schedule-team-select')?.addEventListener('change',e=>{state.scheduleTeamId=e.target.value;render();});
- app.querySelector('#board-year')?.addEventListener('change',e=>{state.boardYear=Number(e.target.value);state.boardSelectedThread=null;state.boardSearch='';render();});
+ app.querySelector('#board-mode')?.addEventListener('change',e=>{state.boardMode=e.target.value;state.boardSelectedThread=null;state.boardSearch='';render();});
  app.querySelector('#board-search')?.addEventListener('input',e=>{state.boardSearch=e.target.value;state.boardSelectedThread=null;clearTimeout(e.target._boardTimer);e.target._boardTimer=setTimeout(render,120);});
  app.querySelectorAll('[data-board-thread]').forEach(b=>b.addEventListener('click',()=>{state.boardSelectedThread=b.dataset.boardThread;render();}));
  app.querySelector('[data-action="board-create-thread"]')?.addEventListener('click',async()=>{
