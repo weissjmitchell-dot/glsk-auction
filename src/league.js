@@ -732,8 +732,8 @@ function draftRoomsView(){
 }
 
 function draftHubView(){return draftRoomsView()+`<div class="hub-grid" style="margin-top:20px">${hubCard('biddollars','$','Bid Dollars','Bid bank total and historical data.')}</div>`;}
-function bidDollarsView(){return `${pageHeading('Bid Dollars','League bid bank and historical accounting.','Draft')}<div class="hub-grid">${hubCard('bidbank','$','Bid Bank total','Starting pool, spending, penalties and remaining balance.')}${hubCard('bidhistory','↗','Historical Data','Auction stats, bid pool size by year and beginning bid trend.')}</div>`;}
-function bidBankPage(){return `${pageHeading('Bid Bank total','Starting pool less recorded spending and penalties.','Draft → Bid Dollars')}<button class="btn btn-outline" data-tab="biddollars" style="margin-bottom:16px">‹ Bid Dollars</button>${bidBankView(state.bidBank)}`;}
+function bidDollarsView(){return `${pageHeading('Bid Dollars','League bid bank and historical accounting.','Draft')}<div class="hub-grid">${hubCard('bidbank','$','Bid Bank total','Bid dollars collected for next season’s redistribution.')}${hubCard('bidhistory','↗','Historical Data','Auction stats, bid pool size by year and beginning bid trend.')}</div>`;}
+function bidBankPage(){return `${pageHeading('Bid Bank total','Bid dollars collected for next season’s redistribution.','Draft → Bid Dollars')}<button class="btn btn-outline" data-tab="biddollars" style="margin-bottom:16px">‹ Bid Dollars</button>${bidBankView(state.bidBank)}`;}
 function bidHistoryPage(){return `${pageHeading('Historical Data','Pre-auction workbook history.','Draft → Bid Dollars')}<button class="btn btn-outline" data-tab="biddollars" style="margin-bottom:16px">‹ Bid Dollars</button>${historicalBidView(state.bidHistoryTab||'auction')}`;}
 
 function dashboard(){
