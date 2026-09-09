@@ -134,7 +134,7 @@ function bidMoney(n){return `$${Number(n||0).toFixed(0)}`;}
 function teamById(id){return state.teams.find(t=>t.id===id);}
 function myTeam(){return state.session?.teamId?teamById(state.session.teamId):null;}
 function isCommish(){return Boolean(state.session?.commishPin);}
-function commissionerToolsActive(){return isCommish()&&state.tab==='settingshub';}
+function commissionerToolsActive(){return isCommish()&&state.tab==='commissioner';}
 function rosterFor(id){return state.roster.filter(r=>r.team_id===id&&r.active!==false);}
 function activeRosterFor(id){return rosterFor(id).filter(r=>String(r.roster_slot||'ACTIVE').toUpperCase()!=='IR');}
 function irRosterFor(id){return rosterFor(id).filter(r=>String(r.roster_slot||'ACTIVE').toUpperCase()==='IR');}
@@ -295,8 +295,8 @@ function renderPreservingInputFocus(id,start=null,end=null){
 }
 
 function setTab(tab){
-  if(tab==='reconcile'){state.commissionerSection='reconcile';tab='settingshub';}
-  state.tab=tab==='settingshub'&&!isCommish()?'home':tab||'home';
+  if(tab==='reconcile'){state.commissionerSection='reconcile';tab='commissioner';}
+  state.tab=tab==='commissioner'&&!isCommish()?'home':tab||'home';
   const u=new URL(location.href);
   if(state.tab==='home')u.searchParams.delete('tab');else u.searchParams.set('tab',state.tab);
   history.replaceState(null,'',u.pathname+(u.search?u.search:'')+u.hash);
@@ -610,8 +610,8 @@ function navGroupForTab(tab){
   if(['teamhub','lineup','contracts','trades'].includes(tab))return 'teamhub';
   if(['freeagents'].includes(tab))return 'freeagents';
   if(['communications','chat','board','notifications'].includes(tab))return 'communications';
-  if(['leaguehub','teams','matchups','schedule','standings','transactions','history','rules','deadlines','finances'].includes(tab))return 'leaguehub';
-  if(['settingshub','reconcile'].includes(tab))return 'settingshub';
+  if(['leaguehub','teams','matchups','schedule','standings','transactions','history'].includes(tab))return 'leaguehub';
+  if(['settingshub','commissioner','reconcile','rules','deadlines','finances'].includes(tab))return 'settingshub';
   if(tab==='draft')return 'draft';
   if(tab==='home')return 'home';
   return '';
@@ -625,7 +625,7 @@ function bottomNav(){
    ['freeagents','+','Free Agents'],
    ['communications','💬','Communication'],
    ['draft','⇅','Draft'],
-   ...(isCommish()?[['settingshub','⚙','Commissioner']]:[])
+   ['settingshub','⚙','Settings']
  ];
  return `<nav class="bottom-nav office-bottom-nav consolidated-nav"><div class="bottom-nav-inner" style="grid-template-columns:repeat(${items.length},minmax(0,1fr))">${items.map(([t,i,l])=>`<button class="nav-btn ${active===t?'active':''}" data-tab="${t}"><span class="nav-icon-wrap">${i}${t==='communications'&&state.chatUnread?`<b class="chat-nav-badge">${state.chatUnread>99?'99+':state.chatUnread}</b>`:''}</span>${l}</button>`).join('')}</div></nav>`;
 }
@@ -672,11 +672,19 @@ function leagueHubView(){
       ${hubCard('standings','≡','Standings','League records, rankings and playoff positioning.')}
       ${hubCard('transactions','☷','Transactions','Adds, drops, trades, contracts, corrections and draft activity.')}
       ${hubCard('history','★','History','Champions, season records and franchise accomplishments.')}
-      ${hubCard('rules','⚙','Rules','League rules and bid redistribution.')}
-      ${hubCard('deadlines','◷','Deadlines','Upcoming deadlines and your submissions.')}
-      ${hubCard('finances','$','Finances','View your league dues and financial entries.')}
     </section>`;
 }
+function settingsHubView(){
+  const open=state.deadlines.filter(d=>d.status==='open').length;
+  return `${pageHeading('Settings','League rules, deadlines and financial administration.','League Administration')}
+    <section class="nav-hub-grid nav-hub-grid-three">
+      ${hubCard('rules','⚙','Rules','Constitution, league settings and season configuration.')}
+      ${hubCard('deadlines','◷','Deadlines','Contract, extension and commissioner deadlines.',open?`${open} open`:'')}
+      ${hubCard('finances','$','Finances','League financial ledger and bid-dollar accounting.')}
+      ${isCommish()?hubCard('commissioner','⚙','Commissioner','Roster corrections, waivers, approvals and all commissioner-adjustable tools.'):''}
+    </section>`;
+}
+
 const commissionerSections=[
  ['teams','Rosters','Manual player additions and retirement or ban corrections.'],
  ['contracts','Contracts','Assign, update and void contracts; refresh extension costs.'],
@@ -693,10 +701,10 @@ const commissionerSections=[
  ['board','Message Board Moderation','Pin, lock or delete threads and remove messages.'],
  ['chat','Chat Moderation','Review and remove chat messages.']
 ];
-function settingsHubView(){
+function commissionerHubView(){
  if(!isCommish())return '<div class="card empty">Commissioner access is required.</div>';
  const section=commissionerSections.find(([key])=>key===state.commissionerSection);
- const heading=pageHeading('Commissioner','All League Office administration tools in one place.','League Administration');
+ const heading=`<button class="btn btn-outline" data-tab="settingshub" style="margin-bottom:16px">‹ Settings</button>${pageHeading('Commissioner','All League Office administration tools in one place.','League Administration')}`;
  if(!section)return `${heading}<section class="nav-hub-grid">${commissionerSections.map(([key,title,description])=>`<button class="nav-hub-card" data-commissioner-section="${key}"><div class="nav-hub-copy"><strong>${esc(title)}</strong><span>${esc(description)}</span></div><div class="nav-hub-arrow">›</div></button>`).join('')}</section>`;
  const views={teams:teamsView,contracts:contractsView,freeagents:freeAgencyView,trades:tradesView,lineup:lineupSetupPanel,matchups:matchupsView,reconcile:reconcileView,rules:rulesView,deadlines:deadlinesView,finances:financesView,transactions:transactionsView,history:historyView,board:boardView,chat:chatView};
  return `${heading}<div class="row gap-8 wrap" style="margin-bottom:20px"><button class="btn btn-outline" data-commissioner-section="">‹ All Commissioner Tools</button><label>Section <select class="input" id="commissioner-section">${commissionerSections.map(([key,title])=>`<option value="${key}" ${key===section[0]?'selected':''}>${esc(title)}</option>`).join('')}</select></label></div>${views[section[0]]()}`;
@@ -713,7 +721,7 @@ function dashboard(){
  return `<section class="office-hero office-home-hero"><div><div class="office-kicker">${state.season?.season_year||2026} League Year</div><h1>League Office</h1><p>Your GLSK home base. Manage your team, browse the league and stay connected from the tabs below.</p></div>${me?`<div class="home-team-summary"><span>Your Team</span><strong>${esc(me.name)}</strong><div>${activeRosterFor(me.id).length}/${rosterLimit} roster${irRosterFor(me.id).length?` + ${irRosterFor(me.id).length} IR`:''} • ${bidMoney(me.remaining_budget)} bids • ${capUsed(me.id)}/100 cap</div></div>`:''}</section>
  <div class="kpi-grid office-kpi-grid"><div class="card kpi"><div class="kpi-label">Full Rosters</div><div class="kpi-value">${full}<span class="kpi-denom">/12</span></div><div class="kpi-sub">${rosterLimit}-player limit</div></div><div class="card kpi"><div class="kpi-label">Bid Dollars</div><div class="kpi-value">${totalBids}</div><div class="kpi-sub">remaining league-wide</div></div><div class="card kpi"><div class="kpi-label">Contracts</div><div class="kpi-value">${state.contracts.filter(c=>c.status==='active').length}</div><div class="kpi-sub">active contracts</div></div><div class="card kpi"><div class="kpi-label">Open Deadlines</div><div class="kpi-value">${open}</div><div class="kpi-sub">need attention</div></div></div>
  ${next?`<div class="owner-banner office-deadline-banner"><div><span class="banner-label">NEXT DEADLINE</span><strong>${esc(next.title)}</strong></div><div>${fmtDate(next.due_at)}</div></div>`:''}
- <div class="office-grid two office-home-grid"><section class="office-section"><div class="office-section-head"><div><h2>League Snapshot</h2><div class="section-caption">Roster, bid and cap status at a glance</div></div><button class="btn btn-sm btn-outline" data-tab="teams">View Rosters</button></div>${teamCards()}</section><div><section class="office-section"><div class="office-section-head"><div><h2>${isCommish()?'Commissioner Center':'League Access'}</h2><div class="section-caption">${isCommish()?'Management controls are unlocked':'Commissioner-only controls stay protected'}</div></div></div><div class="card card-pad office-info-card">${isCommish()?'<strong>Commissioner mode active</strong><p>Open the Commissioner tab for all league administration tools.</p>':'<strong>Owner mode</strong><p>You can manage your team, submit contracts, propose trades and review league records.</p>'}</div></section></div></div>`;
+ <div class="office-grid two office-home-grid"><section class="office-section"><div class="office-section-head"><div><h2>League Snapshot</h2><div class="section-caption">Roster, bid and cap status at a glance</div></div><button class="btn btn-sm btn-outline" data-tab="teams">View Rosters</button></div>${teamCards()}</section><div><section class="office-section"><div class="office-section-head"><div><h2>${isCommish()?'Commissioner Center':'League Access'}</h2><div class="section-caption">${isCommish()?'Management controls are unlocked':'Commissioner-only controls stay protected'}</div></div></div><div class="card card-pad office-info-card">${isCommish()?'<strong>Commissioner mode active</strong><p>Open Settings → Commissioner for all league administration tools.</p>':'<strong>Owner mode</strong><p>You can manage your team, submit contracts, propose trades and review league records.</p>'}</div></section></div></div>`;
 }
 function teamCards(){
  const lim=state.season?.roster_limit||18,cap=state.season?.salary_cap_points||100;
@@ -2115,7 +2123,7 @@ function accountView(){
 }
 
 function setupError(){return `<div class="login-wrap"><div class="login-card"><div class="login-head"><h1>League Office Ready</h1><p>Database connection is missing.</p></div></div></div>`;}
-function render(){if(!configured){app.innerHTML=setupError();return;}if(state.loading){app.innerHTML='<div class="login-wrap"><div style="color:white;font-weight:900">Loading League Office…</div></div>';return;}if(!state.session){app.innerHTML=loginView();bind();return;}if(state.tab==='reconcile'){state.commissionerSection='reconcile';state.tab='settingshub';}let content=state.tab==='draft'?draftHubView():state.tab==='teamhub'?teamHubView():state.tab==='communications'?communicationsHubView():state.tab==='leaguehub'?leagueHubView():state.tab==='settingshub'?settingsHubView():state.tab==='lineup'?lineupView():state.tab==='freeagents'?freeAgencyView():state.tab==='chat'?chatView():state.tab==='matchups'?matchupsView():state.tab==='schedule'?scheduleView():state.tab==='standings'?standingsView():state.tab==='board'?boardView():state.tab==='notifications'?notificationView():state.tab==='teams'?teamsView():state.tab==='contracts'?contractsView():state.tab==='trades'?tradesView():state.tab==='transactions'?transactionsView():state.tab==='history'?historyView():state.tab==='rules'?rulesView():state.tab==='deadlines'?deadlinesView():state.tab==='finances'?financesView():state.tab==='account'?accountView():state.tab==='reconcile'?reconcileView():dashboard();app.innerHTML=`<div class="office-shell">${topBar()}<main class="main">${content}</main>${bottomNav()}</div>`;bind();}
+function render(){if(!configured){app.innerHTML=setupError();return;}if(state.loading){app.innerHTML='<div class="login-wrap"><div style="color:white;font-weight:900">Loading League Office…</div></div>';return;}if(!state.session){app.innerHTML=loginView();bind();return;}if(state.tab==='reconcile'){state.commissionerSection='reconcile';state.tab='commissioner';}let content=state.tab==='draft'?draftHubView():state.tab==='teamhub'?teamHubView():state.tab==='communications'?communicationsHubView():state.tab==='leaguehub'?leagueHubView():state.tab==='settingshub'?settingsHubView():state.tab==='commissioner'?commissionerHubView():state.tab==='lineup'?lineupView():state.tab==='freeagents'?freeAgencyView():state.tab==='chat'?chatView():state.tab==='matchups'?matchupsView():state.tab==='schedule'?scheduleView():state.tab==='standings'?standingsView():state.tab==='board'?boardView():state.tab==='notifications'?notificationView():state.tab==='teams'?teamsView():state.tab==='contracts'?contractsView():state.tab==='trades'?tradesView():state.tab==='transactions'?transactionsView():state.tab==='history'?historyView():state.tab==='rules'?rulesView():state.tab==='deadlines'?deadlinesView():state.tab==='finances'?financesView():state.tab==='account'?accountView():state.tab==='reconcile'?reconcileView():dashboard();app.innerHTML=`<div class="office-shell">${topBar()}<main class="main">${content}</main>${bottomNav()}</div>`;bind();}
 
 async function logout(){const t=myTeam();await signOutOwner({roomCode:ROOM_CODE,teamId:t?.id||null,legacyStorageKey:STORAGE_KEY});location.reload();}
 async function commish(name,args={},msg='Saved.'){try{await rpc(name,{p_room_code:ROOM_CODE,p_commish_pin:state.session.commishPin,...args});toast(msg);await loadData();render();}catch(e){toast(e.message,'error');}}
@@ -2124,7 +2132,7 @@ function bind(){
  const openCommissionerSection=key=>{
    if(!isCommish())return;
    state.commissionerSection=commissionerSections.some(([id])=>id===key)?key:null;
-   setTab('settingshub');
+   setTab('commissioner');
  };
  app.querySelectorAll('[data-commissioner-section]').forEach(b=>b.addEventListener('click',()=>openCommissionerSection(b.dataset.commissionerSection)));
  app.querySelector('#commissioner-section')?.addEventListener('change',e=>openCommissionerSection(e.target.value));
