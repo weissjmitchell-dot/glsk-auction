@@ -17,6 +17,7 @@ const state = {
   matchupBrowseWeek:null, selectedMatchupId:null, scheduleTeamId:null,
   boardThreads:[], boardPosts:[], boardSelectedThread:null,
   notifications:[], notificationPrefs:[], notificationUnread:0, playerWatches:[], notificationPlayers:[], playerStatusUpdates:[],
+  waiverCenter:null, waiverSearch:'', waiverPosition:'ALL', waiverStatus:'ALL', waiverSelectedPlayer:null,
   pushSupported:false, pushSubscribed:false, pushPermission:'default', pushStandalone:false, pushBusy:false,
   authUser:null, authAccount:null,
   session:loadSession(), tab:(new URLSearchParams(location.search).get('tab')||'home'), loading:true, realtime:null, txFilters:{team:'',type:'',search:''},
@@ -211,6 +212,30 @@ async function loadNotifications(){
   }catch(e){console.warn('notification load',e.message);}
 }
 
+
+async function loadWaiverCenter(){
+  state.waiverCenter=null;
+  const t=myTeam();
+  if(!t||state.session?.spectator)return;
+  try{
+    const {data,error}=await supabase.rpc('league_owner_get_waiver_center',{
+      p_room_code:ROOM_CODE,
+      p_team_id:t.id,
+      p_pin:state.session.pin
+    });
+    if(error)throw error;
+    if(data?.ok===false)throw new Error(data.error||'Unable to load Free Agency.');
+    state.waiverCenter=data||null;
+    const players=data?.players||[];
+    if(state.waiverSelectedPlayer&&!players.some(p=>p.player_key===state.waiverSelectedPlayer)){
+      state.waiverSelectedPlayer=null;
+    }
+  }catch(e){
+    console.warn('waiver center load',e.message);
+    state.waiverCenter={ok:false,error:e.message,players:[],claims:[],priority:[],runs:[],settings:{}};
+  }
+}
+
 async function loadData(){
   const {data:room,error:re}=await supabase.from('rooms').select('*').eq('code',ROOM_CODE).single(); if(re)throw re; state.room=room;
   const [teams,seasons,roster,contracts,rules,distro,deadlines,statuses,options,transactions,trades,tradeAssets,futurePicks,rookieRights,extensionCosts,extensionEligibility,historySeasons,historyTeamSeasons,historyAllTime,historyFranchises,historyImportRuns,playerStats,gameSettings,lineupSlots,weekStates,schedule,lineups,weeklyScores,matchupScores,shadowStandings,scoringRules,weeklyHostSettings,playerProjections,boardThreads,boardPosts,notificationPlayers,playerStatusUpdates]=await Promise.all([
@@ -259,6 +284,7 @@ async function loadData(){
   await loadFinance();
   await loadReconciliation();
   await loadNotifications();
+  await loadWaiverCenter();
   await refreshPushState();
 }
 
@@ -384,7 +410,7 @@ function topBar(){
  </div></header>`;
 }
 function bottomNav(){
- const items=[['home','⌂','Home'],['lineup','☑','Lineup'],['matchups','VS','Matchups'],['schedule','◫','Schedule'],['standings','≡','Standings'],['board','✎','Board'],['teams','♟','Teams'],['contracts','▤','Contracts'],['trades','⇄','Trades'],['transactions','☷','Transactions'],['history','★','History'],['rules','⚙','Rules'],['deadlines','◷','Deadlines'],['finances','$','Finances'],['account','●','Account']];
+ const items=[['home','⌂','Home'],['lineup','☑','Lineup'],['freeagents','+','Free Agents'],['matchups','VS','Matchups'],['schedule','◫','Schedule'],['standings','≡','Standings'],['board','✎','Board'],['teams','♟','Teams'],['contracts','▤','Contracts'],['trades','⇄','Trades'],['transactions','☷','Transactions'],['history','★','History'],['rules','⚙','Rules'],['deadlines','◷','Deadlines'],['finances','$','Finances'],['account','●','Account']];
  if(isCommish())items.push(['reconcile','✓','Reconcile']);
  return `<nav class="bottom-nav office-bottom-nav"><div class="bottom-nav-inner">${items.map(([t,i,l])=>`<button class="nav-btn ${state.tab===t?'active':''}" data-tab="${t}"><span>${i}</span>${l}</button>`).join('')}</div></nav>`;
 }
@@ -393,10 +419,10 @@ function dashboard(){
  const rosterLimit=state.season?.roster_limit||18,full=state.teams.filter(t=>rosterFor(t.id).length>=rosterLimit).length,totalBids=state.teams.reduce((s,t)=>s+Number(t.remaining_budget||0),0),open=state.deadlines.filter(d=>d.status==='open').length;
  const next=state.deadlines.find(d=>d.status==='open'&&new Date(d.due_at)>new Date());
  const me=myTeam();
- return `<section class="office-hero office-home-hero"><div><div class="office-kicker">${state.season?.season_year||2026} League Year</div><h1>League Office</h1><p>One home for rosters, contracts, transactions, rules, deadlines, finances and league history.</p></div>${me?`<div class="home-team-summary"><span>Your Team</span><strong>${esc(me.name)}</strong><div>${rosterFor(me.id).length}/${rosterLimit} roster • ${bidMoney(me.remaining_budget)} bids • ${capUsed(me.id)}/100 cap</div></div>`:''}</section>
+ return `<section class="office-hero office-home-hero"><div><div class="office-kicker">${state.season?.season_year||2026} League Year</div><h1>League Office</h1><p>One home for rosters, free agency, contracts, transactions, rules, deadlines, finances and league history.</p></div>${me?`<div class="home-team-summary"><span>Your Team</span><strong>${esc(me.name)}</strong><div>${rosterFor(me.id).length}/${rosterLimit} roster • ${bidMoney(me.remaining_budget)} bids • ${capUsed(me.id)}/100 cap</div></div>`:''}</section>
  <div class="kpi-grid office-kpi-grid"><div class="card kpi"><div class="kpi-label">Full Rosters</div><div class="kpi-value">${full}<span class="kpi-denom">/12</span></div><div class="kpi-sub">${rosterLimit}-player limit</div></div><div class="card kpi"><div class="kpi-label">Bid Dollars</div><div class="kpi-value">${totalBids}</div><div class="kpi-sub">remaining league-wide</div></div><div class="card kpi"><div class="kpi-label">Contracts</div><div class="kpi-value">${state.contracts.filter(c=>c.status==='active').length}</div><div class="kpi-sub">active contracts</div></div><div class="card kpi"><div class="kpi-label">Open Deadlines</div><div class="kpi-value">${open}</div><div class="kpi-sub">need attention</div></div></div>
  ${next?`<div class="owner-banner office-deadline-banner"><div><span class="banner-label">NEXT DEADLINE</span><strong>${esc(next.title)}</strong></div><div>${fmtDate(next.due_at)}</div></div>`:''}
- <div class="office-grid two office-home-grid"><section class="office-section"><div class="office-section-head"><div><h2>League Snapshot</h2><div class="section-caption">Roster, bid and cap status at a glance</div></div><button class="btn btn-sm btn-outline" data-tab="teams">View Rosters</button></div>${teamCards()}</section><div><section class="office-section"><div class="office-section-head"><div><h2>Draft Rooms</h2><div class="section-caption">Jump back into any 2026 draft phase</div></div></div><div class="draft-links"><a class="draft-link" href="/"><strong>⚡</strong><span>Auction</span><small>Top 40</small></a><a class="draft-link" href="/supplemental"><strong>↔</strong><span>Supplemental</span><small>2-round snake</small></a><a class="draft-link" href="/phase3"><strong>⇅</strong><span>Roster Fill</span><small>To 18 players</small></a></div></section><section class="office-section"><div class="office-section-head"><div><h2>${isCommish()?'Commissioner Center':'League Access'}</h2><div class="section-caption">${isCommish()?'Management controls are unlocked':'Commissioner-only controls stay protected'}</div></div></div><div class="card card-pad office-info-card">${isCommish()?'<strong>Commissioner mode active</strong><p>Manage rosters, contracts, trades, rules, deadlines and finances from the tabs below.</p>':'<strong>Owner mode</strong><p>You can manage your team, submit contracts, propose trades and review league records.</p>'}</div></section></div></div>`;
+ <div class="office-grid two office-home-grid"><section class="office-section"><div class="office-section-head"><div><h2>League Snapshot</h2><div class="section-caption">Roster, bid and cap status at a glance</div></div><button class="btn btn-sm btn-outline" data-tab="teams">View Rosters</button></div>${teamCards()}</section><div><section class="office-section"><div class="office-section-head"><div><h2>Draft Rooms</h2><div class="section-caption">Jump back into any 2026 draft phase</div></div></div><div class="draft-links"><a class="draft-link" href="/"><strong>⚡</strong><span>Auction</span><small>Top 40</small></a><a class="draft-link" href="/supplemental"><strong>↔</strong><span>Supplemental</span><small>2-round snake</small></a><a class="draft-link" href="/phase3"><strong>⇅</strong><span>Snake</span><small>Roster fill to 18</small></a></div></section><section class="office-section"><div class="office-section-head"><div><h2>${isCommish()?'Commissioner Center':'League Access'}</h2><div class="section-caption">${isCommish()?'Management controls are unlocked':'Commissioner-only controls stay protected'}</div></div></div><div class="card card-pad office-info-card">${isCommish()?'<strong>Commissioner mode active</strong><p>Manage rosters, contracts, trades, rules, deadlines and finances from the tabs below.</p>':'<strong>Owner mode</strong><p>You can manage your team, submit contracts, propose trades and review league records.</p>'}</div></section></div></div>`;
 }
 function teamCards(){
  const lim=state.season?.roster_limit||18,cap=state.season?.salary_cap_points||100;
@@ -560,6 +586,217 @@ function notificationView(){
      </section>
    </div>
  </div>`;
+}
+
+
+function waiverDate(v){
+  if(!v)return '—';
+  const d=new Date(v);
+  return new Intl.DateTimeFormat('en-US',{
+    weekday:'short',month:'short',day:'numeric',hour:'numeric',minute:'2-digit'
+  }).format(d);
+}
+function waiverDropPenalty(r){
+  const t=myTeam();
+  if(!t||!r)return 0;
+  const c=contractForPlayer(t.id,r.player_key);
+  if(!c)return 0;
+  return contractYear(c)===1
+    ? Number(c.cap_cost||0)*2
+    : ({2:5,3:10,4:20}[Number(c.length_years)]||0);
+}
+function waiverPriorityRank(){
+  const t=myTeam();
+  if(!t)return null;
+  return (state.waiverCenter?.priority||[]).find(x=>x.team_id===t.id)?.priority_rank??null;
+}
+function waiverClaimFor(playerKey){
+  return (state.waiverCenter?.claims||[]).find(c=>c.player_key===playerKey&&c.status==='pending')||null;
+}
+function waiverDropOptions(selectedKey=''){
+  const t=myTeam();
+  if(!t)return '';
+  const rows=rosterFor(t.id).slice().sort((a,b)=>(a.position||'').localeCompare(b.position||'')||a.player_name.localeCompare(b.player_name));
+  return rows.map(r=>{
+    const p=waiverDropPenalty(r);
+    return `<option value="${esc(r.player_key)}" ${selectedKey===r.player_key?'selected':''}>${esc(r.position||'')} • ${esc(r.player_name)}${p?` — ${p} bid fine`:''}</option>`;
+  }).join('');
+}
+function freeAgencyView(){
+  const wc=state.waiverCenter;
+  const me=myTeam();
+  if(!me)return `${pageHeading('Free Agency & Waivers','Sign in as a franchise manager to use player acquisitions.','Player Market')}`;
+
+  if(!wc||wc.ok===false){
+    return `${pageHeading('Free Agency & Waivers','Immediate free-agent adds and blind FAAB waiver claims.','Player Market')}
+      <section class="card card-pad office-section">
+        <div class="office-section-head"><div><h2>Setup Required</h2><div class="section-caption">Run the GLSK v7.0.9 Free Agency + Waivers migration, then refresh.</div></div></div>
+        <div class="error">${esc(wc?.error||'Free Agency database is not installed yet.')}</div>
+      </section>`;
+  }
+
+  const settings=wc.settings||{};
+  const all=wc.players||[];
+  const claims=wc.claims||[];
+  const priority=wc.priority||[];
+  const rank=waiverPriorityRank();
+  const rosterCount=rosterFor(me.id).length;
+  const limit=Number(state.season?.roster_limit||18);
+  const pending=claims.filter(c=>c.status==='pending');
+  const search=String(state.waiverSearch||'').trim().toLowerCase();
+  const players=all.filter(p=>{
+    if(state.waiverPosition!=='ALL'&&p.position!==state.waiverPosition)return false;
+    if(state.waiverStatus!=='ALL'&&p.availability!==state.waiverStatus)return false;
+    if(search&&!`${p.player_name} ${p.nfl_team||''} ${p.position||''}`.toLowerCase().includes(search))return false;
+    return true;
+  });
+  const selected=all.find(p=>p.player_key===state.waiverSelectedPlayer)||null;
+  const selectedClaim=selected?waiverClaimFor(selected.player_key):null;
+  const defaultDrop=selectedClaim?.drop_player_key||'';
+  const full=rosterCount>=limit;
+  const lastRun=(wc.runs||[])[0];
+
+  const actionPanel=selected?`
+    <section class="card card-pad fa-action-card">
+      <div class="fa-action-head">
+        <div>
+          <span class="${rosterPositionClass(selected.position)}">${esc(selected.position)}</span>
+          <div>
+            <h2>${esc(selected.player_name)}</h2>
+            <div class="section-caption">${esc(selected.nfl_team||'FA')}${selected.yahoo_rank?` • Yahoo rank ${selected.yahoo_rank}`:''}</div>
+          </div>
+        </div>
+        <span class="fa-status-chip ${selected.availability==='waivers'?'waiver':'free'}">${selected.availability==='waivers'?(selected.awaiting_processing?'Processing':'Waivers'):'Free Agent'}</span>
+      </div>
+      ${selected.availability==='waivers'?`
+        <div class="fa-deadline-box">
+          <span>${selected.claim_open?'Claim deadline':'Claim window closed'}</span>
+          <strong>${waiverDate(selected.waiver_ends_at)}</strong>
+        </div>
+      `:'<div class="fa-deadline-box free"><span>Acquisition</span><strong>Immediate • $0</strong></div>'}
+      <div class="field">
+        <label>${full?'Player to drop if acquired':'Optional player to drop'}</label>
+        <select id="fa-drop-player" class="input">
+          <option value="">${full?'Select a player':'Use open roster spot'}</option>
+          ${waiverDropOptions(defaultDrop)}
+        </select>
+        <div class="field-help">Contract drop fines are charged in addition to a winning waiver bid.</div>
+      </div>
+      ${selected.availability==='waivers'?`
+        <div class="field">
+          <label>FAAB bid</label>
+          <div class="fa-bid-line"><span>$</span><input id="fa-waiver-bid" class="input" type="number" min="${settings.allow_zero_bid?0:1}" max="${Number(me.remaining_budget||0)}" value="${selectedClaim?Number(selectedClaim.bid_amount||0):0}"></div>
+          <div class="field-help">Your bid stays private until waivers process. Ties use the current rolling priority.</div>
+        </div>
+        <button class="btn btn-primary fa-primary-action" data-action="fa-submit-claim" ${selected.claim_open?'':'disabled'}>${selectedClaim?'Update Claim':'Submit Claim'}</button>
+        ${selectedClaim?`<button class="btn btn-outline fa-secondary-action" data-cancel-waiver="${selectedClaim.id}">Cancel Claim</button>`:''}
+      `:`
+        <button class="btn btn-primary fa-primary-action" data-action="fa-add-now">Add Free Agent</button>
+      `}
+      ${isCommish()?`<div class="fa-commish-inline">
+        ${selected.availability==='free_agent'
+          ?'<button class="btn btn-sm btn-outline" data-action="fa-commish-waive-selected">Commissioner • Put on Waivers</button>'
+          :'<button class="btn btn-sm btn-outline" data-action="fa-commish-clear-selected">Commissioner • Clear to FA</button>'}
+      </div>`:''}
+    </section>`:`
+    <section class="card card-pad fa-action-card fa-action-empty">
+      <div class="fa-empty-icon">+</div>
+      <h2>Select a Player</h2>
+      <p>Choose an available player to add immediately or submit a blind waiver claim.</p>
+    </section>`;
+
+  return `${pageHeading('Free Agency & Waivers','Immediate free-agent adds, blind FAAB claims and continual rolling priority.','Player Market')}
+    <div class="fa-summary-grid">
+      <div class="card fa-summary"><span>Bid Dollars</span><strong>${bidMoney(me.remaining_budget)}</strong><small>available</small></div>
+      <div class="card fa-summary"><span>Roster</span><strong>${rosterCount}/${limit}</strong><small>${full?'full roster':`${limit-rosterCount} open`}</small></div>
+      <div class="card fa-summary"><span>Waiver Priority</span><strong>${rank?`#${rank}`:'—'}</strong><small>rolling tiebreak</small></div>
+      <div class="card fa-summary"><span>Pending Claims</span><strong>${pending.length}</strong><small>private to ${esc(me.name)}</small></div>
+    </div>
+
+    ${settings.enabled===false?'<div class="owner-banner office-deadline-banner"><div><span class="banner-label">FREE AGENCY PAUSED</span><strong>Commissioner has disabled adds and claims.</strong></div></div>':''}
+
+    <div class="fa-layout">
+      <section class="card fa-player-market">
+        <div class="fa-market-head">
+          <div><h2>Available Players</h2><span>${players.length} shown • ${all.length} total available</span></div>
+          <div class="fa-policy-chip">Game Time → Tuesday</div>
+        </div>
+        <div class="fa-filters">
+          <input id="fa-search" class="input" placeholder="Search player or NFL team" value="${esc(state.waiverSearch)}">
+          <select id="fa-position" class="input">
+            ${['ALL','QB','RB','WR','TE','K','DST'].map(x=>`<option value="${x}" ${state.waiverPosition===x?'selected':''}>${x==='ALL'?'All positions':x}</option>`).join('')}
+          </select>
+          <select id="fa-status" class="input">
+            <option value="ALL" ${state.waiverStatus==='ALL'?'selected':''}>All availability</option>
+            <option value="free_agent" ${state.waiverStatus==='free_agent'?'selected':''}>Free Agents</option>
+            <option value="waivers" ${state.waiverStatus==='waivers'?'selected':''}>Waivers</option>
+          </select>
+        </div>
+        <div class="fa-player-list">
+          ${players.length?players.map(p=>{
+            const claim=waiverClaimFor(p.player_key);
+            const sel=state.waiverSelectedPlayer===p.player_key;
+            return `<button class="fa-player-row ${sel?'selected':''}" data-fa-select="${esc(p.player_key)}">
+              <span class="${rosterPositionClass(p.position)}">${esc(p.position)}</span>
+              <div class="fa-player-main">
+                <strong>${esc(p.player_name)}</strong>
+                <span>${esc(p.nfl_team||'FA')}${p.yahoo_rank?` • Rank ${p.yahoo_rank}`:''}${claim?' • Your claim submitted':''}</span>
+              </div>
+              <div class="fa-player-status">
+                <span class="fa-status-chip ${p.availability==='waivers'?'waiver':'free'}">${p.availability==='waivers'?(p.awaiting_processing?'Processing':'Waivers'):'FA'}</span>
+                ${p.availability==='waivers'?`<small>${p.awaiting_processing?'Closed':waiverDate(p.waiver_ends_at)}</small>`:'<small>Add now</small>'}
+              </div>
+            </button>`;
+          }).join(''):'<div class="empty-tight">No players match these filters.</div>'}
+        </div>
+      </section>
+
+      <aside class="fa-side">
+        ${actionPanel}
+
+        <section class="card card-pad fa-claims-card">
+          <div class="office-section-head"><div><h2>My Pending Claims</h2><div class="section-caption">Shared by your franchise co-managers; hidden from other teams.</div></div><span class="status-chip">${pending.length}</span></div>
+          <div class="fa-claim-list">
+            ${pending.length?pending.map(c=>`<div class="fa-claim-row">
+              <div><strong>${esc(c.player_name||c.player_key)}</strong><span>${esc(c.position||'')} ${esc(c.nfl_team||'')} • Bid ${bidMoney(c.bid_amount)}</span>${c.drop_player_name?`<small>Drop if won: ${esc(c.drop_player_name)}</small>`:''}</div>
+              <div><small>${waiverDate(c.waiver_ends_at)}</small><button class="btn btn-sm btn-reset" data-cancel-waiver="${c.id}">Cancel</button></div>
+            </div>`).join(''):'<div class="empty-tight">No pending waiver claims.</div>'}
+          </div>
+        </section>
+
+        <section class="card card-pad fa-priority-card">
+          <div class="office-section-head"><div><h2>Waiver Priority</h2><div class="section-caption">Used only as the tiebreak when FAAB bids are equal.</div></div></div>
+          <div class="fa-priority-list">
+            ${priority.map((p,i)=>`<div class="fa-priority-row ${p.team_id===me.id?'mine':''}">
+              <b>${p.priority_rank}</b><span>${esc(p.team_name)}</span>
+              ${isCommish()?`<div><button class="btn btn-xs btn-outline" data-waiver-priority-team="${p.team_id}" data-waiver-priority-dir="up" ${i===0?'disabled':''}>↑</button><button class="btn btn-xs btn-outline" data-waiver-priority-team="${p.team_id}" data-waiver-priority-dir="down" ${i===priority.length-1?'disabled':''}>↓</button></div>`:''}
+            </div>`).join('')}
+          </div>
+        </section>
+
+        ${isCommish()?`<section class="card card-pad fa-commish-card">
+          <div class="office-section-head"><div><h2>Commissioner • Waivers</h2><div class="section-caption">Pending bids remain blind; processing resolves only players whose claim window has ended.</div></div></div>
+          <div class="form-grid">
+            <div class="field"><label>Dropped-player waiver days</label><input id="fa-waiver-days" class="input" type="number" min="0" max="14" value="${Number(settings.waiver_days??1)}"></div>
+            <div class="field"><label>$0 waiver bids</label><select id="fa-zero-bids" class="input"><option value="true" ${settings.allow_zero_bid!==false?'selected':''}>Allowed</option><option value="false" ${settings.allow_zero_bid===false?'selected':''}>Not allowed</option></select></div>
+            <div class="field"><label>Rolling tiebreak priority</label><select id="fa-rolling-priority" class="input"><option value="true" ${settings.rolling_priority!==false?'selected':''}>On</option><option value="false" ${settings.rolling_priority===false?'selected':''}>Off</option></select></div>
+            <div class="field"><label>Free Agency</label><select id="fa-enabled" class="input"><option value="true" ${settings.enabled!==false?'selected':''}>Enabled</option><option value="false" ${settings.enabled===false?'selected':''}>Paused</option></select></div>
+          </div>
+          <div class="row gap-8 wrap"><button class="btn btn-outline" data-action="fa-save-settings">Save Settings</button><button class="btn btn-primary" data-action="fa-process-waivers">Process Eligible Waivers</button></div>
+          <div class="fa-last-run">${lastRun?`Last run ${waiverDate(lastRun.processed_at)} • ${lastRun.award_count}/${lastRun.player_count} awarded`:'No waiver processing runs yet.'}</div>
+          <div class="fa-provider-note"><strong>2026 game-time locks:</strong> The policy is stored as Game Time → Tuesday. Individual NFL kickoff locking will plug into the same waiver holds when Yahoo game data is connected; dropped-player waivers work now.</div>
+          <hr class="fa-divider">
+          <h3>Add / Correct Player Pool</h3>
+          <div class="form-grid">
+            <div class="field"><label>Player</label><input id="fa-pool-player" class="input" placeholder="Player name"></div>
+            <div class="field"><label>NFL Team</label><input id="fa-pool-team" class="input" maxlength="4" placeholder="DET"></div>
+            <div class="field"><label>Position</label><select id="fa-pool-position" class="input"><option>QB</option><option>RB</option><option>WR</option><option>TE</option><option>K</option><option>DST</option></select></div>
+            <div class="field"><label>Yahoo Rank (optional)</label><input id="fa-pool-rank" class="input" type="number" min="1" placeholder="—"></div>
+          </div>
+          <button class="btn btn-outline" data-action="fa-add-pool-player">Save Player to Pool</button>
+        </section>`:''}
+      </aside>
+    </div>`;
 }
 
 function teamsView(){
@@ -1231,13 +1468,145 @@ function accountView(){
 }
 
 function setupError(){return `<div class="login-wrap"><div class="login-card"><div class="login-head"><h1>League Office Ready</h1><p>Database connection is missing.</p></div></div></div>`;}
-function render(){if(!configured){app.innerHTML=setupError();return;}if(state.loading){app.innerHTML='<div class="login-wrap"><div style="color:white;font-weight:900">Loading League Office…</div></div>';return;}if(!state.session){app.innerHTML=loginView();bind();return;}let content=state.tab==='lineup'?lineupView():state.tab==='matchups'?matchupsView():state.tab==='schedule'?scheduleView():state.tab==='standings'?standingsView():state.tab==='board'?boardView():state.tab==='notifications'?notificationView():state.tab==='teams'?teamsView():state.tab==='contracts'?contractsView():state.tab==='trades'?tradesView():state.tab==='transactions'?transactionsView():state.tab==='history'?historyView():state.tab==='rules'?rulesView():state.tab==='deadlines'?deadlinesView():state.tab==='finances'?financesView():state.tab==='account'?accountView():state.tab==='reconcile'?reconcileView():dashboard();app.innerHTML=`<div class="office-shell">${topBar()}<main class="main">${content}</main>${bottomNav()}</div>`;bind();}
+function render(){if(!configured){app.innerHTML=setupError();return;}if(state.loading){app.innerHTML='<div class="login-wrap"><div style="color:white;font-weight:900">Loading League Office…</div></div>';return;}if(!state.session){app.innerHTML=loginView();bind();return;}let content=state.tab==='lineup'?lineupView():state.tab==='freeagents'?freeAgencyView():state.tab==='matchups'?matchupsView():state.tab==='schedule'?scheduleView():state.tab==='standings'?standingsView():state.tab==='board'?boardView():state.tab==='notifications'?notificationView():state.tab==='teams'?teamsView():state.tab==='contracts'?contractsView():state.tab==='trades'?tradesView():state.tab==='transactions'?transactionsView():state.tab==='history'?historyView():state.tab==='rules'?rulesView():state.tab==='deadlines'?deadlinesView():state.tab==='finances'?financesView():state.tab==='account'?accountView():state.tab==='reconcile'?reconcileView():dashboard();app.innerHTML=`<div class="office-shell">${topBar()}<main class="main">${content}</main>${bottomNav()}</div>`;bind();}
 
 async function logout(){const t=myTeam();await signOutOwner({roomCode:ROOM_CODE,teamId:t?.id||null,legacyStorageKey:STORAGE_KEY});location.reload();}
 async function commish(name,args={},msg='Saved.'){try{await rpc(name,{p_room_code:ROOM_CODE,p_commish_pin:state.session.commishPin,...args});toast(msg);await loadData();render();}catch(e){toast(e.message,'error');}}
 
 function bind(){
  app.querySelectorAll('[data-tab]').forEach(b=>b.addEventListener('click',()=>setTab(b.dataset.tab)));
+ app.querySelectorAll('[data-fa-select]').forEach(b=>b.addEventListener('click',()=>{
+   state.waiverSelectedPlayer=b.dataset.faSelect;
+   render();
+ }));
+ app.querySelector('#fa-search')?.addEventListener('input',e=>{
+   state.waiverSearch=e.target.value;
+   clearTimeout(e.target._faTimer);
+   e.target._faTimer=setTimeout(render,120);
+ });
+ app.querySelector('#fa-position')?.addEventListener('change',e=>{state.waiverPosition=e.target.value;render();});
+ app.querySelector('#fa-status')?.addEventListener('change',e=>{state.waiverStatus=e.target.value;render();});
+
+ app.querySelector('[data-action="fa-add-now"]')?.addEventListener('click',async()=>{
+   const t=myTeam(),p=(state.waiverCenter?.players||[]).find(x=>x.player_key===state.waiverSelectedPlayer);
+   if(!t||!p)return;
+   const drop=document.getElementById('fa-drop-player')?.value||null;
+   if(rosterFor(t.id).length>=Number(state.season?.roster_limit||18)&&!drop)return toast('Roster is full. Select a player to drop.','error');
+   if(!confirm(`Add ${p.player_name} as a free agent for $0${drop?' and complete the selected drop':''}?`))return;
+   try{
+     await rpc('league_owner_add_free_agent',{
+       p_room_code:ROOM_CODE,p_team_id:t.id,p_pin:state.session.pin,
+       p_player_key:p.player_key,p_drop_player_key:drop
+     });
+     toast(`${p.player_name} added.`);
+     state.waiverSelectedPlayer=null;
+     await loadData();render();
+   }catch(e){toast(e.message,'error');}
+ });
+
+ app.querySelector('[data-action="fa-submit-claim"]')?.addEventListener('click',async()=>{
+   const t=myTeam(),p=(state.waiverCenter?.players||[]).find(x=>x.player_key===state.waiverSelectedPlayer);
+   if(!t||!p)return;
+   const bid=Number(document.getElementById('fa-waiver-bid')?.value);
+   const drop=document.getElementById('fa-drop-player')?.value||null;
+   if(!Number.isInteger(bid)||bid<0)return toast('Enter a whole-number FAAB bid.','error');
+   if(rosterFor(t.id).length>=Number(state.season?.roster_limit||18)&&!drop)return toast('Roster is full. Select a player to drop if the claim wins.','error');
+   try{
+     await rpc('league_owner_submit_waiver_claim',{
+       p_room_code:ROOM_CODE,p_team_id:t.id,p_pin:state.session.pin,
+       p_player_key:p.player_key,p_bid_amount:bid,p_drop_player_key:drop
+     });
+     toast(`Waiver claim saved for ${p.player_name}.`);
+     await loadWaiverCenter();render();
+   }catch(e){toast(e.message,'error');}
+ });
+
+ app.querySelectorAll('[data-cancel-waiver]').forEach(b=>b.addEventListener('click',async()=>{
+   const t=myTeam();if(!t)return;
+   if(!confirm('Cancel this waiver claim?'))return;
+   try{
+     await rpc('league_owner_cancel_waiver_claim',{
+       p_room_code:ROOM_CODE,p_team_id:t.id,p_pin:state.session.pin,
+       p_claim_id:b.dataset.cancelWaiver
+     });
+     toast('Waiver claim cancelled.');
+     await loadWaiverCenter();render();
+   }catch(e){toast(e.message,'error');}
+ }));
+
+ app.querySelector('[data-action="fa-save-settings"]')?.addEventListener('click',()=>{
+   commish('league_commish_set_free_agent_settings',{
+     p_enabled:document.getElementById('fa-enabled')?.value==='true',
+     p_waiver_days:Number(document.getElementById('fa-waiver-days')?.value||1),
+     p_allow_zero_bid:document.getElementById('fa-zero-bids')?.value==='true',
+     p_rolling_priority:document.getElementById('fa-rolling-priority')?.value==='true'
+   },'Free Agency settings saved.');
+ });
+
+ app.querySelector('[data-action="fa-process-waivers"]')?.addEventListener('click',async()=>{
+   if(!confirm('Process every waiver player whose claim deadline has ended? Pending bids will be resolved now.'))return;
+   try{
+     const d=await rpc('league_commish_process_waivers',{
+       p_room_code:ROOM_CODE,p_commish_pin:state.session.commishPin,p_force:false
+     });
+     toast(`Waivers processed • ${d.players_awarded||0} awarded • ${d.players_cleared_to_free_agency||0} cleared to FA.`);
+     state.waiverSelectedPlayer=null;
+     await loadData();render();
+   }catch(e){toast(e.message,'error');}
+ });
+
+ app.querySelectorAll('[data-waiver-priority-team]').forEach(b=>b.addEventListener('click',()=>{
+   commish('league_commish_move_waiver_priority',{
+     p_team_id:b.dataset.waiverPriorityTeam,
+     p_direction:b.dataset.waiverPriorityDir
+   },'Waiver priority updated.');
+ }));
+
+ app.querySelector('[data-action="fa-add-pool-player"]')?.addEventListener('click',async()=>{
+   const name=document.getElementById('fa-pool-player')?.value.trim();
+   if(!name)return toast('Enter a player name.','error');
+   const rawRank=document.getElementById('fa-pool-rank')?.value;
+   try{
+     await rpc('league_commish_upsert_free_agent_player',{
+       p_room_code:ROOM_CODE,p_commish_pin:state.session.commishPin,
+       p_player_name:name,
+       p_nfl_team:document.getElementById('fa-pool-team')?.value.trim()||'',
+       p_position:document.getElementById('fa-pool-position')?.value,
+       p_yahoo_rank:rawRank?Number(rawRank):null
+     });
+     toast(`${name} saved to the player pool.`);
+     await loadData();render();
+   }catch(e){toast(e.message,'error');}
+ });
+
+ app.querySelector('[data-action="fa-commish-waive-selected"]')?.addEventListener('click',async()=>{
+   const p=(state.waiverCenter?.players||[]).find(x=>x.player_key===state.waiverSelectedPlayer);
+   if(!p)return;
+   if(!confirm(`Put ${p.player_name} on waivers using the current waiver-duration setting?`))return;
+   try{
+     await rpc('league_commish_place_player_on_waivers',{
+       p_room_code:ROOM_CODE,p_commish_pin:state.session.commishPin,
+       p_player_key:p.player_key,p_ends_at:null
+     });
+     toast(`${p.player_name} placed on waivers.`);
+     await loadWaiverCenter();render();
+   }catch(e){toast(e.message,'error');}
+ });
+
+ app.querySelector('[data-action="fa-commish-clear-selected"]')?.addEventListener('click',async()=>{
+   const p=(state.waiverCenter?.players||[]).find(x=>x.player_key===state.waiverSelectedPlayer);
+   if(!p)return;
+   if(!confirm(`Clear ${p.player_name} to immediate free agency? Any pending claims on him will be cancelled.`))return;
+   try{
+     await rpc('league_commish_clear_player_waiver',{
+       p_room_code:ROOM_CODE,p_commish_pin:state.session.commishPin,
+       p_player_key:p.player_key
+     });
+     toast(`${p.player_name} cleared to free agency.`);
+     await loadWaiverCenter();render();
+   }catch(e){toast(e.message,'error');}
+ });
+
  app.querySelector('#history-season')?.addEventListener('change',e=>{state.historySeason=e.target.value;render();});
  app.querySelectorAll('[data-lineup-week]').forEach(b=>b.addEventListener('click',()=>{state.lineupBrowseWeek=Number(b.dataset.lineupWeek);render();}));
  app.querySelectorAll('[data-lineup-data-tab]').forEach(b=>b.addEventListener('click',()=>{state.lineupDataTab=b.dataset.lineupDataTab;render();}));
@@ -1412,7 +1781,7 @@ function bind(){
  app.querySelector('[data-action="save-correction"]')?.addEventListener('click',()=>{const desc=document.getElementById('corr-desc')?.value.trim();if(!desc)return toast('Enter a correction description.','error');commish('league_commish_correction',{p_team_id:document.getElementById('corr-team')?.value||null,p_bid_delta:Number(document.getElementById('corr-bids')?.value||0),p_description:desc,p_reverse_transaction_id:document.getElementById('corr-reverse')?.value||null},'Correction recorded.');});
 }
 
-async function subscribe(){if(state.realtime)await supabase.removeChannel(state.realtime);state.realtime=supabase.channel(`league-office-${ROOM_CODE}`).on('postgres_changes',{event:'*',schema:'public',table:'league_roster_entries'},refresh).on('postgres_changes',{event:'*',schema:'public',table:'teams'},refresh).on('postgres_changes',{event:'*',schema:'public',table:'league_contracts'},refresh).on('postgres_changes',{event:'*',schema:'public',table:'league_rule_settings'},refresh).on('postgres_changes',{event:'*',schema:'public',table:'redistribution_rules'},refresh).on('postgres_changes',{event:'*',schema:'public',table:'league_deadlines'},refresh).on('postgres_changes',{event:'*',schema:'public',table:'league_deadline_team_status'},refresh).on('postgres_changes',{event:'*',schema:'public',table:'league_history_seasons'},refresh).on('postgres_changes',{event:'*',schema:'public',table:'league_history_team_seasons'},refresh).on('postgres_changes',{event:'*',schema:'public',table:'league_player_stats'},refresh).on('postgres_changes',{event:'*',schema:'public',table:'league_lineups'},refresh).on('postgres_changes',{event:'*',schema:'public',table:'league_weekly_player_scores'},refresh).on('postgres_changes',{event:'*',schema:'public',table:'league_schedule'},refresh).on('postgres_changes',{event:'*',schema:'public',table:'league_week_states'},refresh).on('postgres_changes',{event:'*',schema:'public',table:'league_scoring_rules'},refresh).on('postgres_changes',{event:'*',schema:'public',table:'league_player_projections'},refresh).on('postgres_changes',{event:'*',schema:'public',table:'league_message_threads'},refresh).on('postgres_changes',{event:'*',schema:'public',table:'league_message_posts'},refresh).on('postgres_changes',{event:'*',schema:'public',table:'league_transactions'},refresh).on('postgres_changes',{event:'*',schema:'public',table:'league_trades'},refresh).on('postgres_changes',{event:'*',schema:'public',table:'league_player_status_updates'},refresh).subscribe();}
+async function subscribe(){if(state.realtime)await supabase.removeChannel(state.realtime);state.realtime=supabase.channel(`league-office-${ROOM_CODE}`).on('postgres_changes',{event:'*',schema:'public',table:'league_roster_entries'},refresh).on('postgres_changes',{event:'*',schema:'public',table:'teams'},refresh).on('postgres_changes',{event:'*',schema:'public',table:'league_contracts'},refresh).on('postgres_changes',{event:'*',schema:'public',table:'league_rule_settings'},refresh).on('postgres_changes',{event:'*',schema:'public',table:'redistribution_rules'},refresh).on('postgres_changes',{event:'*',schema:'public',table:'league_deadlines'},refresh).on('postgres_changes',{event:'*',schema:'public',table:'league_deadline_team_status'},refresh).on('postgres_changes',{event:'*',schema:'public',table:'league_history_seasons'},refresh).on('postgres_changes',{event:'*',schema:'public',table:'league_history_team_seasons'},refresh).on('postgres_changes',{event:'*',schema:'public',table:'league_player_stats'},refresh).on('postgres_changes',{event:'*',schema:'public',table:'league_lineups'},refresh).on('postgres_changes',{event:'*',schema:'public',table:'league_weekly_player_scores'},refresh).on('postgres_changes',{event:'*',schema:'public',table:'league_schedule'},refresh).on('postgres_changes',{event:'*',schema:'public',table:'league_week_states'},refresh).on('postgres_changes',{event:'*',schema:'public',table:'league_scoring_rules'},refresh).on('postgres_changes',{event:'*',schema:'public',table:'league_player_projections'},refresh).on('postgres_changes',{event:'*',schema:'public',table:'league_message_threads'},refresh).on('postgres_changes',{event:'*',schema:'public',table:'league_message_posts'},refresh).on('postgres_changes',{event:'*',schema:'public',table:'league_transactions'},refresh).on('postgres_changes',{event:'*',schema:'public',table:'league_trades'},refresh).on('postgres_changes',{event:'*',schema:'public',table:'league_player_status_updates'},refresh).on('postgres_changes',{event:'*',schema:'public',table:'league_free_agent_settings'},refresh).on('postgres_changes',{event:'*',schema:'public',table:'league_player_directory'},refresh).on('postgres_changes',{event:'*',schema:'public',table:'league_waiver_holds'},refresh).on('postgres_changes',{event:'*',schema:'public',table:'league_waiver_priority'},refresh).on('postgres_changes',{event:'*',schema:'public',table:'league_waiver_runs'},refresh).subscribe();}
 let refreshTimer=null;function refresh(){clearTimeout(refreshTimer);refreshTimer=setTimeout(async()=>{try{await loadData();render();}catch(e){console.warn(e);}},180);}
 
 ensurePwaMetadata();
