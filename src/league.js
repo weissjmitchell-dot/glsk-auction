@@ -11,6 +11,10 @@ import { requireOwnerAccount, legacySessionFromAccount, signOutOwner, sendPasswo
 const lineupInteractionStyle = document.createElement('style');
 lineupInteractionStyle.id = 'glsk-lineup-interactions-v724';
 lineupInteractionStyle.textContent = `
+.home-team-link{color:inherit;text-decoration:none;cursor:pointer}
+.home-team-link:hover{text-decoration:underline}
+.home-team-link:focus-visible{outline:3px solid #2276e8;outline-offset:4px;border-radius:3px}
+
 .fa-player-browser{background:white;padding:22px 18px;border-radius:8px;color:#263443;margin-bottom:20px}
 .fa-big-search{max-width:350px!important;border-radius:28px!important;border:2px solid #b9d2ff!important;height:52px;font-size:16px!important;margin-bottom:24px}
 .fa-position-label{font-size:14px;color:#606c7a;margin-bottom:8px}
@@ -122,7 +126,7 @@ const state = {
   waiverCenter:null, waiverSearch:'', waiverPosition:'ALL', waiverStatus:'ALL', waiverSelectedPlayer:null,
   pushSupported:false, pushSubscribed:false, pushPermission:'default', pushStandalone:false, pushBusy:false,
   authUser:null, authAccount:null,
-  session:loadSession(), tab:(new URLSearchParams(location.search).get('tab')||'home'), loading:true, realtime:null, txFilters:{team:'',type:'',search:''},
+  session:loadSession(), tab:(new URLSearchParams(location.search).get('tab')||'home'), selectedTeamId:new URLSearchParams(location.search).get('team'), loading:true, realtime:null, txFilters:{team:'',type:'',search:''},
   historySort:{key:'championships',dir:'desc'}, historySeason:'all',
 };
 
@@ -298,6 +302,7 @@ function setTab(tab){
   if(tab==='reconcile'){state.commissionerSection='reconcile';tab='commissioner';}
   state.tab=tab==='commissioner'&&!isCommish()?'home':tab||'home';
   const u=new URL(location.href);
+  if(state.tab==='team'&&state.selectedTeamId)u.searchParams.set('team',state.selectedTeamId);else u.searchParams.delete('team');
   if(state.tab==='home')u.searchParams.delete('tab');else u.searchParams.set('tab',state.tab);
   history.replaceState(null,'',u.pathname+(u.search?u.search:'')+u.hash);
   render();
@@ -610,7 +615,7 @@ function navGroupForTab(tab){
   if(['teamhub','lineup','contracts','trades'].includes(tab))return 'teamhub';
   if(['freeagents'].includes(tab))return 'freeagents';
   if(['communications','chat','board','notifications'].includes(tab))return 'communications';
-  if(['leaguehub','teams','matchups','schedule','standings','transactions','history'].includes(tab))return 'leaguehub';
+  if(['leaguehub','teams','team','matchups','schedule','standings','transactions','history'].includes(tab))return 'leaguehub';
   if(['settingshub','commissioner','reconcile','rules','deadlines','finances'].includes(tab))return 'settingshub';
   if(tab==='draft')return 'draft';
   if(tab==='home')return 'home';
@@ -718,16 +723,24 @@ function dashboard(){
  const rosterLimit=state.season?.roster_limit||18,full=state.teams.filter(t=>activeRosterFor(t.id).length>=rosterLimit).length,totalBids=state.teams.reduce((s,t)=>s+Number(t.remaining_budget||0),0),open=state.deadlines.filter(d=>d.status==='open').length;
  const next=state.deadlines.find(d=>d.status==='open'&&new Date(d.due_at)>new Date());
  const me=myTeam();
- return `<section class="office-hero office-home-hero"><div><div class="office-kicker">${state.season?.season_year||2026} League Year</div><h1>League Office</h1><p>Your GLSK home base. Manage your team, browse the league and stay connected from the tabs below.</p></div>${me?`<div class="home-team-summary"><span>Your Team</span><strong>${esc(me.name)}</strong><div>${activeRosterFor(me.id).length}/${rosterLimit} roster${irRosterFor(me.id).length?` + ${irRosterFor(me.id).length} IR`:''} • ${bidMoney(me.remaining_budget)} bids • ${capUsed(me.id)}/100 cap</div></div>`:''}</section>
+ return `<section class="office-hero office-home-hero"><div><div class="office-kicker">${state.season?.season_year||2026} League Year</div><h1>League Office</h1><p>Your GLSK home base. Manage your team, browse the league and stay connected from the tabs below.</p></div>${me?`<div class="home-team-summary"><span>Your Team</span><strong>${homeTeamLink(me)}</strong><div>${activeRosterFor(me.id).length}/${rosterLimit} roster${irRosterFor(me.id).length?` + ${irRosterFor(me.id).length} IR`:''} • ${bidMoney(me.remaining_budget)} bids • ${capUsed(me.id)}/100 cap</div></div>`:''}</section>
  <div class="kpi-grid office-kpi-grid"><div class="card kpi"><div class="kpi-label">Full Rosters</div><div class="kpi-value">${full}<span class="kpi-denom">/12</span></div><div class="kpi-sub">${rosterLimit}-player limit</div></div><div class="card kpi"><div class="kpi-label">Bid Dollars</div><div class="kpi-value">${totalBids}</div><div class="kpi-sub">remaining league-wide</div></div><div class="card kpi"><div class="kpi-label">Contracts</div><div class="kpi-value">${state.contracts.filter(c=>c.status==='active').length}</div><div class="kpi-sub">active contracts</div></div><div class="card kpi"><div class="kpi-label">Open Deadlines</div><div class="kpi-value">${open}</div><div class="kpi-sub">need attention</div></div></div>
  ${next?`<div class="owner-banner office-deadline-banner"><div><span class="banner-label">NEXT DEADLINE</span><strong>${esc(next.title)}</strong></div><div>${fmtDate(next.due_at)}</div></div>`:''}
- <div class="office-grid two office-home-grid"><section class="office-section"><div class="office-section-head"><div><h2>League Snapshot</h2><div class="section-caption">Roster, bid and cap status at a glance</div></div><button class="btn btn-sm btn-outline" data-tab="teams">View Rosters</button></div>${teamCards()}</section><div><section class="office-section"><div class="office-section-head"><div><h2>${isCommish()?'Commissioner Center':'League Access'}</h2><div class="section-caption">${isCommish()?'Management controls are unlocked':'Commissioner-only controls stay protected'}</div></div></div><div class="card card-pad office-info-card">${isCommish()?'<strong>Commissioner mode active</strong><p>Open Settings → Commissioner for all league administration tools.</p>':'<strong>Owner mode</strong><p>You can manage your team, submit contracts, propose trades and review league records.</p>'}</div></section></div></div>`;
+ <div class="office-home-grid"><section class="office-section"><div class="office-section-head"><div><h2>League Snapshot</h2><div class="section-caption">Roster, bid and cap status at a glance</div></div><button class="btn btn-sm btn-outline" data-tab="teams">View Rosters</button></div>${teamCards()}</section></div>`;
+}
+function homeTeamLink(team){
+ return `<a class="home-team-link" href="?tab=team&team=${encodeURIComponent(team.id)}" data-open-team="${esc(team.id)}">${esc(team.name)}</a>`;
+}
+function teamPageView(){
+ const team=state.teams.find(t=>String(t.id)===String(state.selectedTeamId));
+ if(!team)return `<section class="card card-pad"><h1>Team not found</h1><button class="btn btn-outline" data-tab="teams">View All Teams</button></section>`;
+ return `<button class="btn btn-outline" data-tab="teams" style="margin-bottom:16px">‹ All Teams</button>${teamsView(team.id)}`;
 }
 function teamCards(){
  const lim=state.season?.roster_limit||18,cap=state.season?.salary_cap_points||100;
  return `<div class="team-office-grid compact-team-grid">${state.teams.map(t=>{
    const rc=activeRosterFor(t.id).length,irc=irRosterFor(t.id).length,cu=capUsed(t.id);
-   return `<div class="card office-team-card compact-team-card"><div class="team-card-top"><div class="office-team-name">${esc(t.name)}</div><span class="team-roster-pill">${rc}/${lim}${irc?` +${irc} IR`:''}</span></div><div class="team-card-bars"><div class="mini-progress"><span style="width:${Math.min(100,rc/lim*100)}%"></span></div><div class="team-card-meta"><span><b>${bidMoney(t.remaining_budget)}</b> bids</span><span><b>${cu}/${cap}</b> cap</span><span><b>${contractsFor(t.id).length}</b> contracts</span></div></div></div>`;
+   return `<div class="card office-team-card compact-team-card"><div class="team-card-top"><div class="office-team-name">${homeTeamLink(t)}</div><span class="team-roster-pill">${rc}/${lim}${irc?` +${irc} IR`:''}</span></div><div class="team-card-bars"><div class="mini-progress"><span style="width:${Math.min(100,rc/lim*100)}%"></span></div><div class="team-card-meta"><span><b>${bidMoney(t.remaining_budget)}</b> bids</span><span><b>${cu}/${cap}</b> cap</span><span><b>${contractsFor(t.id).length}</b> contracts</span></div></div></div>`;
  }).join('')}</div>`;
 }
 function commissionerAddPlayerForm(){
@@ -1319,13 +1332,15 @@ function freeAgencyView(){
     </div>`;
 }
 
-function teamsView(){
+function teamsView(teamId=null){
+ const selected=teamId==null?null:state.teams.find(t=>String(t.id)===String(teamId));
+ const visibleTeams=selected?[selected]:state.teams;
  const lim=state.season?.roster_limit||18,cap=state.season?.salary_cap_points||100;
- return `${pageHeading('Teams & Rosters','Live roster, bid-dollar and contract status for every franchise.','League Management')}${commissionerAddPlayerForm()}<div class="team-office-grid roster-team-grid">${state.teams.map(t=>{
+ return `${pageHeading(selected?selected.name:'Teams & Rosters',selected?'Roster, bid dollars and contract status.':'Live roster, bid-dollar and contract status for every franchise.','League Management')}${commissionerAddPlayerForm()}<div class="team-office-grid roster-team-grid">${visibleTeams.map(t=>{
    const roster=rosterFor(t.id).slice().sort((a,b)=>(String(a.roster_slot||'ACTIVE')==='IR')-(String(b.roster_slot||'ACTIVE')==='IR')||(a.position||'').localeCompare(b.position||'')||a.player_name.localeCompare(b.player_name));
    const activeCount=activeRosterFor(t.id).length,irCount=irRosterFor(t.id).length;
    const cu=capUsed(t.id);
-   return `<details class="card office-team-card roster-team-card"><summary class="team-summary"><div class="team-summary-main"><div class="office-team-name">${esc(t.name)}</div><div class="team-summary-sub">${activeCount===lim?'Active roster full':`${lim-activeCount} active roster spot${lim-activeCount===1?'':'s'} open`}${irCount?` • ${irCount}/${irLimit()} IR`:''}</div></div><div class="team-summary-metrics"><span><b>${activeCount}/${lim}</b><small>Roster</small></span><span><b>${irCount}/${irLimit()}</b><small>IR</small></span><span><b>${bidMoney(t.remaining_budget)}</b><small>Bids</small></span><span><b>${cu}/${cap}</b><small>Cap</small></span></div><span class="details-chevron">⌄</span></summary><div class="team-roster-body">${roster.map(r=>{
+   return `<details class="card office-team-card roster-team-card" ${selected?'open':''}><summary class="team-summary"><div class="team-summary-main"><div class="office-team-name">${esc(t.name)}</div><div class="team-summary-sub">${activeCount===lim?'Active roster full':`${lim-activeCount} active roster spot${lim-activeCount===1?'':'s'} open`}${irCount?` • ${irCount}/${irLimit()} IR`:''}</div></div><div class="team-summary-metrics"><span><b>${activeCount}/${lim}</b><small>Roster</small></span><span><b>${irCount}/${irLimit()}</b><small>IR</small></span><span><b>${bidMoney(t.remaining_budget)}</b><small>Bids</small></span><span><b>${cu}/${cap}</b><small>Cap</small></span></div><span class="details-chevron">⌄</span></summary><div class="team-roster-body">${roster.map(r=>{
      const c=contractForPlayer(t.id,r.player_key);
      const canDrop=myTeam()?.id===t.id&&!state.session?.spectator;
      const penalty=c?(contractYear(c)===1?Number(c.cap_cost||0)*2:({2:5,3:10,4:20}[Number(c.length_years)]||0)):0;
@@ -2123,12 +2138,19 @@ function accountView(){
 }
 
 function setupError(){return `<div class="login-wrap"><div class="login-card"><div class="login-head"><h1>League Office Ready</h1><p>Database connection is missing.</p></div></div></div>`;}
-function render(){if(!configured){app.innerHTML=setupError();return;}if(state.loading){app.innerHTML='<div class="login-wrap"><div style="color:white;font-weight:900">Loading League Office…</div></div>';return;}if(!state.session){app.innerHTML=loginView();bind();return;}if(state.tab==='reconcile'){state.commissionerSection='reconcile';state.tab='commissioner';}let content=state.tab==='draft'?draftHubView():state.tab==='teamhub'?teamHubView():state.tab==='communications'?communicationsHubView():state.tab==='leaguehub'?leagueHubView():state.tab==='settingshub'?settingsHubView():state.tab==='commissioner'?commissionerHubView():state.tab==='lineup'?lineupView():state.tab==='freeagents'?freeAgencyView():state.tab==='chat'?chatView():state.tab==='matchups'?matchupsView():state.tab==='schedule'?scheduleView():state.tab==='standings'?standingsView():state.tab==='board'?boardView():state.tab==='notifications'?notificationView():state.tab==='teams'?teamsView():state.tab==='contracts'?contractsView():state.tab==='trades'?tradesView():state.tab==='transactions'?transactionsView():state.tab==='history'?historyView():state.tab==='rules'?rulesView():state.tab==='deadlines'?deadlinesView():state.tab==='finances'?financesView():state.tab==='account'?accountView():state.tab==='reconcile'?reconcileView():dashboard();app.innerHTML=`<div class="office-shell">${topBar()}<main class="main">${content}</main>${bottomNav()}</div>`;bind();}
+function render(){if(!configured){app.innerHTML=setupError();return;}if(state.loading){app.innerHTML='<div class="login-wrap"><div style="color:white;font-weight:900">Loading League Office…</div></div>';return;}if(!state.session){app.innerHTML=loginView();bind();return;}if(state.tab==='reconcile'){state.commissionerSection='reconcile';state.tab='commissioner';}let content=state.tab==='team'?teamPageView():state.tab==='draft'?draftHubView():state.tab==='teamhub'?teamHubView():state.tab==='communications'?communicationsHubView():state.tab==='leaguehub'?leagueHubView():state.tab==='settingshub'?settingsHubView():state.tab==='commissioner'?commissionerHubView():state.tab==='lineup'?lineupView():state.tab==='freeagents'?freeAgencyView():state.tab==='chat'?chatView():state.tab==='matchups'?matchupsView():state.tab==='schedule'?scheduleView():state.tab==='standings'?standingsView():state.tab==='board'?boardView():state.tab==='notifications'?notificationView():state.tab==='teams'?teamsView():state.tab==='contracts'?contractsView():state.tab==='trades'?tradesView():state.tab==='transactions'?transactionsView():state.tab==='history'?historyView():state.tab==='rules'?rulesView():state.tab==='deadlines'?deadlinesView():state.tab==='finances'?financesView():state.tab==='account'?accountView():state.tab==='reconcile'?reconcileView():dashboard();app.innerHTML=`<div class="office-shell">${topBar()}<main class="main">${content}</main>${bottomNav()}</div>`;bind();}
 
 async function logout(){const t=myTeam();await signOutOwner({roomCode:ROOM_CODE,teamId:t?.id||null,legacyStorageKey:STORAGE_KEY});location.reload();}
 async function commish(name,args={},msg='Saved.'){try{await rpc(name,{p_room_code:ROOM_CODE,p_commish_pin:state.session.commishPin,...args});toast(msg);await loadData();render();}catch(e){toast(e.message,'error');}}
 
 function bind(){
+ app.querySelectorAll('[data-open-team]').forEach(link=>link.addEventListener('click',event=>{
+   if(event.button!==0||event.ctrlKey||event.metaKey||event.shiftKey||event.altKey)return;
+   event.preventDefault();
+   state.selectedTeamId=link.dataset.openTeam;
+   setTab('team');
+   window.scrollTo({top:0,behavior:'auto'});
+ }));
  const openCommissionerSection=key=>{
    if(!isCommish())return;
    state.commissionerSection=commissionerSections.some(([id])=>id===key)?key:null;
