@@ -5,7 +5,11 @@ import { ROOM_CODE } from './config.js';
 const names = new Set();
 let loadedFor=null,loading=null,activeId=null,caret=null;
 const normalize=value=>String(value||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase().replace(/[.'’\-]/g,'').trim();
-const isSearch=el=>el instanceof HTMLInputElement&&['text','search',''].includes(el.type)&&/search/i.test(`${el.id} ${el.placeholder} ${el.getAttribute('aria-label')||''}`);
+const isSearch=el=>{
+ if(!(el instanceof HTMLInputElement)||!['text','search',''].includes(el.type))return false;
+ const playerFields=['manual-add-player','fa-pool-player','contract-player','notification-watch-player'];
+ return playerFields.includes(el.id)||el.hasAttribute('data-player-autocomplete')||/search|player.*name|name.*player/i.test(`${el.id} ${el.placeholder} ${el.getAttribute('aria-label')||''}`);
+};
 const list=document.createElement('datalist');list.id='glsk-name-suggestions';
 function attach(){
  if(!document.body)return;
@@ -23,7 +27,8 @@ async function loadNames(){
  const identity=data?.session?.user?.id||'guest';
  if(loadedFor===identity)return;
  if(loading)return loading;
- names.clear();
+ // Preserve names supplied by League Office (including free agents) on first focus.
+ if(loadedFor!==null&&loadedFor!==identity)names.clear();
  loading=(async()=>{
    const {data:room,error}=await supabase.from('rooms').select('id').eq('code',ROOM_CODE).single();if(error)throw error;
    const results=await Promise.allSettled(['players','phase3_players','teams'].map(async table=>{
@@ -39,7 +44,7 @@ async function loadNames(){
  return loading;
 }
 // Supplement names with the current page's records without making extra queries.
-window.GLSKAutocomplete={addNames(values){values.filter(Boolean).forEach(name=>names.add(String(name)));}};
+window.GLSKAutocomplete={addNames(values){values.filter(Boolean).forEach(name=>names.add(String(name)));const input=document.activeElement;if(isSearch(input))populate(input);}};
 document.addEventListener('focusin',event=>{
  if(!isSearch(event.target)){activeId=null;return;}
  const input=event.target;activeId=input.id||null;caret=[input.selectionStart,input.selectionEnd];attach();
