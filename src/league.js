@@ -9,6 +9,28 @@ import { requireOwnerAccount, legacySessionFromAccount, signOutOwner, sendPasswo
 const lineupInteractionStyle = document.createElement('style');
 lineupInteractionStyle.id = 'glsk-lineup-interactions-v724';
 lineupInteractionStyle.textContent = `
+.lineup-card-data .lineup-action-bar{display:flex;align-items:center;gap:14px;flex-wrap:wrap;padding:16px 12px;background:white;border-bottom:1px solid #dbe1e8}
+.lineup-card-data .lineup-optimize-button{border:1px solid #ccd5e9;border-radius:20px;background:white;color:#7f35bc;padding:8px 17px;font-size:14px;font-weight:700;cursor:pointer}
+.lineup-card-data .lineup-optimize-button:disabled{color:#8892a1;cursor:default}
+.lineup-selection-help{font-size:13px;color:#51647a}
+.lineup-cancel-button{border:0;background:none;color:#1266c2;font-size:14px;text-decoration:underline;cursor:pointer}
+.lineup-card-data .lineup-data-row{min-height:78px;font-size:13px;border-bottom:1px solid #dbe1e8;transition:background-color .12s}
+.lineup-card-data .lineup-data-row.bench-row{background:#eee}
+.lineup-card-data .lineup-data-row.lineup-selected{background:#ebebff}
+.lineup-card-data .lineup-data-row.lineup-eligible{background:#bfe3bc;cursor:pointer}
+.lineup-card-data .lineup-data-row.lineup-faded>div{opacity:.25}
+.lineup-card-data .lineup-position-button{border:0;display:block;min-width:64px;padding:7px 10px;background:#0765ed;color:white;border-radius:22px;font-size:14px;font-weight:700;cursor:pointer}
+.lineup-card-data .lineup-position-button:disabled{cursor:default}
+.lineup-card-data .lineup-name-button{font:inherit;font-size:14px;color:#0665d9;background:transparent;border:0;padding:0;text-align:left;cursor:pointer;line-height:1.4}
+.lineup-card-data .lineup-name-button:disabled{cursor:default}
+.lineup-card-data .lineup-player-static span{font-size:12px;line-height:1.5;color:#233850;font-weight:400}
+.lineup-card-data .lineup-inline-game{display:block;font-size:12px;color:#233850;line-height:1.4}
+.lineup-card-data .lineup-yahoo-pos{padding-right:8px}
+.lineup-card-data .lineup-data-head,.lineup-card-data .lineup-data-subhead{font-size:12px;background:#eff2f4}
+.lineup-card-data button:focus-visible{outline:2px solid #1266c2;outline-offset:3px}
+.lineup-card-data .lineup-data-scroller{overflow-x:auto}
+.lineup-card-data .lineup-data-head,.lineup-card-data .lineup-data-subhead,.lineup-card-data .lineup-data-row{grid-template-columns:82px 280px 140px repeat(15,72px)!important;min-width:1582px}
+
 .lineup-team-heading { display:flex; align-items:center; gap:10px; flex-wrap:wrap; }
 .lineup-team-heading .btn { flex:none; min-height:36px; font-size:13px; }
 .lineup-optimize-note { display:block; margin:5px 0; color:#68758a; font-size:12px; font-weight:500; }
@@ -40,6 +62,7 @@ lineupInteractionStyle.textContent = `
 `;
 document.getElementById(lineupInteractionStyle.id)?.remove();
 document.head.appendChild(lineupInteractionStyle);
+document.addEventListener('keydown',event=>{if(event.key==='Escape'&&state.lineupSelection){state.lineupSelection=null;render();}});
 
 const app = document.querySelector('#app');
 const STORAGE_KEY = `glsk-auction-session-${ROOM_CODE}`;
@@ -50,7 +73,7 @@ const state = {
   transactions:[], trades:[], tradeAssets:[], futurePicks:[], rookieRights:[], extensionCosts:[], extensionEligibility:[],
   historySeasons:[], historyTeamSeasons:[], historyAllTime:[], historyFranchises:[], historyImportRuns:[], playerStats:[],
   gameSettings:null, lineupSlots:[], weekStates:[], schedule:[], lineups:[], weeklyScores:[], matchupScores:[], shadowStandings:[], reconciliation:[], scoringRules:[], weeklyHostSettings:null, playerProjections:[],
-  lineupDrafts:{}, lineupSaving:false,
+  lineupDrafts:{}, lineupSaving:false, lineupSelection:null,
   lineupDataTab:'stats', lineupStatsRange:'week', lineupProjectionRange:'week', lineupBrowseWeek:null,
   matchupBrowseWeek:null, selectedMatchupId:null, scheduleTeamId:null,
   boardThreads:[], boardPosts:[], boardSelectedThread:null, boardMode:'current', boardSearch:'',
@@ -1504,11 +1527,38 @@ function optimizeCurrentLineup(){
  state.lineupDrafts[lineupDraftKey(t.id,week)]=input.fixed.concat(picks.map(p=>({...p,team_id:t.id,week})));
  return picks.length<input.slots.length?'Lineup optimized. Some slots could not be filled. Review and Save Lineup.':'Lineup optimized. Review your starters and Save Lineup.';
 }
+function lineupRowCanSwap(from,to,teamId,week){
+ if(!from||!to||week!==currentWeek()||state.session?.spectator||state.lineupSaving)return false;
+ if(from.slotCode===to.slotCode&&from.playerKey===to.playerKey)return false;
+ const locked=row=>row.slotCode?lineupSlotLocked(row.slotCode,teamId,week):Boolean(row.playerKey&&scoreFor(row.playerKey,week)?.game_started);
+ if(locked(from)||locked(to)||(!from.slotCode&&!to.slotCode))return false;
+ const fits=(slotCode,key)=>!slotCode||!key||slotEligibleRoster(state.lineupSlots.find(s=>s.slot_code===slotCode)||{},teamId).some(r=>r.player_key===key);
+ return fits(from.slotCode,to.playerKey)&&fits(to.slotCode,from.playerKey);
+}
+function chooseLineupRow(row){
+ const t=myTeam(),week=browseWeek();
+ if(!t||state.session?.spectator||week!==currentWeek()||state.lineupSaving)return;
+ const from=state.lineupSelection;
+ if(from&&from.teamId===t.id&&from.week===week){
+   if(from.slotCode===row.slotCode&&from.playerKey===row.playerKey){state.lineupSelection=null;render();return;}
+   if(!lineupRowCanSwap(from,row,t.id,week))return;
+   try{
+     if(row.slotCode)changeLineupPlayer(row.slotCode,from.playerKey);
+     else changeLineupPlayer(from.slotCode,row.playerKey);
+     state.lineupSelection=null;render();toast('Lineup changed. Review and Save Lineup.');
+   }catch(e){state.lineupSelection=null;render();toast(e.message,'error');}
+   return;
+ }
+ if(row.slotCode?lineupSlotLocked(row.slotCode,t.id,week):scoreFor(row.playerKey,week)?.game_started)return;
+ state.lineupSelection={...row,teamId:t.id,week};render();
+}
 function lineupView(){
  const t=myTeam(),week=browseWeek(),slots=state.lineupSlots,current=currentWeek();
  if(!t)return `${pageHeading('Set Lineup',`Week ${week} lineup and player data.`,`Weekly Play`)}<div class="card empty">Sign in as a team owner to manage a lineup.</div>`;
 
+ if(state.lineupSelection&&(state.lineupSelection.teamId!==t.id||state.lineupSelection.week!==week))state.lineupSelection=null;
  const lineup=editableLineupFor(t.id,week);
+ const selection=state.lineupSelection;
  const starterKeys=new Set(lineup.map(l=>l.player_key));
  const bench=activeRosterFor(t.id).filter(r=>!starterKeys.has(r.player_key)).sort((a,b)=>{
    const p={QB:1,RB:2,WR:3,TE:4,K:5,DST:6};
@@ -1535,8 +1585,8 @@ function lineupView(){
    if(!row.rp)return null;
    return dataTab==='stats'?actualBundle(row.rp.player_key,range,week):projectionBundle(row.rp.player_key,range,week);
  };
- const pointsLabel=dataTab==='stats'?'Fan Pts':'Proj Pts';
- const showProj=dataTab==='projected';
+ const pointsLabel='Fan Pts';
+ const showProj=true;
  const teamDisplayPoints=dataTab==='projected'?projectedTeamTotal(t.id,range,week):weeklyScore(t.id,week);
 
  const rowHtml=row=>{
@@ -1544,21 +1594,22 @@ function lineupView(){
    const score=cur?scoreFor(cur.player_key,week):null;
    const locked=isBench?Boolean(score?.game_started):lineupSlotLocked(slot.slot_code,t.id,week);
    const d=dataFor(row);
+   const proj=rp?projectionBundle(rp.player_key,dataTab==='projected'?range:'week',week):null;
+   const actual=rp?actualBundle(rp.player_key,dataTab==='stats'?range:'week',week):null;
    const game=rp?lineupGameLabel(rp.player_key,week):{main:'—',sub:'Open starter'};
-   const options=!isBench?slotEligibleRoster(slot,t.id):[];
-   const optionHtml=!isBench?`<option value="">Select player</option>${options.map(r=>`<option value="${esc(r.player_key)}" ${cur?.player_key===r.player_key?'selected':''} ${scoreFor(r.player_key,week)?.game_started&&cur?.player_key!==r.player_key?'disabled':''}>${esc(r.player_name)} • ${esc(r.nfl_team||'')} • ${esc(r.position||'')}</option>`).join('')}`:'';
-   const selectDisabled=!editable||locked;
-   const destinations=isBench?benchStartingSlots(rp.player_key,t.id,week):[];
-   const moveSelect=isBench?`<select class="lineup-hit-select lineup-bench-move" data-bench-player="${esc(rp.player_key)}" aria-label="Move ${esc(rp.player_name)} to a starting position" ${!destinations.length?'disabled':''}><option value="">${locked?'Player locked':!editable?'Lineup read-only':!destinations.length?'No eligible unlocked starting slots':'Move to starting position…'}</option>${destinations.map(dest=>{const occupant=lineup.find(l=>l.slot_code===dest.slot_code);const name=occupant?rosterFor(t.id).find(r=>r.player_key===occupant.player_key)?.player_name:null;return `<option value="${esc(dest.slot_code)}">${esc(dest.label)} (${esc(dest.slot_code)}) — ${name?'Replace '+esc(name):'Empty'}</option>`;}).join('')}</select>`:'';
-   const playerCell=isBench
-     ?`<div class="lineup-player-static lineup-bench-target"><strong>${esc(rp.player_name)}</strong><span>${esc(rp.nfl_team||'')} • ${esc(rp.position||'')}${locked?' • Locked':''}</span>${moveSelect}</div>`
-     :`<select class="lineup-player-select lineup-select" aria-label="Choose player for ${esc(slot.label)} (${esc(slot.slot_code)})" data-slot-code="${esc(slot.slot_code)}" ${(!editable||locked)?'disabled':''}>${optionHtml}</select><div class="lineup-player-sub">${rp?`${esc(rp.nfl_team||'')} • ${esc(rp.position||'')}${locked?' • Locked':''}`:'Open starter'}</div>`;
-   return `<div class="lineup-data-row ${isBench?'bench-row':'starter-row'} ${locked?'is-locked':''}">
-     <div class="lineup-yahoo-pos lineup-position-target"><span class="${isBench?'yahoo-pos yahoo-pos-BN':posClass(slot.label)}" aria-hidden="${!isBench}">${esc(isBench?'BN':slot.label)}</span>${!isBench?`<select class="lineup-hit-select lineup-position-select" data-position-slot="${esc(slot.slot_code)}" aria-label="Change ${esc(slot.label)} (${esc(slot.slot_code)}) player" ${selectDisabled?'disabled':''}>${optionHtml}</select>`:''}</div>
+   const descriptor={slotCode:isBench?null:slot.slot_code,playerKey:cur?.player_key||null};
+   const selected=selection&&selection.slotCode===descriptor.slotCode&&selection.playerKey===descriptor.playerKey;
+   const eligible=selection&&lineupRowCanSwap(selection,descriptor,t.id,week);
+   const faded=selection&&!selected&&!eligible;
+   const label=isBench?'BN':String(slot.label).replace(/[0-9]+$/,'');
+   const disabled=!editable||locked||Boolean(faded);
+   const playerCell=`<div class="lineup-player-static"><button type="button" class="lineup-name-button" data-lineup-pick ${disabled?'disabled':''}>${esc(rp?.player_name||'Empty position')}</button><span>${rp?`${esc(rp.nfl_team||'')} • ${esc(rp.position||'')}`:'Select an eligible player'}${locked?' • Locked':''}</span><small class="lineup-inline-game">${esc(game.main)}${game.sub&&game.sub!=='Open starter'?' • '+esc(game.sub):''}</small></div>`;
+   return `<div class="lineup-data-row ${isBench?'bench-row':'starter-row'} ${locked?'is-locked':''} ${selected?'lineup-selected':eligible?'lineup-eligible':faded?'lineup-faded':''}" data-lineup-row data-row-slot="${esc(descriptor.slotCode||'')}" data-row-player="${esc(descriptor.playerKey||'')}">
+     <div class="lineup-yahoo-pos"><button type="button" class="yahoo-pos lineup-position-button" data-lineup-pick aria-label="${selected?'Cancel selection':eligible?'Swap with':'Select'} ${esc(rp?.player_name||slot.label)}" aria-pressed="${Boolean(selected)}" ${disabled?'disabled':''}>${esc(label)}</button></div>
      <div class="lineup-yahoo-player">${playerCell}</div>
      <div class="lineup-data-game"><strong>${esc(game.main)}</strong><small>${esc(game.sub)}</small></div>
-     <div class="lineup-num main-points">${fmtStat(dataTab==='stats'?d?.fantasy_points:d?.projected_fantasy_points,2)}</div>
-     ${showProj?`<div class="lineup-num">${fmtStat(d?.projected_max,2)}</div><div class="lineup-num">${fmtStat(d?.projected_min,2)}</div>`:''}
+     <div class="lineup-num main-points">${fmtStat(actual?.fantasy_points,2)}</div>
+     ${showProj?`<div class="lineup-num">${fmtStat(proj?.projected_fantasy_points,2)}</div><div class="lineup-num">${fmtStat(proj?.projected_max,2)}</div><div class="lineup-num">${fmtStat(proj?.projected_min,2)}</div>`:''}
      <div class="lineup-num">${d?.position_rank!=null?`${d.position_rank} (${esc(rp?.position||'')})`:'—'}</div>
      <div class="lineup-num stat-divider">${fmtStat(d?.passing_yards,0)}</div>
      <div class="lineup-num">${fmtStat(d?.passing_td,showProj?1:0)}</div>
@@ -1593,24 +1644,29 @@ function lineupView(){
 
  <section class="card lineup-card lineup-card-data">
    <div class="lineup-card-head lineup-yahoo-head">
-     <div><div class="lineup-team-heading"><strong>${esc(t.name)}</strong>${editable?`<button class="btn btn-sm btn-outline" data-action="optimize-lineup" ${optimizeReason?'disabled':''} title="${esc(optimizeReason||'Choose the highest-projected eligible lineup for Week '+week)}">Optimize Lineup</button>`:''}</div>${editable?`<small class="lineup-optimize-note">${esc(optimizeReason||'Uses Week '+week+' projections • review before saving')}</small>`:''}<span>${lineup.length}/${slots.length} starters filled${opp?` • vs ${esc(opp.name)}`:''}${!editable?' • read-only week':''}</span></div>
+     <div><strong>${esc(t.name)}</strong><span>${lineup.length}/${slots.length} starters filled${opp?` • vs ${esc(opp.name)}`:''}${!editable?' • read-only week':''}</span></div>
      <div class="lineup-score-duo">
        <div><span>${dataTab==='projected'?'PROJECTED':'WEEK SCORE'}</span><strong>${Number(teamDisplayPoints||0).toFixed(2)}</strong></div>
        ${dataTab==='stats'?`<div><span>PROJ WEEK ${week}</span><strong>${projectedTeamTotal(t.id,'week',week).toFixed(2)}</strong></div>`:''}
      </div>
    </div>
 
+   <div class="lineup-action-bar">
+     ${editable?`<button type="button" class="lineup-optimize-button" data-action="optimize-lineup" ${optimizeReason?'disabled':''}>Optimize Lineup</button>`:''}
+     <span class="lineup-selection-help" role="status">${selection?'Choose a green-highlighted player or position to swap.':editable?(optimizeReason||'Click a position to change your lineup.'):'This week is read-only.'}</span>
+     ${selection?'<button type="button" class="lineup-cancel-button" data-action="cancel-lineup-selection">Cancel</button>':''}
+   </div>
    <div class="lineup-data-scroller">
      <div class="lineup-data-head ${showProj?'with-proj':''}">
        <span>Pos</span><span>Offense</span><span>Opponent</span><span>${pointsLabel}</span>
-       ${showProj?'<span>Proj Max</span><span>Proj Min</span>':''}
+       ${showProj?'<span>Proj Pts</span><span>Proj Max</span><span>Proj Min</span>':''}
        <span>Pos Rank</span>
        <span class="group-head">Passing</span><span></span><span></span>
        <span class="group-head">Rushing</span><span></span><span></span>
        <span class="group-head">Receiving</span><span></span><span></span><span></span>
      </div>
      <div class="lineup-data-subhead ${showProj?'with-proj':''}">
-       <span></span><span></span><span></span><span></span>${showProj?'<span></span><span></span>':''}<span></span>
+       <span></span><span></span><span></span><span></span>${showProj?'<span></span><span></span><span></span>':''}<span></span>
        <span>Yds</span><span>TD</span><span>Int</span>
        <span>Att</span><span>Yds</span><span>TD</span>
        <span>Tgt</span><span>Rec</span><span>Yds</span><span>TD</span>
@@ -1984,7 +2040,7 @@ async function commish(name,args={},msg='Saved.'){try{await rpc(name,{p_room_cod
 
 function bind(){
  app.querySelector('[data-action="optimize-lineup"]')?.addEventListener('click',()=>{
-   try{const message=optimizeCurrentLineup();render();toast(message);}
+   try{const message=optimizeCurrentLineup();state.lineupSelection=null;render();toast(message);}
    catch(e){toast(e.message,'error');}
  });
  app.querySelectorAll('[data-tab]').forEach(b=>b.addEventListener('click',()=>setTab(b.dataset.tab)));
@@ -2269,13 +2325,12 @@ function bind(){
  });
 
  app.querySelector('#history-season')?.addEventListener('change',e=>{state.historySeason=e.target.value;render();});
- app.querySelectorAll('.lineup-select,.lineup-position-select,.lineup-bench-move').forEach(select=>select.addEventListener('change',()=>{
-   const slot=select.dataset.benchPlayer?select.value:(select.dataset.slotCode||select.dataset.positionSlot);
-   const player=select.dataset.benchPlayer||select.value||null;
-   if(!slot)return;
-   try{changeLineupPlayer(slot,player);render();[...app.querySelectorAll('.lineup-select')].find(el=>el.dataset.slotCode===slot)?.focus({preventScroll:true});toast('Lineup updated. Click Save Lineup to confirm.');}
-   catch(e){render();toast(e.message,'error');}
- }));
+ app.querySelectorAll('[data-lineup-row]').forEach(el=>{
+   const choose=()=>chooseLineupRow({slotCode:el.dataset.rowSlot||null,playerKey:el.dataset.rowPlayer||null});
+   el.querySelectorAll('[data-lineup-pick]').forEach(button=>button.addEventListener('click',event=>{event.stopPropagation();choose();}));
+   el.addEventListener('click',()=>{if(el.classList.contains('lineup-eligible'))choose();});
+ });
+ app.querySelector('[data-action="cancel-lineup-selection"]')?.addEventListener('click',()=>{state.lineupSelection=null;render();});
  app.querySelectorAll('[data-lineup-week]').forEach(b=>b.addEventListener('click',()=>{state.lineupBrowseWeek=Number(b.dataset.lineupWeek);render();}));
  app.querySelectorAll('[data-lineup-data-tab]').forEach(b=>b.addEventListener('click',()=>{state.lineupDataTab=b.dataset.lineupDataTab;render();}));
  app.querySelectorAll('[data-lineup-range]').forEach(b=>b.addEventListener('click',()=>{
