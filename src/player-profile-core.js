@@ -9,11 +9,13 @@ export function profilePlayers(data) {
   }
   return [...map.values()];
 }
+// Match the roster controls: legacy PIN presence is not an ownership signal.
+// Owner RPCs validate the signed-in account (or supported legacy credentials).
 export function actionFor(data, player) {
   const me = data.session?.spectator ? null : data.session?.teamId;
   const owner = (data.roster || []).find(r => player.player_key && r.active !== false && r.player_key === player.player_key);
-  if (owner) return {owner, type: me && data.session?.pin && String(owner.team_id) === String(me) ? 'drop' : null};
-  if (!me || !data.session?.pin || !player.player_key || data.waiverCenter?.settings?.enabled === false) return {type: null};
+  if (owner) return {owner, type: me && String(owner.team_id) === String(me) ? 'drop' : null};
+  if (!me || !player.player_key || data.waiverCenter?.settings?.enabled === false) return {type: null};
   const available = data.waiverCenter?.players?.find(p => p.player_key === player.player_key);
   if (available?.availability === 'free_agent') return {type: 'add'};
   if (available?.availability === 'waivers' && available.claim_open && !available.awaiting_processing) return {type: 'claim'};

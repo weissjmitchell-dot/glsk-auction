@@ -22,3 +22,20 @@ data.waiverCenter.settings.enabled=false;assert.equal(actionFor(data,player).typ
 assert.equal(actionFor(data,{player_key:'unknown'}).type,null);
 assert(profilePlayers(data).some(p=>p.player_name==='Sam Darnold'));
 console.log('PASS: ownership, spectator, full roster, drop identity, fines, waiver windows, bids, paused adds and unknown players.');
+
+// Regression: account-authenticated owners may have no legacy PIN.
+for (const pin of [null, undefined, '']) {
+ const accountData={...data,session:{teamId:'mine',pin},waiverCenter:{settings:{enabled:true},players:[{...player,availability:'free_agent'}]}};
+ assert.equal(actionFor(accountData,{player_key:'caleb'}).type,'drop');
+ assert.doesNotThrow(()=>validateMove(accountData,{player_key:'caleb'},'drop',null,0));
+ assert.equal(actionFor(accountData,player).type,'add');
+ assert.doesNotThrow(()=>validateMove(accountData,player,'add','caleb',0));
+ accountData.waiverCenter.players[0]={...player,availability:'waivers',claim_open:true};
+ assert.equal(actionFor(accountData,player).type,'claim');
+ accountData.session.teamId='other';assert.equal(actionFor(accountData,{player_key:'caleb'}).type,null);
+ accountData.session.teamId='mine';accountData.session.spectator=true;
+ assert.equal(actionFor(accountData,{player_key:'caleb'}).type,null);
+ assert.throws(()=>validateMove(accountData,{player_key:'caleb'},'drop',null,0),/no longer available/);
+ accountData.session=null;assert.equal(actionFor(accountData,{player_key:'caleb'}).type,null);
+}
+console.log('PASS: owner Drop/Add/Claim without legacy PIN; other teams, spectators and signed-out sessions remain read-only.');

@@ -36,7 +36,7 @@ async function snapshot() {
   const optional = await Promise.allSettled([
     rows('players', 'room_id', room.id), rows('phase3_players', 'room_id', room.id),
     ...['league_player_stats','league_player_projections','league_weekly_player_scores'].map(t => season ? rows(t, 'season_id', season.id) : Promise.resolve([])),
-    session.teamId && session.pin && !session.spectator ? rpc('league_owner_get_waiver_center', {p_room_code:ROOM_CODE,p_team_id:session.teamId,p_pin:session.pin}) : Promise.resolve(null)
+    session.teamId && !session.spectator ? rpc('league_owner_get_waiver_center', {p_room_code:ROOM_CODE,p_team_id:session.teamId,p_pin:session.pin}) : Promise.resolve(null)
   ]);
   const value = i => optional[i].status === 'fulfilled' ? optional[i].value : null;
   return {teams, roster, contracts, season, session, catalog:[...(value(0)||[]),...(value(1)||[])], playerStats:value(2)||[], playerProjections:value(3)||[], weeklyScores:value(4)||[], waiverCenter:value(5)};
