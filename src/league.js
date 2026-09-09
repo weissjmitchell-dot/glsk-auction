@@ -11,6 +11,8 @@ import { requireOwnerAccount, legacySessionFromAccount, signOutOwner, sendPasswo
 const lineupInteractionStyle = document.createElement('style');
 lineupInteractionStyle.id = 'glsk-lineup-interactions-v724';
 lineupInteractionStyle.textContent = `
+.roster-group-heading{padding:10px 14px;background:#edf1f6;color:#52647c;font-size:12px;font-weight:800;border-bottom:1px solid #dbe2ed}
+
 .home-team-link{color:inherit;text-decoration:none;cursor:pointer}
 .home-team-link:hover{text-decoration:underline}
 .home-team-link:focus-visible{outline:3px solid #2276e8;outline-offset:4px;border-radius:3px}
@@ -1332,19 +1334,35 @@ function freeAgencyView(){
     </div>`;
 }
 
+function orderedTeamRoster(teamId){
+ const positionOrder={QB:0,RB:1,WR:2,TE:3,K:4,DEF:5};
+ const position=r=>{const p=String(r.position||'').toUpperCase();return ['DST','D/ST','DEF','DEFENSE'].includes(p)?'DEF':p;};
+ const compare=(a,b)=>(positionOrder[position(a)]??6)-(positionOrder[position(b)]??6)||String(a.player_name||'').localeCompare(String(b.player_name||''));
+ const slots=state.lineupSlots.slice().sort((a,b)=>Number(a.slot_order||0)-Number(b.slot_order||0));
+ const slotIndex=new Map(slots.map((s,i)=>[s.slot_code,{...s,index:i}]));
+ const saved=lineupFor(teamId,currentWeek()).filter(l=>l.player_key&&(!slots.length||slotIndex.has(l.slot_code))).slice().sort((a,b)=>(slotIndex.get(a.slot_code)?.index??99)-(slotIndex.get(b.slot_code)?.index??99)||String(a.slot_code).localeCompare(String(b.slot_code),undefined,{numeric:true}));
+ const starting=new Map();
+ saved.forEach((l,i)=>{if(!starting.has(l.player_key))starting.set(l.player_key,{order:i,label:slotIndex.get(l.slot_code)?.label||l.slot_code});});
+ return rosterFor(teamId).map(r=>{
+   const ir=String(r.roster_slot||'ACTIVE').toUpperCase()==='IR';
+   const starter=ir?null:starting.get(r.player_key);
+   return {...r,displayGroup:ir?'IR':starter?'Starting Lineup':'Bench',displayPosition:ir?'IR':starter?.label||position(r),starterOrder:starter?.order??99};
+ }).sort((a,b)=>({ 'Starting Lineup':0,Bench:1,IR:2 }[a.displayGroup]-{ 'Starting Lineup':0,Bench:1,IR:2 }[b.displayGroup])||(a.displayGroup==='Starting Lineup'?a.starterOrder-b.starterOrder:compare(a,b)));
+}
+
 function teamsView(teamId=null){
  const selected=teamId==null?null:state.teams.find(t=>String(t.id)===String(teamId));
  const visibleTeams=selected?[selected]:state.teams;
  const lim=state.season?.roster_limit||18,cap=state.season?.salary_cap_points||100;
  return `${pageHeading(selected?selected.name:'Teams & Rosters',selected?'Roster, bid dollars and contract status.':'Live roster, bid-dollar and contract status for every franchise.','League Management')}${commissionerAddPlayerForm()}<div class="team-office-grid roster-team-grid">${visibleTeams.map(t=>{
-   const roster=rosterFor(t.id).slice().sort((a,b)=>(String(a.roster_slot||'ACTIVE')==='IR')-(String(b.roster_slot||'ACTIVE')==='IR')||(a.position||'').localeCompare(b.position||'')||a.player_name.localeCompare(b.player_name));
+   const roster=orderedTeamRoster(t.id);
    const activeCount=activeRosterFor(t.id).length,irCount=irRosterFor(t.id).length;
    const cu=capUsed(t.id);
-   return `<details class="card office-team-card roster-team-card" ${selected?'open':''}><summary class="team-summary"><div class="team-summary-main"><div class="office-team-name">${esc(t.name)}</div><div class="team-summary-sub">${activeCount===lim?'Active roster full':`${lim-activeCount} active roster spot${lim-activeCount===1?'':'s'} open`}${irCount?` • ${irCount}/${irLimit()} IR`:''}</div></div><div class="team-summary-metrics"><span><b>${activeCount}/${lim}</b><small>Roster</small></span><span><b>${irCount}/${irLimit()}</b><small>IR</small></span><span><b>${bidMoney(t.remaining_budget)}</b><small>Bids</small></span><span><b>${cu}/${cap}</b><small>Cap</small></span></div><span class="details-chevron">⌄</span></summary><div class="team-roster-body">${roster.map(r=>{
+   return `<details class="card office-team-card roster-team-card" ${selected?'open':''}><summary class="team-summary"><div class="team-summary-main"><div class="office-team-name">${esc(t.name)}</div><div class="team-summary-sub">${activeCount===lim?'Active roster full':`${lim-activeCount} active roster spot${lim-activeCount===1?'':'s'} open`}${irCount?` • ${irCount}/${irLimit()} IR`:''}</div></div><div class="team-summary-metrics"><span><b>${activeCount}/${lim}</b><small>Roster</small></span><span><b>${irCount}/${irLimit()}</b><small>IR</small></span><span><b>${bidMoney(t.remaining_budget)}</b><small>Bids</small></span><span><b>${cu}/${cap}</b><small>Cap</small></span></div><span class="details-chevron">⌄</span></summary><div class="team-roster-body">${roster.map((r,index)=>{
      const c=contractForPlayer(t.id,r.player_key);
      const canDrop=myTeam()?.id===t.id&&!state.session?.spectator;
      const penalty=c?(contractYear(c)===1?Number(c.cap_cost||0)*2:({2:5,3:10,4:20}[Number(c.length_years)]||0)):0;
-     return `<div class="roster-player-row"><span class="${rosterPositionClass(r.position)}">${esc(r.position||'—')}</span><div class="roster-player-main"><div class="contract-player">${esc(r.player_name)}</div><div class="roster-player-meta">${esc(r.nfl_team||'')} <span>•</span> ${esc(acquisitionLabel(r.acquisition_type))}</div>${playerStatLine(r)}${c?`<div class="contract-detail contract-active">${esc(contractLabel(c))}${penalty?` <span>• Drop fine ${penalty}</span>`:''}</div>`:'<div class="contract-detail contract-none">No active contract</div>'}</div><div class="roster-player-actions">${String(r.roster_slot||'ACTIVE')==='IR'?'<span class="status-chip roster-ir-chip">IR</span>':''}${c?'<span class="status-chip contract-chip">Contract</span>':''}${canDrop?`<button class="btn btn-sm btn-reset" data-drop-player="${esc(r.player_key)}" data-drop-name="${esc(r.player_name)}" data-drop-penalty="${penalty}">Drop</button>`:''}${commissionerToolsActive()?`<button class="btn btn-sm btn-outline" data-exception-drop="${esc(r.player_key)}" data-exception-team="${t.id}" data-drop-name="${esc(r.player_name)}">Retire/Ban</button>`:''}</div></div>`;
+     return `${index===0||roster[index-1].displayGroup!==r.displayGroup?`<div class="roster-group-heading">${esc(r.displayGroup)}${r.displayGroup==='Starting Lineup'?` • Week ${currentWeek()}`:''}</div>`:''}<div class="roster-player-row"><span class="${rosterPositionClass(r.position)}">${esc(r.displayPosition||'—')}</span><div class="roster-player-main"><div class="contract-player">${esc(r.player_name)}</div><div class="roster-player-meta">${esc(r.nfl_team||'')} <span>•</span> ${esc(acquisitionLabel(r.acquisition_type))}</div>${playerStatLine(r)}${c?`<div class="contract-detail contract-active">${esc(contractLabel(c))}${penalty?` <span>• Drop fine ${penalty}</span>`:''}</div>`:'<div class="contract-detail contract-none">No active contract</div>'}</div><div class="roster-player-actions">${String(r.roster_slot||'ACTIVE')==='IR'?'<span class="status-chip roster-ir-chip">IR</span>':''}${c?'<span class="status-chip contract-chip">Contract</span>':''}${canDrop?`<button class="btn btn-sm btn-reset" data-drop-player="${esc(r.player_key)}" data-drop-name="${esc(r.player_name)}" data-drop-penalty="${penalty}">Drop</button>`:''}${commissionerToolsActive()?`<button class="btn btn-sm btn-outline" data-exception-drop="${esc(r.player_key)}" data-exception-team="${t.id}" data-drop-name="${esc(r.player_name)}">Retire/Ban</button>`:''}</div></div>`;
    }).join('')||'<div class="empty-tight">No roster entries.</div>'}</div></details>`;
  }).join('')}</div>`;
 }
