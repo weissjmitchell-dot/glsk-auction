@@ -1,3 +1,4 @@
+import {checkDraftArchive} from './draft-archive.js';
 import './styles.css';
 import './auth.css';
 import './phase3.css';
@@ -348,6 +349,7 @@ async function boot(){
   try{
     const auth=await requireOwnerAccount({app,roomCode:ROOM_CODE,leagueName:LEAGUE_NAME,legacyStorageKey:STORAGE_KEY});
     saveSession(legacySessionFromAccount(auth.account,auth.user));
+    if(await checkDraftArchive(app,ROOM_CODE))return;
     await loadData();subscribeRealtime();render();promptOwnerPush(ROOM_CODE,LEAGUE_NAME,auth.account).catch(()=>{});setInterval(updateCountdown,250);
   }catch(e){state.loading=false;app.innerHTML=connectionView(e);}
 }

@@ -1,4 +1,5 @@
 import './autocomplete.js';
+import {rolloverView,bindRollover} from './season-rollover.js';
 import './player-profile.js';
 import './league.css';
 import './auth.css';
@@ -451,6 +452,8 @@ async function loadData(){
     q('phase3_players','id,name,nfl_team,position,status',[['room_id',room.id]]),q('league_player_status_updates','*',[['room_id',room.id]])
   ]);
   state.teams=teams.sort((a,b)=>a.sort_order-b.sort_order); state.season=seasons.find(s=>s.is_current)||seasons.sort((a,b)=>b.season_year-a.season_year)[0]||null;
+  const {data:draftPlan}=await supabase.from('league_season_draft_plans').select('season_id,status').eq('season_id',state.season?.id||'00000000-0000-0000-0000-000000000000').maybeSingle();
+  state.draftPreparation=draftPlan?.status==='preparation';
   const sid=state.season?.id; state.roster=roster; state.contracts=contracts.filter(x=>x.season_id===sid); state.rules=rules.filter(x=>x.season_id===sid).sort((a,b)=>a.sort_order-b.sort_order);
   state.distro=distro.filter(x=>x.season_id===sid).sort((a,b)=>a.sort_order-b.sort_order); state.deadlines=deadlines.filter(x=>x.season_id===sid).sort((a,b)=>new Date(a.due_at)-new Date(b.due_at));
   state.deadlineStatus=statuses; state.contractOptions=options.filter(x=>x.season_id===sid&&x.active).sort((a,b)=>a.years-b.years);
@@ -693,6 +696,7 @@ function settingsHubView(){
 }
 
 const commissionerSections=[
+ ['rollover','Season Rollover','Preview the next season, confirm changes and undo an untouched rollover.'],
  ['teams','Rosters','Manual player additions and retirement or ban corrections.'],
  ['contracts','Contracts','Assign, update and void contracts; refresh extension costs.'],
  ['freeagents','Free Agency & Waivers','Manage the player pool, waiver timing, priority and processing.'],
@@ -713,11 +717,12 @@ function commissionerHubView(){
  const section=commissionerSections.find(([key])=>key===state.commissionerSection);
  const heading=`<button class="btn btn-outline" data-tab="settingshub" style="margin-bottom:16px">‹ Settings</button>${pageHeading('Commissioner','All League Office administration tools in one place.','League Administration')}`;
  if(!section)return `${heading}<section class="nav-hub-grid">${commissionerSections.map(([key,title,description])=>`<button class="nav-hub-card" data-commissioner-section="${key}"><div class="nav-hub-copy"><strong>${esc(title)}</strong><span>${esc(description)}</span></div><div class="nav-hub-arrow">›</div></button>`).join('')}</section>`;
- const views={teams:teamsView,contracts:contractsView,freeagents:freeAgencyView,trades:tradesView,lineup:lineupSetupPanel,matchups:matchupsView,reconcile:reconcileView,rules:rulesView,deadlines:deadlinesView,finances:financesView,transactions:transactionsView,history:historyView,board:boardView,chat:chatView};
+ const views={rollover:rolloverView,teams:teamsView,contracts:contractsView,freeagents:freeAgencyView,trades:tradesView,lineup:lineupSetupPanel,matchups:matchupsView,reconcile:reconcileView,rules:rulesView,deadlines:deadlinesView,finances:financesView,transactions:transactionsView,history:historyView,board:boardView,chat:chatView};
  return `${heading}<div class="row gap-8 wrap" style="margin-bottom:20px"><button class="btn btn-outline" data-commissioner-section="">‹ All Commissioner Tools</button><label>Section <select class="input" id="commissioner-section">${commissionerSections.map(([key,title])=>`<option value="${key}" ${key===section[0]?'selected':''}>${esc(title)}</option>`).join('')}</select></label></div>${views[section[0]]()}`;
 }
 
 function draftHubView(){
+ if(state.draftPreparation)return `${pageHeading('Draft','Next-season draft preparation.','League Drafts')}<section class="card card-pad"><h2>Previous draft rooms archived</h2><p>The new season is in setup. Its player pools and draft rooms must be prepared before drafting resumes. The previous draft records have been preserved.</p></section>`;
  return `${pageHeading('Draft','Auction, supplemental and roster-fill draft rooms.','League Drafts')}<section class="office-section"><div class="office-section-head"><div><h2>Draft Rooms</h2><div class="section-caption">Choose a draft phase to open its room.</div></div></div><div class="draft-links"><a class="draft-link" href="/"><strong>⚡</strong><span>Auction</span><small>Top 40</small></a><a class="draft-link" href="/supplemental"><strong>↔</strong><span>Supplemental</span><small>2-round snake</small></a><a class="draft-link" href="/phase3"><strong>⇅</strong><span>Snake</span><small>Roster fill to 18</small></a></div></section>`;
 }
 
@@ -2162,6 +2167,7 @@ async function logout(){const t=myTeam();await signOutOwner({roomCode:ROOM_CODE,
 async function commish(name,args={},msg='Saved.'){try{await rpc(name,{p_room_code:ROOM_CODE,p_commish_pin:state.session.commishPin,...args});toast(msg);await loadData();render();}catch(e){toast(e.message,'error');}}
 
 function bind(){
+ bindRollover({state,rpc,refresh:async()=>{await loadData();render();}});
  app.querySelectorAll('[data-open-team]').forEach(link=>link.addEventListener('click',event=>{
    if(event.button!==0||event.ctrlKey||event.metaKey||event.shiftKey||event.altKey)return;
    event.preventDefault();

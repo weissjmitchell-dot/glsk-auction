@@ -1,3 +1,4 @@
+import {checkDraftArchive} from './draft-archive.js';
 import './styles.css';
 import './auth.css';
 import { supabase, configured } from './supabase.js';
@@ -630,6 +631,7 @@ async function boot() {
   try {
     const auth=await requireOwnerAccount({app,roomCode:ROOM_CODE,leagueName:LEAGUE_NAME,legacyStorageKey:STORAGE_KEY});
     saveSession(legacySessionFromAccount(auth.account,auth.user));
+    if(await checkDraftArchive(app,ROOM_CODE))return;
     await loadData();
     subscribeRealtime();
     render();

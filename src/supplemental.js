@@ -1,3 +1,4 @@
+import {checkDraftArchive} from './draft-archive.js';
 import './styles.css';
 import './auth.css';
 import { supabase, configured } from './supabase.js';
@@ -259,7 +260,8 @@ async function finalizeExpired(){if(state.finalizing||state.settings?.status!=='
 async function boot(){if(!configured){state.loading=false;render();return;}try{
   const auth=await requireOwnerAccount({app,roomCode:ROOM_CODE,leagueName:LEAGUE_NAME,legacyStorageKey:STORAGE_KEY});
   saveSession(legacySessionFromAccount(auth.account,auth.user));
-  await loadData();subscribeRealtime();render();promptOwnerPush(ROOM_CODE,LEAGUE_NAME,auth.account).catch(()=>{});setInterval(updateCountdown,250);
+  if(await checkDraftArchive(app,ROOM_CODE))return;
+    await loadData();subscribeRealtime();render();promptOwnerPush(ROOM_CODE,LEAGUE_NAME,auth.account).catch(()=>{});setInterval(updateCountdown,250);
 }catch(e){state.loading=false;app.innerHTML=connectionView(e);}}
 document.addEventListener('pointerdown',unlockAudio,{once:true,passive:true});
 boot();
