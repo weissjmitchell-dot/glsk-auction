@@ -1,3 +1,4 @@
+import './autocomplete.js';
 import './league.css';
 import './auth.css';
 import { supabase, configured } from './supabase.js';
@@ -9,6 +10,42 @@ import { requireOwnerAccount, legacySessionFromAccount, signOutOwner, sendPasswo
 const lineupInteractionStyle = document.createElement('style');
 lineupInteractionStyle.id = 'glsk-lineup-interactions-v724';
 lineupInteractionStyle.textContent = `
+.fa-player-browser{background:white;padding:22px 18px;border-radius:8px;color:#263443;margin-bottom:20px}
+.fa-big-search{max-width:350px!important;border-radius:28px!important;border:2px solid #b9d2ff!important;height:52px;font-size:16px!important;margin-bottom:24px}
+.fa-position-label{font-size:14px;color:#606c7a;margin-bottom:8px}
+.fa-position-pills{display:flex;align-items:center;flex-wrap:wrap;gap:10px;margin-bottom:24px}
+.fa-position-pills button{border:1px solid #d9e0e9;border-radius:24px;background:white;padding:9px 18px;font-size:15px;color:#22354b;cursor:pointer}
+.fa-position-pills button.active{background:#0765ed;color:white;border-color:#0765ed}
+.fa-position-pills label{display:flex;gap:10px;align-items:center;margin-left:14px;font-size:15px}
+.fa-position-pills input{width:22px;height:22px}
+.fa-browser-filters{display:grid;grid-template-columns:repeat(6,minmax(130px,1fr));gap:18px}
+.fa-browser-filters label{font-size:14px;color:#606c7a;display:grid;gap:8px}
+.fa-browser-filters .input{font-size:14px;min-height:46px;width:100%}
+.fa-table-caption{font-size:13px;color:#68778b;margin:22px 0 12px}
+.fa-table-scroll{overflow:auto;max-height:75vh;border:1px solid #dce3eb}
+.fa-stats-table{border-collapse:separate;border-spacing:0;min-width:1800px;width:100%;font-size:14px;font-variant-numeric:tabular-nums}
+.fa-stats-table th{background:#eff2f4;padding:12px 7px;white-space:nowrap;color:#263443;text-align:center;border-bottom:1px solid #dce3eb}
+.fa-stats-table thead{position:sticky;top:0;z-index:2}
+.fa-stats-table th button{font:inherit;font-weight:700;border:0;background:none;color:inherit;cursor:pointer;padding:0}
+.fa-stats-table .fa-group-head th{font-weight:400;color:#62707d;padding:12px}
+.fa-stats-table td{padding:16px 8px;border-bottom:1px solid #dce3eb;text-align:center;white-space:nowrap;background:white}
+.fa-stats-table td:nth-child(2),.fa-stats-table td:nth-child(3){text-align:left}
+.fa-stats-table tr.selected td{background:#f0f6ff}
+.fa-stats-table td small{font-size:12px}
+.fa-stats-table .fa-points{font-weight:800}
+.fa-row-actions{display:flex;gap:10px;align-items:center}
+.fa-row-actions button{background:none;border:0;font-size:27px;cursor:pointer;padding:4px}
+.fa-add-icon{color:#008846}.fa-watch-icon{color:#0665ed}.fa-add-icon:disabled{opacity:.22;cursor:default}
+.fa-player-identity{display:flex;align-items:center;gap:12px;min-width:280px}
+.fa-player-identity img,.fa-player-initials{width:48px;height:48px;border-radius:50%;object-fit:cover;flex:none}
+.fa-player-initials{display:grid;place-items:center;background:#edf3fb;color:#40618d;font-weight:700}
+.fa-player-identity span:not(.fa-player-initials),.fa-player-identity small{display:block;margin-top:4px}
+.fa-player-link{font:inherit;color:#0665ed;background:none;border:0;padding:0;text-align:left;cursor:pointer;font-size:16px}
+.fa-player-link:disabled{cursor:default}
+.fa-browser-management{display:block!important}.fa-browser-management .fa-side{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:18px}
+@media(max-width:1000px){.fa-browser-filters{grid-template-columns:repeat(3,minmax(120px,1fr))}}
+@media(max-width:600px){.fa-player-browser{padding:16px 10px}.fa-browser-filters{grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}.fa-position-pills{gap:6px}.fa-position-pills button{padding:8px 12px}.fa-browser-management .fa-side{grid-template-columns:1fr}}
+
 .lineup-card-data .lineup-action-bar{display:flex;align-items:center;gap:14px;flex-wrap:wrap;padding:16px 12px;background:white;border-bottom:1px solid #dbe1e8}
 .lineup-card-data .lineup-optimize-button{border:1px solid #ccd5e9;border-radius:20px;background:white;color:#7f35bc;padding:8px 17px;font-size:14px;font-weight:700;cursor:pointer}
 .lineup-card-data .lineup-optimize-button:disabled{color:#8892a1;cursor:default}
@@ -80,6 +117,7 @@ const state = {
   chatMessages:[], chatYears:[], chatYear:null, chatUnread:0, chatHasMore:false, chatOldestAt:null,
   chatDisplayName:'', chatDraft:'', chatReplyTo:null, chatEditingId:null, chatReactionTarget:null, chatAutoScroll:true, chatError:null,
   notifications:[], notificationPrefs:[], notificationUnread:0, playerWatches:[], notificationPlayers:[], playerStatusUpdates:[],
+  faNfl:'', faFantasy:'', faShowMine:false, faStats:'projected', faWeek:null, faSource:'', faSort:'points', faSortDesc:true,
   waiverCenter:null, waiverSearch:'', waiverPosition:'ALL', waiverStatus:'ALL', waiverSelectedPlayer:null,
   pushSupported:false, pushSubscribed:false, pushPermission:'default', pushStandalone:false, pushBusy:false,
   authUser:null, authAccount:null,
@@ -1052,6 +1090,67 @@ function waiverDropOptions(selectedKey=''){
     return `<option value="${esc(r.player_key)}" ${selectedKey===r.player_key?'selected':''}>${esc(r.position||'')} • ${esc(r.player_name)}${p?` — ${p} bid fine`:''}</option>`;
   }).join('');
 }
+function faPlayerPool(){
+ const available=state.waiverCenter?.players||[];
+ const map=new Map(available.map(p=>[p.player_key,{...p}]));
+ for(const r of state.roster.filter(r=>r.active!==false))map.set(r.player_key,{...map.get(r.player_key),...r,availability:'rostered',owner_team_id:r.team_id});
+ return [...map.values()];
+}
+function faData(p){
+ const week=Number(state.faWeek||currentWeek());
+ if(state.faStats==='season')return statForPlayer(p.player_key)||{};
+ if(state.faStats==='actual')return actualBundle(p.player_key,'week',week)||{};
+ const rows=projectionsFor(p.player_key).filter(r=>Number(r.week)===week&&(!state.faSource||String(r.projection_source||r.source||'')===state.faSource));
+ return rows[0]||{};
+}
+function faWatchFor(p){return state.playerWatches.find(w=>w.player_key===p.player_key||(w.player_name===p.player_name&&w.nfl_team===p.nfl_team));}
+function faFilteredPlayers(all,me){
+ const search=String(state.waiverSearch||'').trim().toLowerCase();
+ const list=all.filter(p=>{
+   const pos=String(p.position||'').toUpperCase();
+   if(state.waiverPosition==='OFFENSE'&&!['QB','RB','WR','TE'].includes(pos))return false;
+   if(state.waiverPosition==='FLEX'&&!['RB','WR','TE'].includes(pos))return false;
+   if(!['ALL','OFFENSE','FLEX'].includes(state.waiverPosition)&&pos!==state.waiverPosition)return false;
+   if(state.faShowMine&&p.owner_team_id!==me.id&&p.availability==='rostered')return false;
+   if(state.faFantasy&&p.owner_team_id!==state.faFantasy)return false;
+   if(!state.faFantasy&&!(state.faShowMine&&p.owner_team_id===me.id)){
+     if(state.waiverStatus==='ALL'&&p.availability==='rostered')return false;
+     if(!['ALL','EVERYONE'].includes(state.waiverStatus)&&p.availability!==state.waiverStatus)return false;
+   }
+   if(state.faNfl&&p.nfl_team!==state.faNfl)return false;
+   return !search||`${p.player_name} ${p.nfl_team||''} ${pos}`.toLowerCase().includes(search);
+ });
+ const value=p=>{const d=faData(p);return state.faSort==='name'?String(p.player_name):state.faSort==='rank'?p.yahoo_rank:state.faSort==='position_rank'?(d.projected_position_rank??d.position_rank):state.faSort==='points'?(state.faStats==='projected'?d.projected_fantasy_points:d.fantasy_points):d[state.faSort];};
+ return list.sort((a,b)=>{const av=value(a),bv=value(b);const missing=v=>v==null||v===''||(typeof v!=='string'&&!Number.isFinite(Number(v)));
+   if(missing(av)||missing(bv))return Number(missing(av))-Number(missing(bv));
+   const cmp=state.faSort==='name'?av.localeCompare(bv):Number(av)-Number(bv);
+   return (state.faSortDesc?-cmp:cmp)||String(a.player_name).localeCompare(String(b.player_name));
+ });
+}
+function faMarketTable(players,all,me,settings){
+ const week=Number(state.faWeek||currentWeek());
+ const teams=[...new Set(all.map(p=>p.nfl_team).filter(Boolean))].sort();
+ const sources=[...new Set(state.playerProjections.map(r=>r.projection_source||r.source).filter(Boolean))].sort();
+ const cols=[['points','Fan Pts'],['position_rank','Pos Rank'],['rank','Pre-Season'],['overall_rank','Actual'],['passing_yards','Yds'],['passing_td','TD'],['interceptions','Int'],['rushing_attempts','Att'],['rushing_yards','Yds'],['rushing_td','TD'],['targets','Tgt'],['receptions','Rec'],['receiving_yards','Yds'],['receiving_td','TD'],['return_td','TD'],['two_point_conversions','2PT'],['fumbles_lost','Lost']];
+ return `<section class="fa-player-browser">
+ <input id="fa-search" class="input fa-big-search" aria-label="Search player by name" placeholder="Search player by name" value="${esc(state.waiverSearch)}">
+ <div class="fa-position-label">Position</div><div class="fa-position-pills">${[['ALL','All Players'],['OFFENSE','All Offense'],['QB','QB'],['RB','RB'],['WR','WR'],['TE','TE'],['FLEX','W/R/T'],['K','K'],['DST','D/ST']].map(([v,label])=>`<button type="button" data-fa-position="${v}" aria-pressed="${state.waiverPosition===v}" class="${state.waiverPosition===v?'active':''}">${label}</button>`).join('')}<label><input id="fa-show-mine" type="checkbox" ${state.faShowMine?'checked':''}> Show my team</label></div>
+ <div class="fa-browser-filters">
+ <label>Status<select id="fa-status" class="input">${[['ALL','All Available Players'],['free_agent','Free Agents'],['waivers','Waivers'],['EVERYONE','All Players'],['rostered','Rostered Players']].map(([v,label])=>`<option value="${v}" ${state.waiverStatus===v?'selected':''}>${label}</option>`).join('')}</select></label>
+ <label>NFL Teams<select id="fa-nfl" class="input"><option value="">All Teams</option>${teams.map(v=>`<option ${v===state.faNfl?'selected':''}>${esc(v)}</option>`).join('')}</select></label>
+ <label>Fantasy Teams<select id="fa-fantasy" class="input"><option value="">No Team Selected</option>${state.teams.map(t=>`<option value="${esc(t.id)}" ${t.id===state.faFantasy?'selected':''}>${esc(t.name)}</option>`).join('')}</select></label>
+ <label>Stats<select id="fa-stats" class="input">${[['projected','Weekly Projections'],['actual','Weekly Stats'],['season','Season Stats']].map(([v,label])=>`<option value="${v}" ${v===state.faStats?'selected':''}>${label}</option>`).join('')}</select></label>
+ <label>Week<select id="fa-week" class="input" ${state.faStats==='season'?'disabled':''}>${Array.from({length:18},(_,i)=>`<option value="${i+1}" ${week===i+1?'selected':''}>Week ${i+1}</option>`).join('')}</select></label>
+ <label>Projection Sources<select id="fa-source" class="input" ${state.faStats!=='projected'||!sources.length?'disabled':''}><option value="">Current feed</option>${sources.map(v=>`<option value="${esc(v)}" ${v===state.faSource?'selected':''}>${esc(v)}</option>`).join('')}</select></label>
+ </div><div class="fa-table-caption">${players.length} players • ${state.faStats==='projected'?'Projected stats':state.faStats==='season'?'Season stats':'Actual stats'}${state.faStats==='season'?'':` • Week ${week}`} • Unavailable data shown as —</div>
+ <div class="fa-table-scroll"><table class="fa-stats-table"><thead><tr class="fa-group-head"><th colspan="5"></th><th colspan="2">Fantasy</th><th colspan="2">Rankings</th><th colspan="3">Passing</th><th colspan="3">Rushing</th><th colspan="4">Receiving</th><th>Ret</th><th>Misc</th><th>Fum</th></tr>
+ <tr><th aria-label="Player actions"></th><th><button data-fa-sort="name">Offense</button></th><th>Roster Status</th><th>GP</th><th>Bye</th>${cols.map(([key,label])=>`<th aria-sort="${state.faSort===key?(state.faSortDesc?'descending':'ascending'):'none'}"><button data-fa-sort="${key}">${label}${state.faSort===key?(state.faSortDesc?' ↓':' ↑'):''}</button></th>`).join('')}</tr></thead><tbody>
+ ${players.map(p=>{const d=faData(p),proj=projectionFor(p.player_key,week)||{},actual=statForPlayer(p.player_key)||{},watched=faWatchFor(p);const available=['free_agent','waivers'].includes(p.availability);const game=lineupGameLabel(p.player_key,week);const image=p.headshot_url||p.photo_url;const safeImage=typeof image==='string'&&/^https:\/\//.test(image)?image:null;const name=esc(p.player_name);const vals=cols.map(([key])=>key==='points'?(state.faStats==='projected'?d.projected_fantasy_points:d.fantasy_points):key==='position_rank'?(d.projected_position_rank??d.position_rank):key==='rank'?p.yahoo_rank:key==='overall_rank'?actual.overall_rank:d[key]);
+ return `<tr class="${state.waiverSelectedPlayer===p.player_key?'selected':''}"><td><div class="fa-row-actions"><button class="fa-add-icon" data-fa-select="${esc(p.player_key)}" aria-label="${p.availability==='waivers'?'Claim':'Add'} ${name}" ${!available||settings.enabled===false?'disabled':''}>+</button><button class="fa-watch-icon" data-fa-watch="${esc(p.player_key)}" aria-label="${watched?'Unwatch':'Watch'} ${name}" aria-pressed="${Boolean(watched)}">${watched?'★':'☆'}</button></div></td>
+ <td><div class="fa-player-identity">${safeImage?`<img src="${esc(safeImage)}" alt="" loading="lazy">`:`<span class="fa-player-initials" aria-hidden="true">${esc(p.player_name.split(/\s+/).map(n=>n[0]).slice(0,2).join(''))}</span>`}<div><button class="fa-player-link" ${available?`data-fa-select="${esc(p.player_key)}"`: 'disabled'}>${name}</button><span>${esc(p.nfl_team||'FA')} - ${esc(p.position)}</span><small>${esc(game.main)}${game.sub&&game.sub!=='Open starter'?' • '+esc(game.sub):''}</small></div></div></td>
+ <td>${p.availability==='rostered'?esc(teamById(p.owner_team_id)?.name||'Rostered'):p.availability==='waivers'?`Waivers<br><small>${waiverDate(p.waiver_ends_at)}</small>`:'FA'}</td><td>${fmtStat(d.games_played??d.gp,0)}</td><td>${fmtStat(d.bye_week??proj.bye_week??actual.bye_week,0)}</td>${vals.map((v,i)=>`<td class="${i===0?'fa-points':''}">${fmtStat(v,i===0?2:state.faStats==='projected'&&i>=4?1:0)}</td>`).join('')}</tr>`;}).join('')||'<tr><td colspan="22">No players match these filters.</td></tr>'}
+ </tbody></table></div></section>`;
+}
 function freeAgencyView(){
   const wc=state.waiverCenter;
   const me=myTeam();
@@ -1066,21 +1165,15 @@ function freeAgencyView(){
   }
 
   const settings=wc.settings||{};
-  const all=wc.players||[];
+  const all=faPlayerPool();
   const claims=wc.claims||[];
   const priority=wc.priority||[];
   const rank=waiverPriorityRank();
   const rosterCount=activeRosterFor(me.id).length;
   const limit=Number(state.season?.roster_limit||18);
   const pending=claims.filter(c=>c.status==='pending');
-  const search=String(state.waiverSearch||'').trim().toLowerCase();
-  const players=all.filter(p=>{
-    if(state.waiverPosition!=='ALL'&&p.position!==state.waiverPosition)return false;
-    if(state.waiverStatus!=='ALL'&&p.availability!==state.waiverStatus)return false;
-    if(search&&!`${p.player_name} ${p.nfl_team||''} ${p.position||''}`.toLowerCase().includes(search))return false;
-    return true;
-  });
-  const selected=all.find(p=>p.player_key===state.waiverSelectedPlayer)||null;
+  const players=faFilteredPlayers(all,me);
+  const selected=all.find(p=>p.player_key===state.waiverSelectedPlayer&&p.availability!=='rostered')||null;
   const selectedClaim=selected?waiverClaimFor(selected.player_key):null;
   const defaultDrop=selectedClaim?.drop_player_key||'';
   const full=rosterCount>=limit;
@@ -1135,7 +1228,7 @@ function freeAgencyView(){
       <p>Choose an available player to add immediately or submit a blind waiver claim.</p>
     </section>`;
 
-  return `${pageHeading('Free Agency & Waivers','Immediate free-agent adds, blind FAAB claims and continual rolling priority.','Player Market')}
+  return `${pageHeading('Player List','','Free Agents')}
     <div class="fa-summary-grid">
       <div class="card fa-summary"><span>Bid Dollars</span><strong>${bidMoney(me.remaining_budget)}</strong><small>available</small></div>
       <div class="card fa-summary"><span>Roster</span><strong>${rosterCount}/${limit}</strong><small>${full?'full active roster':`${limit-rosterCount} open`}${irRosterFor(me.id).length?` • ${irRosterFor(me.id).length}/${irLimit()} IR`:''}</small></div>
@@ -1145,42 +1238,8 @@ function freeAgencyView(){
 
     ${settings.enabled===false?'<div class="owner-banner office-deadline-banner"><div><span class="banner-label">FREE AGENCY PAUSED</span><strong>Commissioner has disabled adds and claims.</strong></div></div>':''}
 
-    <div class="fa-layout">
-      <section class="card fa-player-market">
-        <div class="fa-market-head">
-          <div><h2>Available Players</h2><span>${players.length} shown • ${all.length} total available</span></div>
-          <div class="fa-policy-chip">Game Time → Tuesday</div>
-        </div>
-        <div class="fa-filters">
-          <input id="fa-search" class="input" placeholder="Search player or NFL team" value="${esc(state.waiverSearch)}">
-          <select id="fa-position" class="input">
-            ${['ALL','QB','RB','WR','TE','K','DST'].map(x=>`<option value="${x}" ${state.waiverPosition===x?'selected':''}>${x==='ALL'?'All positions':x}</option>`).join('')}
-          </select>
-          <select id="fa-status" class="input">
-            <option value="ALL" ${state.waiverStatus==='ALL'?'selected':''}>All availability</option>
-            <option value="free_agent" ${state.waiverStatus==='free_agent'?'selected':''}>Free Agents</option>
-            <option value="waivers" ${state.waiverStatus==='waivers'?'selected':''}>Waivers</option>
-          </select>
-        </div>
-        <div class="fa-player-list">
-          ${players.length?players.map(p=>{
-            const claim=waiverClaimFor(p.player_key);
-            const sel=state.waiverSelectedPlayer===p.player_key;
-            return `<button class="fa-player-row ${sel?'selected':''}" data-fa-select="${esc(p.player_key)}">
-              <span class="${rosterPositionClass(p.position)}">${esc(p.position)}</span>
-              <div class="fa-player-main">
-                <strong>${esc(p.player_name)}</strong>
-                <span>${esc(p.nfl_team||'FA')}${p.yahoo_rank?` • Rank ${p.yahoo_rank}`:''}${claim?' • Your claim submitted':''}</span>
-              </div>
-              <div class="fa-player-status">
-                <span class="fa-status-chip ${p.availability==='waivers'?'waiver':'free'}">${p.availability==='waivers'?(p.awaiting_processing?'Processing':'Waivers'):'FA'}</span>
-                ${p.availability==='waivers'?`<small>${p.awaiting_processing?'Closed':waiverDate(p.waiver_ends_at)}</small>`:'<small>Add now</small>'}
-              </div>
-            </button>`;
-          }).join(''):'<div class="empty-tight">No players match these filters.</div>'}
-        </div>
-      </section>
-
+    ${faMarketTable(players,all,me,settings)}
+    <div class="fa-layout fa-browser-management">
       <aside class="fa-side">
         ${actionPanel}
 
@@ -2039,6 +2098,7 @@ async function logout(){const t=myTeam();await signOutOwner({roomCode:ROOM_CODE,
 async function commish(name,args={},msg='Saved.'){try{await rpc(name,{p_room_code:ROOM_CODE,p_commish_pin:state.session.commishPin,...args});toast(msg);await loadData();render();}catch(e){toast(e.message,'error');}}
 
 function bind(){
+ window.GLSKAutocomplete?.addNames([...state.roster.map(p=>p.player_name),...(state.waiverCenter?.players||[]).map(p=>p.player_name),...state.notificationPlayers.map(p=>p.name),...state.teams.map(t=>t.name)]);
  app.querySelector('[data-action="optimize-lineup"]')?.addEventListener('click',()=>{
    try{const message=optimizeCurrentLineup();state.lineupSelection=null;render();toast(message);}
    catch(e){toast(e.message,'error');}
@@ -2193,7 +2253,19 @@ function bind(){
 
  app.querySelectorAll('[data-fa-select]').forEach(b=>b.addEventListener('click',()=>{
    state.waiverSelectedPlayer=b.dataset.faSelect;
-   render();
+   render();document.querySelector('.fa-action-card')?.scrollIntoView({behavior:'smooth',block:'center'});
+ }));
+ app.querySelectorAll('[data-fa-position]').forEach(b=>b.addEventListener('click',()=>{state.waiverPosition=b.dataset.faPosition;render();}));
+ for(const [id,key] of [['fa-nfl','faNfl'],['fa-fantasy','faFantasy'],['fa-stats','faStats'],['fa-week','faWeek'],['fa-source','faSource']])app.querySelector('#'+id)?.addEventListener('change',e=>{state[key]=e.target.value;if(key==='faFantasy'&&e.target.value)state.faShowMine=false;render();});
+ app.querySelector('#fa-show-mine')?.addEventListener('change',e=>{state.faShowMine=e.target.checked;state.faFantasy='';render();});
+ app.querySelectorAll('[data-fa-sort]').forEach(b=>b.addEventListener('click',()=>{const key=b.dataset.faSort;state.faSortDesc=state.faSort===key?!state.faSortDesc:key==='points';state.faSort=key;render();}));
+ app.querySelectorAll('[data-fa-watch]').forEach(b=>b.addEventListener('click',async()=>{
+   const p=faPlayerPool().find(p=>p.player_key===b.dataset.faWatch),t=myTeam();if(!p||!t)return;b.disabled=true;
+   try{const watch=faWatchFor(p);
+     if(watch)await rpc('league_owner_remove_player_watch',{p_room_code:ROOM_CODE,p_team_id:t.id,p_pin:state.session.pin,p_watch_id:Number(watch.id)});
+     else await rpc('league_owner_set_player_watch',{p_room_code:ROOM_CODE,p_team_id:t.id,p_pin:state.session.pin,p_player_name:p.player_name,p_nfl_team:p.nfl_team||'',p_position:p.position||'',p_injury_alerts:true,p_availability_alerts:true});
+     await loadNotifications();render();toast(watch?'Player removed from watchlist.':'Player watched. Injury and availability alerts enabled.');
+   }catch(e){toast(e.message,'error');b.disabled=false;}
  }));
  app.querySelector('#fa-search')?.addEventListener('input',e=>{
    state.waiverSearch=e.target.value;
