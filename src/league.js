@@ -134,6 +134,7 @@ function bidMoney(n){return `$${Number(n||0).toFixed(0)}`;}
 function teamById(id){return state.teams.find(t=>t.id===id);}
 function myTeam(){return state.session?.teamId?teamById(state.session.teamId):null;}
 function isCommish(){return Boolean(state.session?.commishPin);}
+function commissionerToolsActive(){return isCommish()&&state.tab==='settingshub';}
 function rosterFor(id){return state.roster.filter(r=>r.team_id===id&&r.active!==false);}
 function activeRosterFor(id){return rosterFor(id).filter(r=>String(r.roster_slot||'ACTIVE').toUpperCase()!=='IR');}
 function irRosterFor(id){return rosterFor(id).filter(r=>String(r.roster_slot||'ACTIVE').toUpperCase()==='IR');}
@@ -294,7 +295,8 @@ function renderPreservingInputFocus(id,start=null,end=null){
 }
 
 function setTab(tab){
-  state.tab=tab||'home';
+  if(tab==='reconcile'){state.commissionerSection='reconcile';tab='settingshub';}
+  state.tab=tab==='settingshub'&&!isCommish()?'home':tab||'home';
   const u=new URL(location.href);
   if(state.tab==='home')u.searchParams.delete('tab');else u.searchParams.set('tab',state.tab);
   history.replaceState(null,'',u.pathname+(u.search?u.search:'')+u.hash);
@@ -608,8 +610,8 @@ function navGroupForTab(tab){
   if(['teamhub','lineup','contracts','trades'].includes(tab))return 'teamhub';
   if(['freeagents'].includes(tab))return 'freeagents';
   if(['communications','chat','board','notifications'].includes(tab))return 'communications';
-  if(['leaguehub','teams','matchups','schedule','standings','transactions','history','reconcile'].includes(tab))return 'leaguehub';
-  if(['settingshub','rules','deadlines','finances'].includes(tab))return 'settingshub';
+  if(['leaguehub','teams','matchups','schedule','standings','transactions','history','rules','deadlines','finances'].includes(tab))return 'leaguehub';
+  if(['settingshub','reconcile'].includes(tab))return 'settingshub';
   if(tab==='home')return 'home';
   return '';
 }
@@ -621,7 +623,7 @@ function bottomNav(){
    ['teamhub','♟','Team'],
    ['freeagents','+','Free Agents'],
    ['communications','💬','Communication'],
-   ['settingshub','⚙','Settings']
+   ...(isCommish()?[['settingshub','⚙','Commissioner']]:[])
  ];
  return `<nav class="bottom-nav office-bottom-nav consolidated-nav"><div class="bottom-nav-inner">${items.map(([t,i,l])=>`<button class="nav-btn ${active===t?'active':''}" data-tab="${t}"><span class="nav-icon-wrap">${i}${t==='communications'&&state.chatUnread?`<b class="chat-nav-badge">${state.chatUnread>99?'99+':state.chatUnread}</b>`:''}</span>${l}</button>`).join('')}</div></nav>`;
 }
@@ -661,10 +663,6 @@ function communicationsHubView(){
 function leagueHubView(){
   const week=Number(state.gameSettings?.current_week||1);
   return `${pageHeading('League','League-wide competition, rosters, activity and history.','League Information')}
-    ${isCommish()?`<section class="card nav-hub-commissioner">
-      <div><span>Commissioner</span><strong>Weekly Reconciliation</strong><p>Compare GLSK matchup data with Yahoo and finalize weekly results.</p></div>
-      <button class="btn btn-primary" data-tab="reconcile">Open Reconcile</button>
-    </section>`:''}
     <section class="nav-hub-grid">
       ${hubCard('teams','♟','Teams & Rosters','View every franchise roster, IR, bids and ownership.')}
       ${hubCard('matchups','VS','Matchups',`Week ${week} scores, projections and starting lineups.`)}
@@ -672,26 +670,44 @@ function leagueHubView(){
       ${hubCard('standings','≡','Standings','League records, rankings and playoff positioning.')}
       ${hubCard('transactions','☷','Transactions','Adds, drops, trades, contracts, corrections and draft activity.')}
       ${hubCard('history','★','History','Champions, season records and franchise accomplishments.')}
+      ${hubCard('rules','⚙','Rules','League rules and bid redistribution.')}
+      ${hubCard('deadlines','◷','Deadlines','Upcoming deadlines and your submissions.')}
+      ${hubCard('finances','$','Finances','View your league dues and financial entries.')}
     </section>`;
 }
+const commissionerSections=[
+ ['teams','Rosters','Manual player additions and retirement or ban corrections.'],
+ ['contracts','Contracts','Assign, update and void contracts; refresh extension costs.'],
+ ['freeagents','Free Agency & Waivers','Manage the player pool, waiver timing, priority and processing.'],
+ ['trades','Trade Approvals','Review pending trades and approve or deny them.'],
+ ['lineup','Starting Positions','Configure the starting lineup slots.'],
+ ['matchups','Schedule & Weekly Results','Edit weekly matchups and finalize results.'],
+ ['reconcile','Reconciliation','Compare and save weekly Yahoo scores.'],
+ ['rules','Rules & Redistribution','Edit league defaults and bid-dollar distribution.'],
+ ['deadlines','Deadlines','Create, close, reopen and complete deadlines.'],
+ ['finances','Finances','Record dues, prizes, adjustments and payment status.'],
+ ['transactions','Transaction Corrections','Record a correction in the league ledger.'],
+ ['history','Historical Franchises','Match imported teams to franchises.'],
+ ['board','Message Board Moderation','Pin, lock or delete threads and remove messages.'],
+ ['chat','Chat Moderation','Review and remove chat messages.']
+];
 function settingsHubView(){
-  const open=state.deadlines.filter(d=>d.status==='open').length;
-  return `${pageHeading('Settings','League rules, deadlines and financial administration.','League Administration')}
-    <section class="nav-hub-grid nav-hub-grid-three">
-      ${hubCard('rules','⚙','Rules','Constitution, league settings and season configuration.')}
-      ${hubCard('deadlines','◷','Deadlines','Contract, extension and commissioner deadlines.',open?`${open} open`:'')}
-      ${hubCard('finances','$','Finances','League financial ledger and bid-dollar accounting.')}
-    </section>`;
+ if(!isCommish())return '<div class="card empty">Commissioner access is required.</div>';
+ const section=commissionerSections.find(([key])=>key===state.commissionerSection);
+ const heading=pageHeading('Commissioner','All League Office administration tools in one place.','League Administration');
+ if(!section)return `${heading}<section class="nav-hub-grid">${commissionerSections.map(([key,title,description])=>`<button class="nav-hub-card" data-commissioner-section="${key}"><div class="nav-hub-copy"><strong>${esc(title)}</strong><span>${esc(description)}</span></div><div class="nav-hub-arrow">›</div></button>`).join('')}</section>`;
+ const views={teams:teamsView,contracts:contractsView,freeagents:freeAgencyView,trades:tradesView,lineup:lineupSetupPanel,matchups:matchupsView,reconcile:reconcileView,rules:rulesView,deadlines:deadlinesView,finances:financesView,transactions:transactionsView,history:historyView,board:boardView,chat:chatView};
+ return `${heading}<div class="row gap-8 wrap" style="margin-bottom:20px"><button class="btn btn-outline" data-commissioner-section="">‹ All Commissioner Tools</button><label>Section <select class="input" id="commissioner-section">${commissionerSections.map(([key,title])=>`<option value="${key}" ${key===section[0]?'selected':''}>${esc(title)}</option>`).join('')}</select></label></div>${views[section[0]]()}`;
 }
 
 function dashboard(){
  const rosterLimit=state.season?.roster_limit||18,full=state.teams.filter(t=>activeRosterFor(t.id).length>=rosterLimit).length,totalBids=state.teams.reduce((s,t)=>s+Number(t.remaining_budget||0),0),open=state.deadlines.filter(d=>d.status==='open').length;
  const next=state.deadlines.find(d=>d.status==='open'&&new Date(d.due_at)>new Date());
  const me=myTeam();
- return `<section class="office-hero office-home-hero"><div><div class="office-kicker">${state.season?.season_year||2026} League Year</div><h1>League Office</h1><p>Your GLSK home base. Team, Free Agents, Communication, League and Settings keep the League Office organized without overcrowding the task bar.</p></div>${me?`<div class="home-team-summary"><span>Your Team</span><strong>${esc(me.name)}</strong><div>${activeRosterFor(me.id).length}/${rosterLimit} roster${irRosterFor(me.id).length?` + ${irRosterFor(me.id).length} IR`:''} • ${bidMoney(me.remaining_budget)} bids • ${capUsed(me.id)}/100 cap</div></div>`:''}</section>
+ return `<section class="office-hero office-home-hero"><div><div class="office-kicker">${state.season?.season_year||2026} League Year</div><h1>League Office</h1><p>Your GLSK home base. Manage your team, browse the league and stay connected from the tabs below.</p></div>${me?`<div class="home-team-summary"><span>Your Team</span><strong>${esc(me.name)}</strong><div>${activeRosterFor(me.id).length}/${rosterLimit} roster${irRosterFor(me.id).length?` + ${irRosterFor(me.id).length} IR`:''} • ${bidMoney(me.remaining_budget)} bids • ${capUsed(me.id)}/100 cap</div></div>`:''}</section>
  <div class="kpi-grid office-kpi-grid"><div class="card kpi"><div class="kpi-label">Full Rosters</div><div class="kpi-value">${full}<span class="kpi-denom">/12</span></div><div class="kpi-sub">${rosterLimit}-player limit</div></div><div class="card kpi"><div class="kpi-label">Bid Dollars</div><div class="kpi-value">${totalBids}</div><div class="kpi-sub">remaining league-wide</div></div><div class="card kpi"><div class="kpi-label">Contracts</div><div class="kpi-value">${state.contracts.filter(c=>c.status==='active').length}</div><div class="kpi-sub">active contracts</div></div><div class="card kpi"><div class="kpi-label">Open Deadlines</div><div class="kpi-value">${open}</div><div class="kpi-sub">need attention</div></div></div>
  ${next?`<div class="owner-banner office-deadline-banner"><div><span class="banner-label">NEXT DEADLINE</span><strong>${esc(next.title)}</strong></div><div>${fmtDate(next.due_at)}</div></div>`:''}
- <div class="office-grid two office-home-grid"><section class="office-section"><div class="office-section-head"><div><h2>League Snapshot</h2><div class="section-caption">Roster, bid and cap status at a glance</div></div><button class="btn btn-sm btn-outline" data-tab="teams">View Rosters</button></div>${teamCards()}</section><div><section class="office-section"><div class="office-section-head"><div><h2>Draft Rooms</h2><div class="section-caption">Jump back into any 2026 draft phase</div></div></div><div class="draft-links"><a class="draft-link" href="/"><strong>⚡</strong><span>Auction</span><small>Top 40</small></a><a class="draft-link" href="/supplemental"><strong>↔</strong><span>Supplemental</span><small>2-round snake</small></a><a class="draft-link" href="/phase3"><strong>⇅</strong><span>Snake</span><small>Roster fill to 18</small></a></div></section><section class="office-section"><div class="office-section-head"><div><h2>${isCommish()?'Commissioner Center':'League Access'}</h2><div class="section-caption">${isCommish()?'Management controls are unlocked':'Commissioner-only controls stay protected'}</div></div></div><div class="card card-pad office-info-card">${isCommish()?'<strong>Commissioner mode active</strong><p>Manage rosters, contracts, trades, rules, deadlines and finances from the tabs below.</p>':'<strong>Owner mode</strong><p>You can manage your team, submit contracts, propose trades and review league records.</p>'}</div></section></div></div>`;
+ <div class="office-grid two office-home-grid"><section class="office-section"><div class="office-section-head"><div><h2>League Snapshot</h2><div class="section-caption">Roster, bid and cap status at a glance</div></div><button class="btn btn-sm btn-outline" data-tab="teams">View Rosters</button></div>${teamCards()}</section><div><section class="office-section"><div class="office-section-head"><div><h2>Draft Rooms</h2><div class="section-caption">Jump back into any 2026 draft phase</div></div></div><div class="draft-links"><a class="draft-link" href="/"><strong>⚡</strong><span>Auction</span><small>Top 40</small></a><a class="draft-link" href="/supplemental"><strong>↔</strong><span>Supplemental</span><small>2-round snake</small></a><a class="draft-link" href="/phase3"><strong>⇅</strong><span>Snake</span><small>Roster fill to 18</small></a></div></section><section class="office-section"><div class="office-section-head"><div><h2>${isCommish()?'Commissioner Center':'League Access'}</h2><div class="section-caption">${isCommish()?'Management controls are unlocked':'Commissioner-only controls stay protected'}</div></div></div><div class="card card-pad office-info-card">${isCommish()?'<strong>Commissioner mode active</strong><p>Open the Commissioner tab for all league administration tools.</p>':'<strong>Owner mode</strong><p>You can manage your team, submit contracts, propose trades and review league records.</p>'}</div></section></div></div>`;
 }
 function teamCards(){
  const lim=state.season?.roster_limit||18,cap=state.season?.salary_cap_points||100;
@@ -701,7 +717,7 @@ function teamCards(){
  }).join('')}</div>`;
 }
 function commissionerAddPlayerForm(){
- if(!isCommish())return '';
+ if(!commissionerToolsActive())return '';
  return `<section class="card office-form office-section">
    <div class="office-section-head"><div><h2>Commissioner • Add Player to Roster</h2><div class="small muted">Manual roster correction/add. Before Phase 3 starts, the player is also removed from the Roster-Fill player pool and the team's open spots update automatically.</div></div></div>
    <div class="form-grid">
@@ -790,7 +806,7 @@ function chatView(){
               </div>
               <div class="chat-meta">
                 <span>${chatTime(m.sent_at)}${m.edited_at?' • edited':''}</span>
-                ${!removed?`<button data-chat-reply="${m.id}">Reply</button><button data-chat-react="${m.id}">React</button>${m.can_edit?`<button data-chat-edit="${m.id}">Edit</button>`:''}${m.can_delete?`<button class="danger" data-chat-delete="${m.id}">Remove</button>`:''}`:''}
+                ${!removed?`<button data-chat-reply="${m.id}">Reply</button><button data-chat-react="${m.id}">React</button>${m.can_edit&&(m.is_mine||commissionerToolsActive())?`<button data-chat-edit="${m.id}">Edit</button>`:''}${m.can_delete&&(m.is_mine||commissionerToolsActive())?`<button class="danger" data-chat-delete="${m.id}">Remove</button>`:''}`:''}
               </div>
               ${(m.reactions||[]).length?`<div class="chat-reactions">${m.reactions.map(r=>`<button class="${r.mine?'mine':''}" data-chat-reaction-message="${m.id}" data-chat-reaction-emoji="${esc(r.emoji)}">${esc(r.emoji)} <b>${r.count}</b></button>`).join('')}</div>`:''}
               ${reactionPicker&&!removed?`<div class="chat-reaction-picker">${['👍','😂','❤️','🔥','👀'].map(e=>`<button data-chat-reaction-message="${m.id}" data-chat-reaction-emoji="${e}">${e}</button>`).join('')}</div>`:''}
@@ -926,7 +942,7 @@ function boardView(){
          <h2>${esc(selected.title)}</h2>
          <div class="board-discussion-meta">Started by <strong>${esc(authorName)}</strong> • ${fmtDate(selected.created_at)}${imported?' • Original Google Groups timestamp':currentGoogle?' • Imported from the 2026 Google Group • GLSK replies stay here':synced?' • Synced from Google Groups • GLSK replies stay here':''}</div>
        </div>
-       ${isCommish()?`<div class="board-mod-actions">
+       ${commissionerToolsActive()?`<div class="board-mod-actions">
          ${!imported?`
          <button class="btn btn-sm btn-outline" data-board-action="${selected.pinned?'unpin':'pin'}" data-thread-id="${selected.id}">${selected.pinned?'Unpin':'Pin'}</button>
          <button class="btn btn-sm btn-outline" data-board-action="${selected.status==='locked'?'unlock':'lock'}" data-thread-id="${selected.id}">${selected.status==='locked'?'Unlock':'Lock'}</button>
@@ -952,7 +968,7 @@ function boardView(){
          <div>
            <div class="board-post-author"><strong>${esc(boardAuthorName(p))}</strong><span>${fmtDate(p.created_at)}</span>${pImported?'<em>Imported</em>':pCurrentGoogle?'<em class="sync">Google Group</em>':pSynced?'<em class="sync">Synced</em>':''}</div>
            <div class="board-post-body">${esc(p.body||'').replaceAll('\n','<br>')}</div>
-           ${isCommish()?`<button class="btn btn-sm btn-reset board-delete-message" data-board-delete-post="${p.id}" data-thread-id="${selected.id}">Delete Message</button>`:''}
+           ${commissionerToolsActive()?`<button class="btn btn-sm btn-reset board-delete-message" data-board-delete-post="${p.id}" data-thread-id="${selected.id}">Delete Message</button>`:''}
            ${boardArchiveAttachments(p)}
          </div>
        </article>`;
@@ -1217,7 +1233,7 @@ function freeAgencyView(){
       `:`
         <button class="btn btn-primary fa-primary-action" data-action="fa-add-now">Add Free Agent</button>
       `}
-      ${isCommish()?`<div class="fa-commish-inline">
+      ${commissionerToolsActive()?`<div class="fa-commish-inline">
         ${selected.availability==='free_agent'
           ?'<button class="btn btn-sm btn-outline" data-action="fa-commish-waive-selected">Commissioner • Put on Waivers</button>'
           :'<button class="btn btn-sm btn-outline" data-action="fa-commish-clear-selected">Commissioner • Clear to FA</button>'}
@@ -1259,12 +1275,12 @@ function freeAgencyView(){
           <div class="fa-priority-list">
             ${priority.map((p,i)=>`<div class="fa-priority-row ${p.team_id===me.id?'mine':''}">
               <b>${p.priority_rank}</b><span>${esc(p.team_name)}</span>
-              ${isCommish()?`<div><button class="btn btn-xs btn-outline" data-waiver-priority-team="${p.team_id}" data-waiver-priority-dir="up" ${i===0?'disabled':''}>↑</button><button class="btn btn-xs btn-outline" data-waiver-priority-team="${p.team_id}" data-waiver-priority-dir="down" ${i===priority.length-1?'disabled':''}>↓</button></div>`:''}
+              ${commissionerToolsActive()?`<div><button class="btn btn-xs btn-outline" data-waiver-priority-team="${p.team_id}" data-waiver-priority-dir="up" ${i===0?'disabled':''}>↑</button><button class="btn btn-xs btn-outline" data-waiver-priority-team="${p.team_id}" data-waiver-priority-dir="down" ${i===priority.length-1?'disabled':''}>↓</button></div>`:''}
             </div>`).join('')}
           </div>
         </section>
 
-        ${isCommish()?`<section class="card card-pad fa-commish-card">
+        ${commissionerToolsActive()?`<section class="card card-pad fa-commish-card">
           <div class="office-section-head"><div><h2>Commissioner • Waivers</h2><div class="section-caption">Pending bids remain blind; processing resolves only players whose claim window has ended.</div></div></div>
           <div class="form-grid">
             <div class="field"><label>Dropped-player waiver days</label><input id="fa-waiver-days" class="input" type="number" min="0" max="14" value="${Number(settings.waiver_days??1)}"></div>
@@ -1299,7 +1315,7 @@ function teamsView(){
      const c=contractForPlayer(t.id,r.player_key);
      const canDrop=myTeam()?.id===t.id&&!state.session?.spectator;
      const penalty=c?(contractYear(c)===1?Number(c.cap_cost||0)*2:({2:5,3:10,4:20}[Number(c.length_years)]||0)):0;
-     return `<div class="roster-player-row"><span class="${rosterPositionClass(r.position)}">${esc(r.position||'—')}</span><div class="roster-player-main"><div class="contract-player">${esc(r.player_name)}</div><div class="roster-player-meta">${esc(r.nfl_team||'')} <span>•</span> ${esc(acquisitionLabel(r.acquisition_type))}</div>${playerStatLine(r)}${c?`<div class="contract-detail contract-active">${esc(contractLabel(c))}${penalty?` <span>• Drop fine ${penalty}</span>`:''}</div>`:'<div class="contract-detail contract-none">No active contract</div>'}</div><div class="roster-player-actions">${String(r.roster_slot||'ACTIVE')==='IR'?'<span class="status-chip roster-ir-chip">IR</span>':''}${c?'<span class="status-chip contract-chip">Contract</span>':''}${canDrop?`<button class="btn btn-sm btn-reset" data-drop-player="${esc(r.player_key)}" data-drop-name="${esc(r.player_name)}" data-drop-penalty="${penalty}">Drop</button>`:''}${isCommish()?`<button class="btn btn-sm btn-outline" data-exception-drop="${esc(r.player_key)}" data-exception-team="${t.id}" data-drop-name="${esc(r.player_name)}">Retire/Ban</button>`:''}</div></div>`;
+     return `<div class="roster-player-row"><span class="${rosterPositionClass(r.position)}">${esc(r.position||'—')}</span><div class="roster-player-main"><div class="contract-player">${esc(r.player_name)}</div><div class="roster-player-meta">${esc(r.nfl_team||'')} <span>•</span> ${esc(acquisitionLabel(r.acquisition_type))}</div>${playerStatLine(r)}${c?`<div class="contract-detail contract-active">${esc(contractLabel(c))}${penalty?` <span>• Drop fine ${penalty}</span>`:''}</div>`:'<div class="contract-detail contract-none">No active contract</div>'}</div><div class="roster-player-actions">${String(r.roster_slot||'ACTIVE')==='IR'?'<span class="status-chip roster-ir-chip">IR</span>':''}${c?'<span class="status-chip contract-chip">Contract</span>':''}${canDrop?`<button class="btn btn-sm btn-reset" data-drop-player="${esc(r.player_key)}" data-drop-name="${esc(r.player_name)}" data-drop-penalty="${penalty}">Drop</button>`:''}${commissionerToolsActive()?`<button class="btn btn-sm btn-outline" data-exception-drop="${esc(r.player_key)}" data-exception-team="${t.id}" data-drop-name="${esc(r.player_name)}">Retire/Ban</button>`:''}</div></div>`;
    }).join('')||'<div class="empty-tight">No roster entries.</div>'}</div></details>`;
  }).join('')}</div>`;
 }
@@ -1307,7 +1323,7 @@ function teamsView(){
 function extensionCostReference(){
  const positions=['QB','RB','WR','TE'];
  return `<section class="card card-pad office-section extension-reference-card">
-   <div class="office-section-head"><div><h2>Contract Extension Cost Reference</h2><div class="small muted">Based on the actual top 3 Free Agent Auction bids at each position. Costs are rounded to the nearest whole bid dollar.</div></div>${isCommish()?'<button class="btn btn-sm btn-outline" data-action="refresh-extension-costs">Refresh</button>':''}</div>
+   <div class="office-section-head"><div><h2>Contract Extension Cost Reference</h2><div class="small muted">Based on the actual top 3 Free Agent Auction bids at each position. Costs are rounded to the nearest whole bid dollar.</div></div>${commissionerToolsActive()?'<button class="btn btn-sm btn-outline" data-action="refresh-extension-costs">Refresh</button>':''}</div>
    <div class="extension-cost-scroll">
      <div class="extension-cost-grid">
        <div class="extension-grid-head">Position</div>
@@ -1338,9 +1354,9 @@ function contractsView(){
  const cap=state.season?.salary_cap_points||100;
  const body=state.teams.map(t=>{
    const rows=contractsFor(t.id).sort((a,b)=>a.end_year-b.end_year||a.player_name.localeCompare(b.player_name));
-   return `<section class="contract-team"><div class="contract-team-head"><div class="contract-team-name">${esc(t.name)}</div><strong>${capUsed(t.id)}/${cap} pts</strong></div><div class="contract-list">${rows.length?rows.map(c=>`<div class="contract-row"><div><div class="contract-player">${esc(c.player_name)}</div><div class="contract-sub">${esc(contractLabel(c))} • ${c.start_year}–${c.end_year}</div></div><div>${isCommish()?`<button class="btn btn-sm btn-reset" data-void-contract="${c.id}">Void</button>`:`<span class="cap-badge">${c.cap_cost}</span>`}</div></div>`).join(''):'<div class="empty-tight">No active contracts.</div>'}</div></section>`;
+   return `<section class="contract-team"><div class="contract-team-head"><div class="contract-team-name">${esc(t.name)}</div><strong>${capUsed(t.id)}/${cap} pts</strong></div><div class="contract-list">${rows.length?rows.map(c=>`<div class="contract-row"><div><div class="contract-player">${esc(c.player_name)}</div><div class="contract-sub">${esc(contractLabel(c))} • ${c.start_year}–${c.end_year}</div></div><div>${commissionerToolsActive()?`<button class="btn btn-sm btn-reset" data-void-contract="${c.id}">Void</button>`:`<span class="cap-badge">${c.cap_cost}</span>`}</div></div>`).join(''):'<div class="empty-tight">No active contracts.</div>'}</div></section>`;
  }).join('');
- return `${pageHeading('Contracts & Salary Cap','Assign, track and extend contracts while staying under the 100-point cap.','Roster Management')}<div class="contract-cost-strip">${state.contractOptions.map(o=>`<div><strong>${o.years}-Year</strong><span>${o.cap_cost} pts</span></div>`).join('')}</div>${extensionCostReference()}${extensionPanel()}${ownerContractPanel()}${isCommish()?contractForm():''}${body}`;
+ return `${pageHeading('Contracts & Salary Cap','Assign, track and extend contracts while staying under the 100-point cap.','Roster Management')}<div class="contract-cost-strip">${state.contractOptions.map(o=>`<div><strong>${o.years}-Year</strong><span>${o.cap_cost} pts</span></div>`).join('')}</div>${extensionCostReference()}${extensionPanel()}${ownerContractPanel()}${commissionerToolsActive()?contractForm():''}${body}`;
 }
 function ownerContractPanel(){
  const t=myTeam();
@@ -1442,13 +1458,13 @@ function tradesView(){
    </div>
  </section>`:''}
  <section class="office-section trade-inbox"><div class="office-section-head"><div><h2>Trade Activity</h2><div class="section-caption">Proposed, pending commissioner review, completed and declined deals</div></div><span class="trade-count">${visible.length}</span></div>
- <div class="list-stack">${visible.length?visible.map(tr=>{const proposer=teamById(tr.proposer_team_id),partnerT=teamById(tr.partner_team_id);return `<div class="card trade-card trade-card-v2"><div class="trade-card-head"><div><div class="deadline-title">${esc(proposer?.name)} <span class="trade-arrow">⇄</span> ${esc(partnerT?.name)}</div><div class="deadline-meta">Proposed ${fmtDate(tr.proposed_at)}${tr.note?` • ${esc(tr.note)}`:''}</div></div><span class="trade-status ${tr.status}">${esc(tr.status.replaceAll('_',' '))}</span></div>${tradeSummary(tr)}<div class="inline-actions trade-card-actions">${me?.id===tr.partner_team_id&&tr.status==='proposed'?`<button class="btn btn-sm btn-green" data-trade-response="accept" data-trade-id="${tr.id}">Accept Trade</button><button class="btn btn-sm btn-reset" data-trade-response="reject" data-trade-id="${tr.id}">Reject</button>`:''}${me?.id===tr.proposer_team_id&&['proposed','pending_commish'].includes(tr.status)?`<button class="btn btn-sm btn-outline" data-cancel-trade="${tr.id}">Cancel Proposal</button>`:''}${isCommish()&&tr.status==='pending_commish'?`<button class="btn btn-sm btn-green" data-commish-trade="approve" data-trade-id="${tr.id}">Approve Trade</button><button class="btn btn-sm btn-reset" data-commish-trade="deny" data-trade-id="${tr.id}">Deny</button>`:''}</div></div>`;}).join(''):'<div class="card empty">No trade activity yet.</div>'}</div></section>`;
+ <div class="list-stack">${visible.length?visible.map(tr=>{const proposer=teamById(tr.proposer_team_id),partnerT=teamById(tr.partner_team_id);return `<div class="card trade-card trade-card-v2"><div class="trade-card-head"><div><div class="deadline-title">${esc(proposer?.name)} <span class="trade-arrow">⇄</span> ${esc(partnerT?.name)}</div><div class="deadline-meta">Proposed ${fmtDate(tr.proposed_at)}${tr.note?` • ${esc(tr.note)}`:''}</div></div><span class="trade-status ${tr.status}">${esc(tr.status.replaceAll('_',' '))}</span></div>${tradeSummary(tr)}<div class="inline-actions trade-card-actions">${me?.id===tr.partner_team_id&&tr.status==='proposed'?`<button class="btn btn-sm btn-green" data-trade-response="accept" data-trade-id="${tr.id}">Accept Trade</button><button class="btn btn-sm btn-reset" data-trade-response="reject" data-trade-id="${tr.id}">Reject</button>`:''}${me?.id===tr.proposer_team_id&&['proposed','pending_commish'].includes(tr.status)?`<button class="btn btn-sm btn-outline" data-cancel-trade="${tr.id}">Cancel Proposal</button>`:''}${commissionerToolsActive()&&tr.status==='pending_commish'?`<button class="btn btn-sm btn-green" data-commish-trade="approve" data-trade-id="${tr.id}">Approve Trade</button><button class="btn btn-sm btn-reset" data-commish-trade="deny" data-trade-id="${tr.id}">Deny</button>`:''}</div></div>`;}).join(''):'<div class="card empty">No trade activity yet.</div>'}</div></section>`;
 }
 function transactionTypeLabel(t){return ({auction:'Auction',supplemental:'Supplemental',phase3:'Roster Fill',trade:'Trade',drop:'Drop',contract_assigned:'Contract Assigned',contract_removed:'Contract Removed',contract_extended:'Contract Extended',contract_voided:'Contract Voided',rookie_rights_transfer:'Rookie Rights',commissioner_correction:'Commissioner Correction',add:'Add'}[t]||t.replaceAll('_',' '));}
 function transactionsView(){
  const f=state.txFilters||{team:'',type:'',search:''},types=[...new Set(state.transactions.map(t=>t.transaction_type))].sort();
  const rows=state.transactions.filter(tx=>(!f.team||tx.team_id===f.team||tx.other_team_id===f.team)&&(!f.type||tx.transaction_type===f.type)&&(!f.search||`${tx.player_name||''} ${tx.description||''}`.toLowerCase().includes(f.search.toLowerCase())));
- return `${pageHeading('Transactions','Permanent league ledger for trades, adds, drops, contracts, draft picks and commissioner corrections.','League Ledger')}<section class="card card-pad office-section tx-filter-card"><div class="tx-filters"><select id="tx-team" class="input"><option value="">All teams</option>${state.teams.map(t=>`<option value="${t.id}" ${f.team===t.id?'selected':''}>${esc(t.name)}</option>`).join('')}</select><select id="tx-type" class="input"><option value="">All transaction types</option>${types.map(t=>`<option value="${esc(t)}" ${f.type===t?'selected':''}>${esc(transactionTypeLabel(t))}</option>`).join('')}</select><input id="tx-search" class="input" value="${esc(f.search)}" placeholder="Search player / transaction"></div></section>${isCommish()?correctionForm():''}<div class="list-stack">${rows.length?rows.map(tx=>{const t=teamById(tx.team_id),o=teamById(tx.other_team_id);return `<details class="card tx-card"><summary><div><div class="row gap-8 wrap"><span class="tx-type">${esc(transactionTypeLabel(tx.transaction_type))}</span>${tx.status==='reversed'?'<span class="trade-status denied">REVERSED</span>':''}</div><div class="log-name">${esc(tx.description)}</div><div class="small muted">${fmtDate(tx.created_at)}${t?` • ${esc(t.name)}`:''}${o?` ↔ ${esc(o.name)}`:''}</div></div><div class="tx-deltas">${tx.bid_delta?`<span class="${tx.bid_delta<0?'neg':'pos'}">${tx.bid_delta>0?'+':''}${tx.bid_delta} bids</span>`:''}${tx.cap_delta?`<span>${tx.cap_delta>0?'+':''}${tx.cap_delta} cap</span>`:''}</div></summary><pre class="tx-json">${esc(JSON.stringify(tx.details||{},null,2))}</pre></details>`;}).join(''):'<div class="card empty">No transactions match these filters.</div>'}</div>`;
+ return `${pageHeading('Transactions','Permanent league ledger for trades, adds, drops, contracts, draft picks and commissioner corrections.','League Ledger')}<section class="card card-pad office-section tx-filter-card"><div class="tx-filters"><select id="tx-team" class="input"><option value="">All teams</option>${state.teams.map(t=>`<option value="${t.id}" ${f.team===t.id?'selected':''}>${esc(t.name)}</option>`).join('')}</select><select id="tx-type" class="input"><option value="">All transaction types</option>${types.map(t=>`<option value="${esc(t)}" ${f.type===t?'selected':''}>${esc(transactionTypeLabel(t))}</option>`).join('')}</select><input id="tx-search" class="input" value="${esc(f.search)}" placeholder="Search player / transaction"></div></section>${commissionerToolsActive()?correctionForm():''}<div class="list-stack">${rows.length?rows.map(tx=>{const t=teamById(tx.team_id),o=teamById(tx.other_team_id);return `<details class="card tx-card"><summary><div><div class="row gap-8 wrap"><span class="tx-type">${esc(transactionTypeLabel(tx.transaction_type))}</span>${tx.status==='reversed'?'<span class="trade-status denied">REVERSED</span>':''}</div><div class="log-name">${esc(tx.description)}</div><div class="small muted">${fmtDate(tx.created_at)}${t?` • ${esc(t.name)}`:''}${o?` ↔ ${esc(o.name)}`:''}</div></div><div class="tx-deltas">${tx.bid_delta?`<span class="${tx.bid_delta<0?'neg':'pos'}">${tx.bid_delta>0?'+':''}${tx.bid_delta} bids</span>`:''}${tx.cap_delta?`<span>${tx.cap_delta>0?'+':''}${tx.cap_delta} cap</span>`:''}</div></summary><pre class="tx-json">${esc(JSON.stringify(tx.details||{},null,2))}</pre></details>`;}).join(''):'<div class="card empty">No transactions match these filters.</div>'}</div>`;
 }
 function correctionForm(){return `<section class="card office-form office-section"><div class="section-title">Commissioner Correction</div><div class="form-grid"><div class="field"><label>Team (optional)</label><select id="corr-team" class="input"><option value="">League / no team</option>${state.teams.map(t=>`<option value="${t.id}">${esc(t.name)}</option>`).join('')}</select></div><div class="field"><label>Bid-dollar adjustment</label><input id="corr-bids" class="input" type="number" step="1" value="0"></div><div class="field"><label>Reverse transaction (optional)</label><select id="corr-reverse" class="input"><option value="">None</option>${state.transactions.filter(x=>x.status!=='reversed').slice(0,100).map(x=>`<option value="${x.id}">${esc(fmtDate(x.created_at))} • ${esc(transactionTypeLabel(x.transaction_type))} • ${esc(x.player_name||x.description)}</option>`).join('')}</select></div><div class="field"><label>Description</label><input id="corr-desc" class="input" placeholder="Reason for correction"></div></div><button class="btn btn-primary" data-action="save-correction">Record Correction</button></section>`;}
 
@@ -1473,18 +1489,18 @@ function weeklyHostRulesPanel(){
  </section>`;
 }
 
-function rulesView(){const groups=[...new Set(state.rules.map(r=>r.category))];const total=state.distro.reduce((s,r)=>s+Number(r.percentage||0),0);return `${pageHeading('League Rules','Season-versioned settings can change going forward without rewriting prior years.','Commissioner Settings')}${weeklyHostRulesPanel()}<div class="office-grid two"><div><section class="card card-pad">${groups.map(g=>`<div class="rule-category"><h3>${esc(g)}</h3>${state.rules.filter(r=>r.category===g).map(r=>`<div class="rule-row"><div class="rule-label">${esc(r.label)}${r.unit?` <span class="small muted">(${esc(r.unit)})</span>`:''}</div><div>${r.numeric_value!=null?(isCommish()?`<input class="rule-input" data-rule-key="${esc(r.rule_key)}" type="number" step="1" value="${Number(r.numeric_value)}">`:`<div class="rule-value">${Number(r.numeric_value)} ${esc(r.unit||'')}</div>`):`<div class="rule-value">${r.boolean_value?'On':'Off'}</div>`}</div></div>`).join('')}</div>`).join('')}${isCommish()?'<button class="btn btn-primary" data-action="save-rules">Save Rule Defaults</button>':''}</section></div><div><section class="card card-pad"><div class="office-section-head"><h2>Bid Redistribution</h2><div id="distro-total" class="${Math.abs(total-100)>.001?'distro-total bad':'distro-total'}">${total.toFixed(2)}%</div></div><div class="redistribution-grid">${state.distro.map(r=>`<div class="distro-row"><div class="rule-label">${esc(r.label)}</div>${isCommish()?`<input class="rule-input distro-input" data-bracket="${r.bracket}" data-finish="${r.finish}" type="number" step="0.05" min="0" max="100" value="${Number(r.percentage).toFixed(2)}">`:`<div class="rule-value">${Number(r.percentage).toFixed(2)}%</div>`}</div>`).join('')}</div><div class="distro-total"><span>Total</span><strong id="distro-total-bottom">${total.toFixed(2)}%</strong></div>${isCommish()?'<button class="btn btn-primary btn-block" style="margin-top:10px" data-action="save-distro">Save Redistribution</button>':''}<div class="small muted" style="margin-top:9px">The 2026 values were imported from the league workbook. Future seasons can use different versions without rewriting history.</div></section></div></div>`;}
+function rulesView(){const groups=[...new Set(state.rules.map(r=>r.category))];const total=state.distro.reduce((s,r)=>s+Number(r.percentage||0),0);return `${pageHeading('League Rules','Season-versioned settings can change going forward without rewriting prior years.','Commissioner Settings')}${weeklyHostRulesPanel()}<div class="office-grid two"><div><section class="card card-pad">${groups.map(g=>`<div class="rule-category"><h3>${esc(g)}</h3>${state.rules.filter(r=>r.category===g).map(r=>`<div class="rule-row"><div class="rule-label">${esc(r.label)}${r.unit?` <span class="small muted">(${esc(r.unit)})</span>`:''}</div><div>${r.numeric_value!=null?(commissionerToolsActive()?`<input class="rule-input" data-rule-key="${esc(r.rule_key)}" type="number" step="1" value="${Number(r.numeric_value)}">`:`<div class="rule-value">${Number(r.numeric_value)} ${esc(r.unit||'')}</div>`):`<div class="rule-value">${r.boolean_value?'On':'Off'}</div>`}</div></div>`).join('')}</div>`).join('')}${commissionerToolsActive()?'<button class="btn btn-primary" data-action="save-rules">Save Rule Defaults</button>':''}</section></div><div><section class="card card-pad"><div class="office-section-head"><h2>Bid Redistribution</h2><div id="distro-total" class="${Math.abs(total-100)>.001?'distro-total bad':'distro-total'}">${total.toFixed(2)}%</div></div><div class="redistribution-grid">${state.distro.map(r=>`<div class="distro-row"><div class="rule-label">${esc(r.label)}</div>${commissionerToolsActive()?`<input class="rule-input distro-input" data-bracket="${r.bracket}" data-finish="${r.finish}" type="number" step="0.05" min="0" max="100" value="${Number(r.percentage).toFixed(2)}">`:`<div class="rule-value">${Number(r.percentage).toFixed(2)}%</div>`}</div>`).join('')}</div><div class="distro-total"><span>Total</span><strong id="distro-total-bottom">${total.toFixed(2)}%</strong></div>${commissionerToolsActive()?'<button class="btn btn-primary btn-block" style="margin-top:10px" data-action="save-distro">Save Redistribution</button>':''}<div class="small muted" style="margin-top:9px">The 2026 values were imported from the league workbook. Future seasons can use different versions without rewriting history.</div></section></div></div>`;}
 
-function deadlinesView(){const mine=myTeam();return `${pageHeading('Deadlines','Create league deadlines, track submissions and automatically lock time-sensitive actions.','League Calendar')}${isCommish()?deadlineForm():''}<div class="list-stack">${state.deadlines.length?state.deadlines.map(d=>{const sts=state.deadlineStatus.filter(s=>s.deadline_id===d.id),done=sts.filter(s=>['submitted','late','waived'].includes(s.status)).length,my=mine?sts.find(s=>s.team_id===mine.id):null,pct=state.teams.length?done/state.teams.length*100:0;return `<div class="card deadline-card"><div class="row between gap-8"><div><div class="deadline-title">${esc(d.title)}</div><div class="deadline-meta">${esc(d.deadline_type)} • ${fmtDate(d.due_at)}${d.auto_lock?' • auto-lock':''}</div></div><span class="deadline-status ${d.status}">${esc(d.status)}</span></div>${d.notes?`<div class="small muted" style="margin-top:7px">${esc(d.notes)}</div>`:''}<div class="deadline-progress"><div style="width:${pct}%"></div></div><div class="row between gap-8 wrap" style="margin-top:8px"><div class="small muted">${done}/${state.teams.length} submitted${my?` • Your status: ${esc(my.status)}`:''}</div><div class="inline-actions">${mine&&d.status==='open'&&(!my||my.status==='pending')?`<button class="btn btn-sm btn-green" data-submit-deadline="${d.id}">Mark Submitted</button>`:''}${isCommish()&&d.status==='open'?`<button class="btn btn-sm btn-outline" data-deadline-status="closed" data-deadline-id="${d.id}">Close</button>`:''}${isCommish()&&d.status==='closed'?`<button class="btn btn-sm btn-outline" data-deadline-status="open" data-deadline-id="${d.id}">Reopen</button>`:''}${isCommish()&&d.status!=='completed'?`<button class="btn btn-sm btn-outline" data-deadline-status="completed" data-deadline-id="${d.id}">Complete</button>`:''}</div></div></div>`;}).join(''):'<div class="card empty">No league deadlines have been created yet.</div>'}</div>`;}
+function deadlinesView(){const mine=myTeam();return `${pageHeading('Deadlines','Create league deadlines, track submissions and automatically lock time-sensitive actions.','League Calendar')}${commissionerToolsActive()?deadlineForm():''}<div class="list-stack">${state.deadlines.length?state.deadlines.map(d=>{const sts=state.deadlineStatus.filter(s=>s.deadline_id===d.id),done=sts.filter(s=>['submitted','late','waived'].includes(s.status)).length,my=mine?sts.find(s=>s.team_id===mine.id):null,pct=state.teams.length?done/state.teams.length*100:0;return `<div class="card deadline-card"><div class="row between gap-8"><div><div class="deadline-title">${esc(d.title)}</div><div class="deadline-meta">${esc(d.deadline_type)} • ${fmtDate(d.due_at)}${d.auto_lock?' • auto-lock':''}</div></div><span class="deadline-status ${d.status}">${esc(d.status)}</span></div>${d.notes?`<div class="small muted" style="margin-top:7px">${esc(d.notes)}</div>`:''}<div class="deadline-progress"><div style="width:${pct}%"></div></div><div class="row between gap-8 wrap" style="margin-top:8px"><div class="small muted">${done}/${state.teams.length} submitted${my?` • Your status: ${esc(my.status)}`:''}</div><div class="inline-actions">${mine&&d.status==='open'&&(!my||my.status==='pending')?`<button class="btn btn-sm btn-green" data-submit-deadline="${d.id}">Mark Submitted</button>`:''}${commissionerToolsActive()&&d.status==='open'?`<button class="btn btn-sm btn-outline" data-deadline-status="closed" data-deadline-id="${d.id}">Close</button>`:''}${commissionerToolsActive()&&d.status==='closed'?`<button class="btn btn-sm btn-outline" data-deadline-status="open" data-deadline-id="${d.id}">Reopen</button>`:''}${commissionerToolsActive()&&d.status!=='completed'?`<button class="btn btn-sm btn-outline" data-deadline-status="completed" data-deadline-id="${d.id}">Complete</button>`:''}</div></div></div>`;}).join(''):'<div class="card empty">No league deadlines have been created yet.</div>'}</div>`;}
 function deadlineForm(){return `<section class="card office-form office-section"><div class="section-title">Create Deadline</div><div class="form-grid"><div class="field"><label>Title</label><input id="deadline-title" class="input" placeholder="Contract assignments due"></div><div class="field"><label>Type</label><select id="deadline-type" class="input"><option value="contracts">Contracts</option><option value="contract_extensions">Contract Extensions</option><option value="rookie_rights">Rookie Rights</option><option value="dues">Dues</option><option value="trade">Trade / Transaction</option><option value="general">General</option></select></div><div class="field"><label>Due date & time</label><input id="deadline-due" type="datetime-local" class="input"></div><div class="field"><label>Automatic lock</label><select id="deadline-lock" class="input"><option value="true">Yes</option><option value="false">No</option></select></div></div><div class="field"><label>Notes</label><textarea id="deadline-notes" class="input" placeholder="Optional instructions"></textarea></div><button class="btn btn-primary" data-action="create-deadline">Create Deadline</button></section>`;}
 
-function financesView(){const sumDue=state.finance.filter(x=>x.status==='due').reduce((s,x)=>s+Number(x.amount_cents||0),0),sumPaid=state.finance.filter(x=>x.status==='paid').reduce((s,x)=>s+Number(x.amount_cents||0),0);return `${pageHeading('League Finances','Private ledger for dues, prizes, expenses and adjustments.','League Accounting')}<div class="kpi-grid"><div class="card kpi"><div class="kpi-label">Due</div><div class="kpi-value">${money(sumDue)}</div></div><div class="card kpi"><div class="kpi-label">Paid</div><div class="kpi-value">${money(sumPaid)}</div></div></div>${isCommish()?financeForm():''}<div class="list-stack">${state.finance.length?state.finance.map(f=>{const t=teamById(f.team_id);return `<div class="finance-row"><div><div class="log-name">${esc(f.description)}</div><div class="small muted">${esc(t?.name||'League')} • ${esc(f.category)}${f.due_at?` • due ${fmtDateOnly(f.due_at)}`:''}</div><div class="finance-status">${esc(f.status)}</div></div><div style="text-align:right"><div class="finance-amount ${Number(f.amount_cents)<0?'negative':''}">${money(f.amount_cents)}</div>${isCommish()?`<div class="inline-actions" style="justify-content:flex-end;margin-top:5px">${f.status!=='paid'?`<button class="btn btn-sm btn-green" data-finance-status="paid" data-finance-id="${f.id}">Paid</button>`:''}${f.status!=='waived'?`<button class="btn btn-sm btn-outline" data-finance-status="waived" data-finance-id="${f.id}">Waive</button>`:''}</div>`:''}</div></div>`;}).join(''):'<div class="card empty">No finance entries yet.</div>'}</div><div class="notice" style="margin-top:12px">Financial rows are not publicly readable from Supabase; owners can retrieve only their own items with their team PIN, while the commissioner can retrieve the full ledger.</div>`;}
+function financesView(){const sumDue=state.finance.filter(x=>x.status==='due').reduce((s,x)=>s+Number(x.amount_cents||0),0),sumPaid=state.finance.filter(x=>x.status==='paid').reduce((s,x)=>s+Number(x.amount_cents||0),0);return `${pageHeading('League Finances','Private ledger for dues, prizes, expenses and adjustments.','League Accounting')}<div class="kpi-grid"><div class="card kpi"><div class="kpi-label">Due</div><div class="kpi-value">${money(sumDue)}</div></div><div class="card kpi"><div class="kpi-label">Paid</div><div class="kpi-value">${money(sumPaid)}</div></div></div>${commissionerToolsActive()?financeForm():''}<div class="list-stack">${state.finance.length?state.finance.map(f=>{const t=teamById(f.team_id);return `<div class="finance-row"><div><div class="log-name">${esc(f.description)}</div><div class="small muted">${esc(t?.name||'League')} • ${esc(f.category)}${f.due_at?` • due ${fmtDateOnly(f.due_at)}`:''}</div><div class="finance-status">${esc(f.status)}</div></div><div style="text-align:right"><div class="finance-amount ${Number(f.amount_cents)<0?'negative':''}">${money(f.amount_cents)}</div>${commissionerToolsActive()?`<div class="inline-actions" style="justify-content:flex-end;margin-top:5px">${f.status!=='paid'?`<button class="btn btn-sm btn-green" data-finance-status="paid" data-finance-id="${f.id}">Paid</button>`:''}${f.status!=='waived'?`<button class="btn btn-sm btn-outline" data-finance-status="waived" data-finance-id="${f.id}">Waive</button>`:''}</div>`:''}</div></div>`;}).join(''):'<div class="card empty">No finance entries yet.</div>'}</div><div class="notice" style="margin-top:12px">Financial rows are not publicly readable from Supabase; owners can retrieve only their own items with their team PIN, while the commissioner can retrieve the full ledger.</div>`;}
 function financeForm(){return `<section class="card office-form office-section"><div class="section-title">Commissioner • Add Finance Entry</div><div class="form-grid"><div class="field"><label>Team</label><select id="finance-team" class="input"><option value="">League-wide</option>${state.teams.map(t=>`<option value="${t.id}">${esc(t.name)}</option>`).join('')}</select></div><div class="field"><label>Category</label><select id="finance-category" class="input"><option value="dues">Dues</option><option value="prize">Prize</option><option value="expense">Expense</option><option value="adjustment">Adjustment</option><option value="other">Other</option></select></div><div class="field"><label>Amount ($)</label><input id="finance-amount" type="number" step="0.01" class="input" placeholder="100.00"></div><div class="field"><label>Due date</label><input id="finance-due" type="date" class="input"></div></div><div class="field"><label>Description</label><input id="finance-desc" class="input" placeholder="2026 league dues"></div><button class="btn btn-primary" data-action="add-finance">Add Entry</button></section>`;}
 
 
 
 function lineupSetupPanel(){
- if(!isCommish())return '';
+ if(!commissionerToolsActive())return '';
  const counts=lineupSlotCounts();
  return `<section class="card card-pad office-section weekly-setup-card">
    <div class="office-section-head"><div><h2>Commissioner • Starting Lineup Setup</h2><div class="small muted">Enter the official GLSK starter counts. FLEX is RB/WR/TE in this first build.</div></div></div>
@@ -1746,7 +1762,7 @@ function lineupView(){
  </section>
 
  ${dataTab==='projected'&&!state.playerProjections.length?'<div class="notice lineup-feed-notice">Projection layout is ready. Values will populate when the projection feed is connected.</div>':''}
- ${isCommish()&&slots.length?lineupSetupPanel():''}`;
+ ${commissionerToolsActive()&&slots.length?lineupSetupPanel():''}`;
 }
 
 function matchupBrowseWeek(){return Math.max(1,Math.min(18,Number(state.matchupBrowseWeek||currentWeek())));}
@@ -1795,7 +1811,7 @@ function matchupPlayerRows(teamId,week){
 }
 
 function scheduleSetupPanel(){
- if(!isCommish())return '';
+ if(!commissionerToolsActive())return '';
  const week=currentWeek(),existing=state.schedule.filter(s=>Number(s.week)===week).sort((a,b)=>a.matchup_no-b.matchup_no);
  return `<section class="card card-pad office-section weekly-setup-card"><div class="office-section-head"><div><h2>Commissioner • Week Setup</h2><div class="small muted">Use this while Yahoo import is unavailable. Each team may appear once.</div></div><div class="week-control"><label>Current Week</label><input id="current-week-input" class="input" type="number" min="1" max="25" value="${week}"><button class="btn btn-sm btn-outline" data-action="set-current-week">Set</button></div></div>
  <div class="schedule-editor">${Array.from({length:6},(_,i)=>{const row=existing[i];return `<div class="schedule-edit-row"><span>#${i+1}</span><select class="input schedule-home" data-matchup="${i+1}"><option value="">Home team</option>${state.teams.map(t=>`<option value="${t.id}" ${row?.home_team_id===t.id?'selected':''}>${esc(t.name)}</option>`).join('')}</select><strong>vs</strong><select class="input schedule-away" data-matchup="${i+1}"><option value="">Away team</option>${state.teams.map(t=>`<option value="${t.id}" ${row?.away_team_id===t.id?'selected':''}>${esc(t.name)}</option>`).join('')}</select></div>`}).join('')}</div>
@@ -1873,7 +1889,7 @@ function matchupsView(){
    }).join(''):'<div class="card empty">No Week '+week+' matchups have been entered yet.</div>'}</div>
  </section>
 
- ${isCommish()&&matches.length&&ws?.status!=='final'?`<div class="weekly-finalize"><button class="btn btn-reset" data-action="finalize-week">Finalize Week ${week}</button><span>Finalized weeks feed the GLSK standings.</span></div>`:''}`;
+ ${commissionerToolsActive()&&matches.length&&ws?.status!=='final'?`<div class="weekly-finalize"><button class="btn btn-reset" data-action="finalize-week">Finalize Week ${week}</button><span>Finalized weeks feed the GLSK standings.</span></div>`:''}`;
 }
 
 function scheduleView(){
@@ -1952,7 +1968,7 @@ function standingsView(){
  </section>`;
 }
 function reconcileView(){
- if(!isCommish())return '<div class="card empty">Commissioner only.</div>';
+ if(!commissionerToolsActive())return '<div class="card empty">Commissioner only.</div>';
  const week=currentWeek(),rows=state.reconciliation;
  return `${pageHeading('Reconciliation',`Week ${week} private commissioner comparison.`,`Commissioner Only`)}
  <div class="reconcile-kpis"><div class="card kpi"><div class="kpi-label">Matchups</div><div class="kpi-value">${rows.length}</div><div class="kpi-sub">GLSK vs Yahoo</div></div><div class="card kpi"><div class="kpi-label">Roster Audit</div><div class="kpi-value">—</div><div class="kpi-sub">Yahoo OAuth pending</div></div><div class="card kpi"><div class="kpi-label">Lineup Audit</div><div class="kpi-value">—</div><div class="kpi-sub">Yahoo OAuth pending</div></div><div class="card kpi"><div class="kpi-label">Standings Audit</div><div class="kpi-value">—</div><div class="kpi-sub">Yahoo OAuth pending</div></div></div>
@@ -2058,7 +2074,7 @@ function historyView(){
     </section>
   </div>
 
-  ${isCommish()&&unmatched.length?`<section class="card history-section"><div class="office-section-head"><div><h2>Commissioner • Match Historical Franchises</h2><div class="small muted">${unmatched.length} imported team-season row${unmatched.length===1?'':'s'} need franchise mapping.</div></div></div><div class="history-unmatched">${unmatched.slice(0,40).map(r=>{const s=historySeasonById(r.history_season_id);return `<div class="history-map-row"><div><strong>${esc(r.team_name)}</strong><div class="small muted">${s?.season_year||'—'}${r.manager_name?` • ${esc(r.manager_name)}`:''}</div></div><select class="input" data-history-map-select="${r.id}"><option value="">Choose franchise…</option>${state.historyFranchises.map(f=>`<option value="${f.id}">${esc(f.display_name)}</option>`).join('')}</select><button class="btn btn-sm btn-primary" data-history-map="${r.id}">Map</button></div>`}).join('')}</div><div class="history-new-franchise"><input id="history-new-franchise" class="input" placeholder="Former franchise name"><button class="btn btn-outline" data-action="history-create-franchise">Create Former Franchise</button></div></section>`:''}
+  ${commissionerToolsActive()&&unmatched.length?`<section class="card history-section"><div class="office-section-head"><div><h2>Commissioner • Match Historical Franchises</h2><div class="small muted">${unmatched.length} imported team-season row${unmatched.length===1?'':'s'} need franchise mapping.</div></div></div><div class="history-unmatched">${unmatched.slice(0,40).map(r=>{const s=historySeasonById(r.history_season_id);return `<div class="history-map-row"><div><strong>${esc(r.team_name)}</strong><div class="small muted">${s?.season_year||'—'}${r.manager_name?` • ${esc(r.manager_name)}`:''}</div></div><select class="input" data-history-map-select="${r.id}"><option value="">Choose franchise…</option>${state.historyFranchises.map(f=>`<option value="${f.id}">${esc(f.display_name)}</option>`).join('')}</select><button class="btn btn-sm btn-primary" data-history-map="${r.id}">Map</button></div>`}).join('')}</div><div class="history-new-franchise"><input id="history-new-franchise" class="input" placeholder="Former franchise name"><button class="btn btn-outline" data-action="history-create-franchise">Create Former Franchise</button></div></section>`:''}
   `;
 }
 
@@ -2093,12 +2109,19 @@ function accountView(){
 }
 
 function setupError(){return `<div class="login-wrap"><div class="login-card"><div class="login-head"><h1>League Office Ready</h1><p>Database connection is missing.</p></div></div></div>`;}
-function render(){if(!configured){app.innerHTML=setupError();return;}if(state.loading){app.innerHTML='<div class="login-wrap"><div style="color:white;font-weight:900">Loading League Office…</div></div>';return;}if(!state.session){app.innerHTML=loginView();bind();return;}let content=state.tab==='teamhub'?teamHubView():state.tab==='communications'?communicationsHubView():state.tab==='leaguehub'?leagueHubView():state.tab==='settingshub'?settingsHubView():state.tab==='lineup'?lineupView():state.tab==='freeagents'?freeAgencyView():state.tab==='chat'?chatView():state.tab==='matchups'?matchupsView():state.tab==='schedule'?scheduleView():state.tab==='standings'?standingsView():state.tab==='board'?boardView():state.tab==='notifications'?notificationView():state.tab==='teams'?teamsView():state.tab==='contracts'?contractsView():state.tab==='trades'?tradesView():state.tab==='transactions'?transactionsView():state.tab==='history'?historyView():state.tab==='rules'?rulesView():state.tab==='deadlines'?deadlinesView():state.tab==='finances'?financesView():state.tab==='account'?accountView():state.tab==='reconcile'?reconcileView():dashboard();app.innerHTML=`<div class="office-shell">${topBar()}<main class="main">${content}</main>${bottomNav()}</div>`;bind();}
+function render(){if(!configured){app.innerHTML=setupError();return;}if(state.loading){app.innerHTML='<div class="login-wrap"><div style="color:white;font-weight:900">Loading League Office…</div></div>';return;}if(!state.session){app.innerHTML=loginView();bind();return;}if(state.tab==='reconcile'){state.commissionerSection='reconcile';state.tab='settingshub';}let content=state.tab==='teamhub'?teamHubView():state.tab==='communications'?communicationsHubView():state.tab==='leaguehub'?leagueHubView():state.tab==='settingshub'?settingsHubView():state.tab==='lineup'?lineupView():state.tab==='freeagents'?freeAgencyView():state.tab==='chat'?chatView():state.tab==='matchups'?matchupsView():state.tab==='schedule'?scheduleView():state.tab==='standings'?standingsView():state.tab==='board'?boardView():state.tab==='notifications'?notificationView():state.tab==='teams'?teamsView():state.tab==='contracts'?contractsView():state.tab==='trades'?tradesView():state.tab==='transactions'?transactionsView():state.tab==='history'?historyView():state.tab==='rules'?rulesView():state.tab==='deadlines'?deadlinesView():state.tab==='finances'?financesView():state.tab==='account'?accountView():state.tab==='reconcile'?reconcileView():dashboard();app.innerHTML=`<div class="office-shell">${topBar()}<main class="main">${content}</main>${bottomNav()}</div>`;bind();}
 
 async function logout(){const t=myTeam();await signOutOwner({roomCode:ROOM_CODE,teamId:t?.id||null,legacyStorageKey:STORAGE_KEY});location.reload();}
 async function commish(name,args={},msg='Saved.'){try{await rpc(name,{p_room_code:ROOM_CODE,p_commish_pin:state.session.commishPin,...args});toast(msg);await loadData();render();}catch(e){toast(e.message,'error');}}
 
 function bind(){
+ const openCommissionerSection=key=>{
+   if(!isCommish())return;
+   state.commissionerSection=commissionerSections.some(([id])=>id===key)?key:null;
+   setTab('settingshub');
+ };
+ app.querySelectorAll('[data-commissioner-section]').forEach(b=>b.addEventListener('click',()=>openCommissionerSection(b.dataset.commissionerSection)));
+ app.querySelector('#commissioner-section')?.addEventListener('change',e=>openCommissionerSection(e.target.value));
  window.GLSKPlayerProfiles?.register({
    read:()=>({...state,catalog:state.notificationPlayers}),
    refresh:async()=>{await loadData();render();}
