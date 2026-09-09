@@ -16,6 +16,8 @@ const state = {
   lineupDataTab:'stats', lineupStatsRange:'week', lineupProjectionRange:'week', lineupBrowseWeek:null,
   matchupBrowseWeek:null, selectedMatchupId:null, scheduleTeamId:null,
   boardThreads:[], boardPosts:[], boardSelectedThread:null,
+  chatMessages:[], chatYears:[], chatYear:null, chatUnread:0, chatHasMore:false, chatOldestAt:null,
+  chatDisplayName:'', chatDraft:'', chatReplyTo:null, chatEditingId:null, chatReactionTarget:null, chatAutoScroll:true, chatError:null,
   notifications:[], notificationPrefs:[], notificationUnread:0, playerWatches:[], notificationPlayers:[], playerStatusUpdates:[],
   waiverCenter:null, waiverSearch:'', waiverPosition:'ALL', waiverStatus:'ALL', waiverSelectedPlayer:null,
   pushSupported:false, pushSubscribed:false, pushPermission:'default', pushStandalone:false, pushBusy:false,
@@ -162,6 +164,7 @@ function setTab(tab){
   if(state.tab==='home')u.searchParams.delete('tab');else u.searchParams.set('tab',state.tab);
   history.replaceState(null,'',u.pathname+(u.search?u.search:'')+u.hash);
   render();
+  if(state.tab==='chat')setTimeout(()=>markChatRead(),60);
 }
 
 async function loadFinance(){
@@ -212,6 +215,62 @@ async function loadNotifications(){
   }catch(e){console.warn('notification load',e.message);}
 }
 
+
+
+async function loadChat(older=false){
+  const t=myTeam();
+  if(!t||state.session?.spectator)return;
+  if(state.chatYear==null)state.chatYear=Number(state.season?.season_year||2026);
+  try{
+    const {data,error}=await supabase.rpc('league_owner_get_chat',{
+      p_room_code:ROOM_CODE,
+      p_team_id:t.id,
+      p_pin:state.session.pin,
+      p_year:Number(state.chatYear),
+      p_before:older?state.chatOldestAt:null,
+      p_limit:120
+    });
+    if(error)throw error;
+    if(data?.ok===false)throw new Error(data.error||'Unable to load League Chat.');
+    const incoming=data?.messages||[];
+    if(older){
+      const ids=new Set(state.chatMessages.map(m=>String(m.id)));
+      state.chatMessages=[...incoming.filter(m=>!ids.has(String(m.id))),...state.chatMessages];
+    }else{
+      state.chatMessages=incoming;
+    }
+    state.chatYears=(data?.years||[]).map(Number).filter(Boolean);
+    if(!state.chatYears.includes(Number(data?.current_year||state.season?.season_year||2026))){
+      state.chatYears.unshift(Number(data?.current_year||state.season?.season_year||2026));
+    }
+    state.chatYear=Number(data?.selected_year||state.chatYear);
+    state.chatUnread=Number(data?.unread_count||0);
+    state.chatDisplayName=data?.my_display_name||myTeam()?.name||'League Manager';
+    state.chatHasMore=Boolean(data?.has_more);
+    state.chatOldestAt=state.chatMessages[0]?.sent_at||data?.oldest_at||null;
+    state.chatError=null;
+  }catch(e){
+    console.warn('chat load',e.message);
+    state.chatError=e.message;
+    if(!older){
+      state.chatMessages=[];
+      state.chatYears=[Number(state.season?.season_year||2026)];
+      state.chatUnread=0;
+    }
+  }
+}
+async function markChatRead(){
+  const t=myTeam();
+  if(!t||state.chatError)return;
+  try{
+    await rpc('league_owner_mark_chat_read',{
+      p_room_code:ROOM_CODE,p_team_id:t.id,p_pin:state.session.pin
+    });
+    state.chatUnread=0;
+    const badge=document.querySelector('.chat-nav-badge');
+    if(badge)badge.remove();
+  }catch(e){console.warn('mark chat read',e.message);}
+}
 
 async function loadWaiverCenter(){
   state.waiverCenter=null;
@@ -285,6 +344,7 @@ async function loadData(){
   await loadReconciliation();
   await loadNotifications();
   await loadWaiverCenter();
+  await loadChat(false);
   await refreshPushState();
 }
 
@@ -410,16 +470,16 @@ function topBar(){
  </div></header>`;
 }
 function bottomNav(){
- const items=[['home','⌂','Home'],['lineup','☑','Lineup'],['freeagents','+','Free Agents'],['matchups','VS','Matchups'],['schedule','◫','Schedule'],['standings','≡','Standings'],['board','✎','Board'],['teams','♟','Teams'],['contracts','▤','Contracts'],['trades','⇄','Trades'],['transactions','☷','Transactions'],['history','★','History'],['rules','⚙','Rules'],['deadlines','◷','Deadlines'],['finances','$','Finances'],['account','●','Account']];
+ const items=[['home','⌂','Home'],['lineup','☑','Lineup'],['freeagents','+','Free Agents'],['chat','💬','Chat'],['matchups','VS','Matchups'],['schedule','◫','Schedule'],['standings','≡','Standings'],['board','✎','Board'],['teams','♟','Teams'],['contracts','▤','Contracts'],['trades','⇄','Trades'],['transactions','☷','Transactions'],['history','★','History'],['rules','⚙','Rules'],['deadlines','◷','Deadlines'],['finances','$','Finances'],['account','●','Account']];
  if(isCommish())items.push(['reconcile','✓','Reconcile']);
- return `<nav class="bottom-nav office-bottom-nav"><div class="bottom-nav-inner">${items.map(([t,i,l])=>`<button class="nav-btn ${state.tab===t?'active':''}" data-tab="${t}"><span>${i}</span>${l}</button>`).join('')}</div></nav>`;
+ return `<nav class="bottom-nav office-bottom-nav"><div class="bottom-nav-inner">${items.map(([t,i,l])=>`<button class="nav-btn ${state.tab===t?'active':''}" data-tab="${t}"><span class="nav-icon-wrap">${i}${t==='chat'&&state.chatUnread?`<b class="chat-nav-badge">${state.chatUnread>99?'99+':state.chatUnread}</b>`:''}</span>${l}</button>`).join('')}</div></nav>`;
 }
 
 function dashboard(){
  const rosterLimit=state.season?.roster_limit||18,full=state.teams.filter(t=>rosterFor(t.id).length>=rosterLimit).length,totalBids=state.teams.reduce((s,t)=>s+Number(t.remaining_budget||0),0),open=state.deadlines.filter(d=>d.status==='open').length;
  const next=state.deadlines.find(d=>d.status==='open'&&new Date(d.due_at)>new Date());
  const me=myTeam();
- return `<section class="office-hero office-home-hero"><div><div class="office-kicker">${state.season?.season_year||2026} League Year</div><h1>League Office</h1><p>One home for rosters, free agency, contracts, transactions, rules, deadlines, finances and league history.</p></div>${me?`<div class="home-team-summary"><span>Your Team</span><strong>${esc(me.name)}</strong><div>${rosterFor(me.id).length}/${rosterLimit} roster • ${bidMoney(me.remaining_budget)} bids • ${capUsed(me.id)}/100 cap</div></div>`:''}</section>
+ return `<section class="office-hero office-home-hero"><div><div class="office-kicker">${state.season?.season_year||2026} League Year</div><h1>League Office</h1><p>One home for rosters, free agency, League Chat, contracts, transactions, rules, deadlines, finances and league history.</p></div>${me?`<div class="home-team-summary"><span>Your Team</span><strong>${esc(me.name)}</strong><div>${rosterFor(me.id).length}/${rosterLimit} roster • ${bidMoney(me.remaining_budget)} bids • ${capUsed(me.id)}/100 cap</div></div>`:''}</section>
  <div class="kpi-grid office-kpi-grid"><div class="card kpi"><div class="kpi-label">Full Rosters</div><div class="kpi-value">${full}<span class="kpi-denom">/12</span></div><div class="kpi-sub">${rosterLimit}-player limit</div></div><div class="card kpi"><div class="kpi-label">Bid Dollars</div><div class="kpi-value">${totalBids}</div><div class="kpi-sub">remaining league-wide</div></div><div class="card kpi"><div class="kpi-label">Contracts</div><div class="kpi-value">${state.contracts.filter(c=>c.status==='active').length}</div><div class="kpi-sub">active contracts</div></div><div class="card kpi"><div class="kpi-label">Open Deadlines</div><div class="kpi-value">${open}</div><div class="kpi-sub">need attention</div></div></div>
  ${next?`<div class="owner-banner office-deadline-banner"><div><span class="banner-label">NEXT DEADLINE</span><strong>${esc(next.title)}</strong></div><div>${fmtDate(next.due_at)}</div></div>`:''}
  <div class="office-grid two office-home-grid"><section class="office-section"><div class="office-section-head"><div><h2>League Snapshot</h2><div class="section-caption">Roster, bid and cap status at a glance</div></div><button class="btn btn-sm btn-outline" data-tab="teams">View Rosters</button></div>${teamCards()}</section><div><section class="office-section"><div class="office-section-head"><div><h2>Draft Rooms</h2><div class="section-caption">Jump back into any 2026 draft phase</div></div></div><div class="draft-links"><a class="draft-link" href="/"><strong>⚡</strong><span>Auction</span><small>Top 40</small></a><a class="draft-link" href="/supplemental"><strong>↔</strong><span>Supplemental</span><small>2-round snake</small></a><a class="draft-link" href="/phase3"><strong>⇅</strong><span>Snake</span><small>Roster fill to 18</small></a></div></section><section class="office-section"><div class="office-section-head"><div><h2>${isCommish()?'Commissioner Center':'League Access'}</h2><div class="section-caption">${isCommish()?'Management controls are unlocked':'Commissioner-only controls stay protected'}</div></div></div><div class="card card-pad office-info-card">${isCommish()?'<strong>Commissioner mode active</strong><p>Manage rosters, contracts, trades, rules, deadlines and finances from the tabs below.</p>':'<strong>Owner mode</strong><p>You can manage your team, submit contracts, propose trades and review league records.</p>'}</div></section></div></div>`;
@@ -445,6 +505,102 @@ function commissionerAddPlayerForm(){
  </section>`;
 }
 
+
+
+function chatMessageById(id){return state.chatMessages.find(m=>String(m.id)===String(id))||null;}
+function chatInitials(name='GL'){return String(name||'GL').split(/\s+/).filter(Boolean).map(x=>x[0]).join('').slice(0,2).toUpperCase();}
+function chatTime(v){
+  if(!v)return '';
+  return new Intl.DateTimeFormat('en-US',{hour:'numeric',minute:'2-digit'}).format(new Date(v));
+}
+function chatDayKey(v){
+  const d=new Date(v);
+  return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+}
+function chatDayLabel(v){
+  const d=new Date(v),today=new Date(),yesterday=new Date(Date.now()-86400000);
+  if(chatDayKey(d)===chatDayKey(today))return 'Today';
+  if(chatDayKey(d)===chatDayKey(yesterday))return 'Yesterday';
+  return new Intl.DateTimeFormat('en-US',{weekday:'short',month:'short',day:'numeric',year:d.getFullYear()===today.getFullYear()?undefined:'numeric'}).format(d);
+}
+function chatView(){
+  const me=myTeam();
+  if(!me)return `${pageHeading('League Chat','Realtime GLSK group chat.','League Community')}<div class="card empty">Sign in to use League Chat.</div>`;
+
+  if(state.chatError){
+    return `${pageHeading('League Chat','Realtime GLSK group chat.','League Community')}
+      <section class="card card-pad office-section">
+        <div class="office-section-head"><div><h2>Setup Required</h2><div class="section-caption">Run the GLSK v7.1.1 League Chat migration, then refresh.</div></div></div>
+        <div class="error">${esc(state.chatError)}</div>
+      </section>`;
+  }
+
+  const currentYear=Number(state.season?.season_year||2026);
+  const editing=state.chatEditingId?chatMessageById(state.chatEditingId):null;
+  const reply=state.chatReplyTo?chatMessageById(state.chatReplyTo):null;
+  let lastDay=null;
+
+  return `${pageHeading('League Chat','Fast, realtime league conversation. Message Board remains available for longer-form discussions.','League Community')}
+    <section class="card chat-card">
+      <div class="chat-toolbar">
+        <div class="chat-room-title">
+          <div class="chat-live-dot"></div>
+          <div><strong>GLSK League Chat</strong><span>${state.chatYear===currentYear?'Live conversation':`${state.chatYear} archive`}</span></div>
+        </div>
+        <div class="chat-toolbar-actions">
+          <label class="chat-year-control"><span>Year</span><select id="chat-year" class="input">
+            ${state.chatYears.map(y=>`<option value="${y}" ${Number(state.chatYear)===Number(y)?'selected':''}>${y}${Number(y)===currentYear?' • Current':''}</option>`).join('')}
+          </select></label>
+          <button class="btn btn-sm btn-outline" data-action="chat-change-name">Posting as ${esc(state.chatDisplayName)}</button>
+        </div>
+      </div>
+
+      <div id="chat-message-list" class="chat-message-list">
+        ${state.chatHasMore?'<div class="chat-load-older"><button class="btn btn-sm btn-outline" data-action="chat-load-older">Load Older Messages</button></div>':''}
+        ${state.chatMessages.length?state.chatMessages.map(m=>{
+          const day=chatDayKey(m.sent_at),dateSep=day!==lastDay?`<div class="chat-date-separator"><span>${esc(chatDayLabel(m.sent_at))}</span></div>`:'';
+          lastDay=day;
+          const removed=m.status==='removed';
+          const imported=m.source==='google_groups';
+          const replyText=m.reply_body?String(m.reply_body).replace(/\s+/g,' ').slice(0,125):'';
+          const reactionPicker=state.chatReactionTarget===String(m.id);
+          return `${dateSep}<article class="chat-row ${m.is_mine?'mine':''} ${imported?'imported':''}" data-chat-message="${m.id}">
+            ${m.is_mine?'':`<div class="chat-avatar">${esc(chatInitials(m.author_display_name||m.team_name))}</div>`}
+            <div class="chat-message-wrap">
+              <div class="chat-author-line">
+                ${m.is_mine?'':`<strong>${esc(m.author_display_name||m.team_name||'GLSK Member')}</strong><span>${m.team_name&&m.author_display_name!==m.team_name?esc(m.team_name):''}</span>`}
+                ${imported?'<em>Imported from Google Groups</em>':''}
+              </div>
+              <div class="chat-bubble ${removed?'removed':''}">
+                ${m.source_subject?`<div class="chat-source-subject">${esc(m.source_subject)}</div>`:''}
+                ${m.reply_to_message_id?`<button class="chat-reply-quote" data-chat-jump="${m.reply_to_message_id}">
+                  <strong>${esc(m.reply_author_display_name||m.reply_team_name||'Message')}</strong>
+                  <span>${esc(replyText||'[Message unavailable]')}</span>
+                </button>`:''}
+                <div class="chat-body">${removed?'<em>Message removed</em>':esc(m.body).replaceAll('\n','<br>')}</div>
+              </div>
+              <div class="chat-meta">
+                <span>${chatTime(m.sent_at)}${m.edited_at?' • edited':''}</span>
+                ${!removed?`<button data-chat-reply="${m.id}">Reply</button><button data-chat-react="${m.id}">React</button>${m.can_edit?`<button data-chat-edit="${m.id}">Edit</button>`:''}${m.can_delete?`<button class="danger" data-chat-delete="${m.id}">Remove</button>`:''}`:''}
+              </div>
+              ${(m.reactions||[]).length?`<div class="chat-reactions">${m.reactions.map(r=>`<button class="${r.mine?'mine':''}" data-chat-reaction-message="${m.id}" data-chat-reaction-emoji="${esc(r.emoji)}">${esc(r.emoji)} <b>${r.count}</b></button>`).join('')}</div>`:''}
+              ${reactionPicker&&!removed?`<div class="chat-reaction-picker">${['👍','😂','❤️','🔥','👀'].map(e=>`<button data-chat-reaction-message="${m.id}" data-chat-reaction-emoji="${e}">${e}</button>`).join('')}</div>`:''}
+            </div>
+          </article>`;
+        }).join(''):`<div class="chat-empty"><div>💬</div><strong>${state.chatYear===currentYear?'Start the GLSK League Chat':'No imported messages in this year yet.'}</strong><span>${state.chatYear===currentYear?'Send the first live message below.':'Google Groups history will appear here after the archive is imported.'}</span></div>`}
+      </div>
+
+      ${state.chatYear===currentYear?`<div class="chat-composer">
+        ${editing?`<div class="chat-compose-context"><div><strong>Editing message</strong><span>${esc(editing.body.slice(0,120))}</span></div><button data-action="chat-cancel-context">×</button></div>`:
+          reply?`<div class="chat-compose-context"><div><strong>Replying to ${esc(reply.author_display_name||reply.team_name||'message')}</strong><span>${esc(String(reply.body||'').replace(/\s+/g,' ').slice(0,120))}</span></div><button data-action="chat-cancel-context">×</button></div>`:''}
+        <div class="chat-compose-row">
+          <textarea id="chat-compose" class="input chat-compose-input" maxlength="3000" rows="1" placeholder="${editing?'Edit your message…':`Message GLSK as ${esc(state.chatDisplayName)}…`}">${esc(state.chatDraft)}</textarea>
+          <button class="btn btn-primary chat-send" data-action="chat-send">${editing?'Save':'Send'}</button>
+        </div>
+        <div class="chat-compose-help">Enter to send • Shift+Enter for a new line</div>
+      </div>`:`<div class="chat-archive-note">Viewing the ${state.chatYear} archive. Switch to ${currentYear} to send live messages.</div>`}
+    </section>`;
+}
 
 function boardThreadById(id){return state.boardThreads.find(t=>String(t.id)===String(id))||null;}
 function boardPostsFor(threadId){return state.boardPosts.filter(p=>String(p.thread_id)===String(threadId));}
@@ -506,6 +662,7 @@ function notificationCategoryMeta(category){
   drafts:['Drafts','D'],
   contracts:['Contracts','C'],
   rookie_rights:['Rookie Rights','R'],
+  league_chat:['League Chat','💬'],
   message_board:['Message Board','✎'],
   matchups:['Matchups','VS'],
   deadlines:['Deadlines','◷'],
@@ -520,6 +677,7 @@ function notificationPrefEnabled(category){
  return p?p.enabled!==false:true;
 }
 function notificationRelatedTab(e){
+ if(e.category==='league_chat')return 'chat';
  if(e.category==='message_board')return 'board';
  if(e.category==='trades')return 'trades';
  if(e.category==='drafts'||e.category==='roster_moves'||e.category==='contracts'||e.category==='rookie_rights')return 'transactions';
@@ -530,7 +688,7 @@ function notificationRelatedTab(e){
 function notificationView(){
  const t=myTeam();
  if(!t)return `${pageHeading('Notifications','Owner-specific GLSK alerts.','League Activity')}<div class="card empty">Sign in as a team owner to use notifications.</div>`;
- const categories=['roster_moves','trades','drafts','contracts','rookie_rights','message_board','matchups','deadlines','injuries','player_availability','other_activity'];
+ const categories=['roster_moves','trades','drafts','contracts','rookie_rights','league_chat','message_board','matchups','deadlines','injuries','player_availability','other_activity'];
  const rosterKeys=new Set(rosterFor(t.id).map(r=>r.player_key));
  return `${pageHeading('Notifications','Choose what you want to hear about and follow league activity in realtime.','League Activity')}
  <div class="notifications-layout">
@@ -1468,13 +1626,160 @@ function accountView(){
 }
 
 function setupError(){return `<div class="login-wrap"><div class="login-card"><div class="login-head"><h1>League Office Ready</h1><p>Database connection is missing.</p></div></div></div>`;}
-function render(){if(!configured){app.innerHTML=setupError();return;}if(state.loading){app.innerHTML='<div class="login-wrap"><div style="color:white;font-weight:900">Loading League Office…</div></div>';return;}if(!state.session){app.innerHTML=loginView();bind();return;}let content=state.tab==='lineup'?lineupView():state.tab==='freeagents'?freeAgencyView():state.tab==='matchups'?matchupsView():state.tab==='schedule'?scheduleView():state.tab==='standings'?standingsView():state.tab==='board'?boardView():state.tab==='notifications'?notificationView():state.tab==='teams'?teamsView():state.tab==='contracts'?contractsView():state.tab==='trades'?tradesView():state.tab==='transactions'?transactionsView():state.tab==='history'?historyView():state.tab==='rules'?rulesView():state.tab==='deadlines'?deadlinesView():state.tab==='finances'?financesView():state.tab==='account'?accountView():state.tab==='reconcile'?reconcileView():dashboard();app.innerHTML=`<div class="office-shell">${topBar()}<main class="main">${content}</main>${bottomNav()}</div>`;bind();}
+function render(){if(!configured){app.innerHTML=setupError();return;}if(state.loading){app.innerHTML='<div class="login-wrap"><div style="color:white;font-weight:900">Loading League Office…</div></div>';return;}if(!state.session){app.innerHTML=loginView();bind();return;}let content=state.tab==='lineup'?lineupView():state.tab==='freeagents'?freeAgencyView():state.tab==='chat'?chatView():state.tab==='matchups'?matchupsView():state.tab==='schedule'?scheduleView():state.tab==='standings'?standingsView():state.tab==='board'?boardView():state.tab==='notifications'?notificationView():state.tab==='teams'?teamsView():state.tab==='contracts'?contractsView():state.tab==='trades'?tradesView():state.tab==='transactions'?transactionsView():state.tab==='history'?historyView():state.tab==='rules'?rulesView():state.tab==='deadlines'?deadlinesView():state.tab==='finances'?financesView():state.tab==='account'?accountView():state.tab==='reconcile'?reconcileView():dashboard();app.innerHTML=`<div class="office-shell">${topBar()}<main class="main">${content}</main>${bottomNav()}</div>`;bind();}
 
 async function logout(){const t=myTeam();await signOutOwner({roomCode:ROOM_CODE,teamId:t?.id||null,legacyStorageKey:STORAGE_KEY});location.reload();}
 async function commish(name,args={},msg='Saved.'){try{await rpc(name,{p_room_code:ROOM_CODE,p_commish_pin:state.session.commishPin,...args});toast(msg);await loadData();render();}catch(e){toast(e.message,'error');}}
 
 function bind(){
  app.querySelectorAll('[data-tab]').forEach(b=>b.addEventListener('click',()=>setTab(b.dataset.tab)));
+ app.querySelector('#chat-year')?.addEventListener('change',async e=>{
+   state.chatYear=Number(e.target.value);
+   state.chatMessages=[];
+   state.chatOldestAt=null;
+   state.chatHasMore=false;
+   state.chatReplyTo=null;
+   state.chatEditingId=null;
+   state.chatDraft='';
+   state.chatAutoScroll=true;
+   await loadChat(false);
+   render();
+   if(state.chatYear===Number(state.season?.season_year||2026))setTimeout(()=>markChatRead(),40);
+ });
+ app.querySelector('[data-action="chat-load-older"]')?.addEventListener('click',async()=>{
+   state.chatAutoScroll=false;
+   const list=document.getElementById('chat-message-list'),oldHeight=list?.scrollHeight||0;
+   await loadChat(true);
+   render();
+   requestAnimationFrame(()=>{
+     const next=document.getElementById('chat-message-list');
+     if(next)next.scrollTop=Math.max(0,next.scrollHeight-oldHeight);
+   });
+ });
+ app.querySelector('[data-action="chat-change-name"]')?.addEventListener('click',async()=>{
+   const name=prompt('Chat display name (your franchise will still be shown):',state.chatDisplayName||'');
+   if(name==null)return;
+   const trimmed=name.trim();
+   if(!trimmed)return toast('Chat name cannot be blank.','error');
+   try{
+     await rpc('league_owner_set_chat_display_name',{p_room_code:ROOM_CODE,p_display_name:trimmed});
+     state.chatDisplayName=trimmed;
+     toast('Chat name updated.');
+     render();
+   }catch(e){toast(e.message,'error');}
+ });
+ const chatInput=app.querySelector('#chat-compose');
+ chatInput?.addEventListener('input',e=>{
+   state.chatDraft=e.target.value;
+   e.target.style.height='auto';
+   e.target.style.height=Math.min(160,e.target.scrollHeight)+'px';
+ });
+ chatInput?.addEventListener('keydown',e=>{
+   if(e.key==='Enter'&&!e.shiftKey){
+     e.preventDefault();
+     app.querySelector('[data-action="chat-send"]')?.click();
+   }
+ });
+ app.querySelector('[data-action="chat-send"]')?.addEventListener('click',async()=>{
+   const t=myTeam(),body=(document.getElementById('chat-compose')?.value||state.chatDraft||'').trim();
+   if(!t||!body)return;
+   try{
+     if(state.chatEditingId){
+       await rpc('league_owner_edit_chat_message',{
+         p_room_code:ROOM_CODE,p_team_id:t.id,p_pin:state.session.pin,
+         p_message_id:Number(state.chatEditingId),p_body:body
+       });
+       toast('Message updated.');
+     }else{
+       await rpc('league_owner_send_chat_message',{
+         p_room_code:ROOM_CODE,p_team_id:t.id,p_pin:state.session.pin,
+         p_body:body,p_reply_to_message_id:state.chatReplyTo?Number(state.chatReplyTo):null
+       });
+     }
+     state.chatDraft='';
+     state.chatReplyTo=null;
+     state.chatEditingId=null;
+     state.chatReactionTarget=null;
+     state.chatAutoScroll=true;
+     await loadChat(false);
+     await markChatRead();
+     render();
+   }catch(e){toast(e.message,'error');}
+ });
+ app.querySelector('[data-action="chat-cancel-context"]')?.addEventListener('click',()=>{
+   state.chatReplyTo=null;
+   state.chatEditingId=null;
+   state.chatDraft='';
+   render();
+ });
+ app.querySelectorAll('[data-chat-reply]').forEach(b=>b.addEventListener('click',()=>{
+   state.chatReplyTo=b.dataset.chatReply;
+   state.chatEditingId=null;
+   state.chatDraft='';
+   state.chatAutoScroll=true;
+   render();
+   requestAnimationFrame(()=>document.getElementById('chat-compose')?.focus());
+ }));
+ app.querySelectorAll('[data-chat-edit]').forEach(b=>b.addEventListener('click',()=>{
+   const m=chatMessageById(b.dataset.chatEdit);if(!m)return;
+   state.chatEditingId=String(m.id);
+   state.chatReplyTo=null;
+   state.chatDraft=m.body||'';
+   state.chatAutoScroll=true;
+   render();
+   requestAnimationFrame(()=>{const el=document.getElementById('chat-compose');el?.focus();el?.setSelectionRange(el.value.length,el.value.length);});
+ }));
+ app.querySelectorAll('[data-chat-delete]').forEach(b=>b.addEventListener('click',async()=>{
+   const t=myTeam(),m=chatMessageById(b.dataset.chatDelete);if(!t||!m)return;
+   if(!confirm(`Remove this message from ${m.author_display_name||m.team_name||'League Chat'}?`))return;
+   try{
+     await rpc('league_owner_remove_chat_message',{
+       p_room_code:ROOM_CODE,p_team_id:t.id,p_pin:state.session.pin,
+       p_message_id:Number(m.id)
+     });
+     if(String(state.chatEditingId)===String(m.id)){state.chatEditingId=null;state.chatDraft='';}
+     if(String(state.chatReplyTo)===String(m.id))state.chatReplyTo=null;
+     await loadChat(false);render();
+   }catch(e){toast(e.message,'error');}
+ }));
+ app.querySelectorAll('[data-chat-react]').forEach(b=>b.addEventListener('click',()=>{
+   state.chatReactionTarget=state.chatReactionTarget===String(b.dataset.chatReact)?null:String(b.dataset.chatReact);
+   render();
+ }));
+ app.querySelectorAll('[data-chat-reaction-message]').forEach(b=>b.addEventListener('click',async()=>{
+   const t=myTeam();if(!t)return;
+   try{
+     await rpc('league_owner_toggle_chat_reaction',{
+       p_room_code:ROOM_CODE,p_team_id:t.id,p_pin:state.session.pin,
+       p_message_id:Number(b.dataset.chatReactionMessage),
+       p_emoji:b.dataset.chatReactionEmoji
+     });
+     state.chatReactionTarget=null;
+     await loadChat(false);render();
+   }catch(e){toast(e.message,'error');}
+ }));
+ app.querySelectorAll('[data-chat-jump]').forEach(b=>b.addEventListener('click',()=>{
+   const target=document.querySelector(`[data-chat-message="${b.dataset.chatJump}"]`);
+   if(target){
+     state.chatAutoScroll=false;
+     target.scrollIntoView({behavior:'smooth',block:'center'});
+     target.classList.add('chat-highlight');
+     setTimeout(()=>target.classList.remove('chat-highlight'),1400);
+   }
+ }));
+ const chatList=app.querySelector('#chat-message-list');
+ if(chatList){
+   chatList.addEventListener('scroll',()=>{
+     state.chatAutoScroll=(chatList.scrollHeight-chatList.scrollTop-chatList.clientHeight)<140;
+   },{passive:true});
+   requestAnimationFrame(()=>{
+     if(state.chatAutoScroll)chatList.scrollTop=chatList.scrollHeight;
+     if(state.tab==='chat')markChatRead();
+     const ta=document.getElementById('chat-compose');
+     if(ta){ta.style.height='auto';ta.style.height=Math.min(160,ta.scrollHeight)+'px';}
+   });
+ }
+
  app.querySelectorAll('[data-fa-select]').forEach(b=>b.addEventListener('click',()=>{
    state.waiverSelectedPlayer=b.dataset.faSelect;
    render();
@@ -1781,8 +2086,9 @@ function bind(){
  app.querySelector('[data-action="save-correction"]')?.addEventListener('click',()=>{const desc=document.getElementById('corr-desc')?.value.trim();if(!desc)return toast('Enter a correction description.','error');commish('league_commish_correction',{p_team_id:document.getElementById('corr-team')?.value||null,p_bid_delta:Number(document.getElementById('corr-bids')?.value||0),p_description:desc,p_reverse_transaction_id:document.getElementById('corr-reverse')?.value||null},'Correction recorded.');});
 }
 
-async function subscribe(){if(state.realtime)await supabase.removeChannel(state.realtime);state.realtime=supabase.channel(`league-office-${ROOM_CODE}`).on('postgres_changes',{event:'*',schema:'public',table:'league_roster_entries'},refresh).on('postgres_changes',{event:'*',schema:'public',table:'teams'},refresh).on('postgres_changes',{event:'*',schema:'public',table:'league_contracts'},refresh).on('postgres_changes',{event:'*',schema:'public',table:'league_rule_settings'},refresh).on('postgres_changes',{event:'*',schema:'public',table:'redistribution_rules'},refresh).on('postgres_changes',{event:'*',schema:'public',table:'league_deadlines'},refresh).on('postgres_changes',{event:'*',schema:'public',table:'league_deadline_team_status'},refresh).on('postgres_changes',{event:'*',schema:'public',table:'league_history_seasons'},refresh).on('postgres_changes',{event:'*',schema:'public',table:'league_history_team_seasons'},refresh).on('postgres_changes',{event:'*',schema:'public',table:'league_player_stats'},refresh).on('postgres_changes',{event:'*',schema:'public',table:'league_lineups'},refresh).on('postgres_changes',{event:'*',schema:'public',table:'league_weekly_player_scores'},refresh).on('postgres_changes',{event:'*',schema:'public',table:'league_schedule'},refresh).on('postgres_changes',{event:'*',schema:'public',table:'league_week_states'},refresh).on('postgres_changes',{event:'*',schema:'public',table:'league_scoring_rules'},refresh).on('postgres_changes',{event:'*',schema:'public',table:'league_player_projections'},refresh).on('postgres_changes',{event:'*',schema:'public',table:'league_message_threads'},refresh).on('postgres_changes',{event:'*',schema:'public',table:'league_message_posts'},refresh).on('postgres_changes',{event:'*',schema:'public',table:'league_transactions'},refresh).on('postgres_changes',{event:'*',schema:'public',table:'league_trades'},refresh).on('postgres_changes',{event:'*',schema:'public',table:'league_player_status_updates'},refresh).on('postgres_changes',{event:'*',schema:'public',table:'league_free_agent_settings'},refresh).on('postgres_changes',{event:'*',schema:'public',table:'league_player_directory'},refresh).on('postgres_changes',{event:'*',schema:'public',table:'league_waiver_holds'},refresh).on('postgres_changes',{event:'*',schema:'public',table:'league_waiver_priority'},refresh).on('postgres_changes',{event:'*',schema:'public',table:'league_waiver_runs'},refresh).subscribe();}
+async function subscribe(){if(state.realtime)await supabase.removeChannel(state.realtime);state.realtime=supabase.channel(`league-office-${ROOM_CODE}`).on('postgres_changes',{event:'*',schema:'public',table:'league_roster_entries'},refresh).on('postgres_changes',{event:'*',schema:'public',table:'teams'},refresh).on('postgres_changes',{event:'*',schema:'public',table:'league_contracts'},refresh).on('postgres_changes',{event:'*',schema:'public',table:'league_rule_settings'},refresh).on('postgres_changes',{event:'*',schema:'public',table:'redistribution_rules'},refresh).on('postgres_changes',{event:'*',schema:'public',table:'league_deadlines'},refresh).on('postgres_changes',{event:'*',schema:'public',table:'league_deadline_team_status'},refresh).on('postgres_changes',{event:'*',schema:'public',table:'league_history_seasons'},refresh).on('postgres_changes',{event:'*',schema:'public',table:'league_history_team_seasons'},refresh).on('postgres_changes',{event:'*',schema:'public',table:'league_player_stats'},refresh).on('postgres_changes',{event:'*',schema:'public',table:'league_lineups'},refresh).on('postgres_changes',{event:'*',schema:'public',table:'league_weekly_player_scores'},refresh).on('postgres_changes',{event:'*',schema:'public',table:'league_schedule'},refresh).on('postgres_changes',{event:'*',schema:'public',table:'league_week_states'},refresh).on('postgres_changes',{event:'*',schema:'public',table:'league_scoring_rules'},refresh).on('postgres_changes',{event:'*',schema:'public',table:'league_player_projections'},refresh).on('postgres_changes',{event:'*',schema:'public',table:'league_message_threads'},refresh).on('postgres_changes',{event:'*',schema:'public',table:'league_message_posts'},refresh).on('postgres_changes',{event:'*',schema:'public',table:'league_transactions'},refresh).on('postgres_changes',{event:'*',schema:'public',table:'league_trades'},refresh).on('postgres_changes',{event:'*',schema:'public',table:'league_player_status_updates'},refresh).on('postgres_changes',{event:'*',schema:'public',table:'league_free_agent_settings'},refresh).on('postgres_changes',{event:'*',schema:'public',table:'league_player_directory'},refresh).on('postgres_changes',{event:'*',schema:'public',table:'league_waiver_holds'},refresh).on('postgres_changes',{event:'*',schema:'public',table:'league_waiver_priority'},refresh).on('postgres_changes',{event:'*',schema:'public',table:'league_waiver_runs'},refresh).on('postgres_changes',{event:'*',schema:'public',table:'league_chat_messages'},chatRefresh).on('postgres_changes',{event:'*',schema:'public',table:'league_chat_reactions'},chatRefresh).subscribe();}
 let refreshTimer=null;function refresh(){clearTimeout(refreshTimer);refreshTimer=setTimeout(async()=>{try{await loadData();render();}catch(e){console.warn(e);}},180);}
+let chatRefreshTimer=null;function chatRefresh(){clearTimeout(chatRefreshTimer);chatRefreshTimer=setTimeout(async()=>{try{await loadChat(false);await loadNotifications();if(state.tab==='chat')await markChatRead();render();}catch(e){console.warn(e);}},80);}
 
 ensurePwaMetadata();
 

@@ -98,6 +98,7 @@ function destination(event) {
   if (type === 'supplemental') return '/supplemental';
   if (type === 'phase3') return '/phase3';
   if (category === 'trades') return '/league?tab=trades';
+  if (category === 'league_chat') return '/league?tab=chat';
   if (category === 'message_board') return '/league?tab=board';
   if (category === 'matchups') return '/league?tab=matchups';
   if (category === 'deadlines') return '/league?tab=deadlines';
