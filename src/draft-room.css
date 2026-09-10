@@ -163,3 +163,18 @@
 @media(min-width:1101px) and (max-width:1690px){.has-draft-comms .draft-desk{grid-template-columns:160px minmax(0,1fr)}.has-draft-comms .desk-right{grid-column:1/-1;display:grid;grid-template-columns:1fr 1fr}.has-draft-comms .desk-right .desk-side-section:first-child{border-right:1px solid #46515a}.has-draft-comms .desk-queue,.has-draft-comms .desk-roster{max-height:220px}.has-draft-comms .desk-preview dl{gap:10px}}
 @media(max-width:1100px){.has-draft-comms #app{margin-right:0}.draft-comms{position:relative;width:100%;height:650px;border-top:1px solid #4b5b67;border-left:0;display:grid;grid-template-columns:1fr 1fr;overflow:hidden}.draft-video{overflow:auto;border-right:1px solid #4b5b67}.draft-video-frame{height:450px}.draft-chat{min-height:0}.draft-comms.is-expanded{position:fixed;width:95vw;height:95vh;top:2.5vh;right:2.5vw;display:flex;border:1px solid #718a9b}.draft-comms.is-expanded .draft-video-frame{height:50vh}}
 @media(max-width:700px){.draft-comms{display:flex;height:auto;overflow:visible}.draft-chat{height:480px;flex:none}.draft-video-frame{height:400px}.draft-comms.is-expanded{overflow:auto}.desk-rank-tools{padding:10px}.desk-team-card summary{align-items:flex-start;flex-direction:column;gap:6px}}
+/* Owner ranking CSV preview, kept separate from the shared statistics import. */
+.desk-rank-upload{padding:14px 16px;background:#f8fbfe;border-bottom:1px solid #bccfde;color:#29475d;font-size:14px}
+.desk-upload-heading{display:flex;align-items:center;justify-content:space-between;gap:12px}.desk-upload-heading h3{font-size:17px;margin:0}
+.desk-rank-upload p{line-height:1.5;margin:10px 0;overflow-wrap:anywhere}
+.desk-rank-upload button{font:inherit;min-height:36px;padding:8px 12px;border:1px solid #93aebe;border-radius:4px;background:white;color:#204b6a;cursor:pointer}
+.desk-rank-upload button[data-rank-use]{background:#234f70;border-color:#234f70;color:white}.desk-rank-upload button:disabled{opacity:.5;cursor:default}
+.desk-upload-actions{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-top:12px}.desk-upload-actions label{display:flex;gap:8px;align-items:center;flex-wrap:wrap;font-weight:650}
+.desk-upload-actions input{max-width:100%;font-size:14px;font-weight:400;color:#29475d}
+.desk-ranking-preview{overflow:auto;max-height:260px;border:1px solid #c4d4e1;margin:12px 0;background:white}
+.desk-ranking-preview table{border-collapse:collapse;width:100%;font-size:14px}.desk-ranking-preview td,.desk-ranking-preview th{padding:9px 12px;text-align:left;border-bottom:1px solid #d9e3ec;vertical-align:top}
+.desk-ranking-preview th{position:sticky;top:0;background:#e4eef6;white-space:nowrap}.desk-ranking-preview td:nth-child(2),.desk-ranking-preview td:nth-child(3){min-width:140px;overflow-wrap:anywhere}
+.desk-ranking-preview small{display:block;color:#627e91;font-size:12px}.desk-ranking-preview .needs-review{background:#fff1df}
+.desk-rank-upload .desk-upload-error{color:#923426;background:#ffede8;border:1px solid #eac3b9;border-radius:4px;padding:10px}.desk-upload-note{color:#567286;font-size:13px}
+.desk-ranking-preview:focus-visible{outline:3px solid #32a7f5;outline-offset:2px}
+@media(max-width:700px){.desk-rank-upload{padding:12px 10px}.desk-upload-actions{align-items:flex-start}.desk-upload-actions label{width:100%}}
