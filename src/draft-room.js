@@ -12,11 +12,47 @@ export function createDraftRoom(phase,roomCode){
  const selectButton=p=>`<button type="button" class="desk-player-name" data-desk-select="${esc(p.id)}">${esc(p.name)}</button>`;
  const star=p=>`<button type="button" class="desk-star ${ui.queue.includes(String(p.id))?'is-queued':''}" data-desk-star="${esc(p.id)}" aria-label="${ui.queue.includes(String(p.id))?'Remove from':'Add to'} queue: ${esc(p.name)}" aria-pressed="${ui.queue.includes(String(p.id))}" ${drafted(p)?'disabled':''}>${ui.queue.includes(String(p.id))?'★':'☆'}</button>`;
  const stat=(p,key)=>number(p.projection_stats?.[key]);
+ const descendingSorts=new Set(['queue','previous_fantasy_points','projected_fantasy_points','PassYds','RunYds','REC','RecYds']);
+ const defaultDirection=key=>descendingSorts.has(key)?'desc':'asc';
+ const sortMode=()=>ui.sort||'personal';
+ const sortDirection=()=>ui.sortDirection||defaultDirection(sortMode());
+ const playerStatus=p=>drafted(p)?'Drafted':p.id===config.activePlayer?.id?'On the block':p.status==='queued'?'Nominated':'Available';
+ const columns=()=>[
+  ['queue','Queue'],['personal','My Rank'],['rank','Yahoo Rank'],['name','Player'],['yahoo_adp','Yahoo ADP'],
+  ['previous_fantasy_points',`${config.tools?.state.context?.season_year?config.tools.state.context.season_year-1:'Previous'} FPTS`],
+  ['projected_fantasy_points',`${config.tools?.state.context?.season_year||'Current'} Proj FPTS`],
+  ['bye','Bye'],['PassYds','Pass Yds'],['RunYds','Rush Yds'],['REC','Rec'],['RecYds','Rec Yds'],['status','Status / Action']
+ ];
+ const collation=new Intl.Collator('en',{sensitivity:'base',numeric:true});
+ function columnValue(p,key,ranks){
+  if(key==='name')return p.name||null;
+  if(key==='status')return playerStatus(p);
+  if(key==='queue')return ui.queue.includes(String(p.id))?1:0;
+  if(key==='personal')return ranks.get(String(p.id));
+  if(key==='rank')return p.yahoo_rank??p.rank;
+  if(key==='bye')return p.bye;
+  if(['PassYds','RunYds','REC','RecYds'].includes(key))return p.projection_stats?.[key];
+  return config.tools?.metric(p)?.[key];
+ }
+ function compareRows(a,b,ranks){
+  const key=sortMode(),text=key==='name'||key==='status',direction=sortDirection()==='desc'?-1:1;
+  const value=p=>{const v=columnValue(p,key,ranks);if(v==null||String(v).trim()==='')return null;return text?String(v):Number.isFinite(Number(v))?Number(v):null;};
+  const av=value(a),bv=value(b);
+  // Missing figures stay last in either direction; actual zeroes remain sortable.
+  if(av==null&&bv!=null)return 1;
+  if(bv==null&&av!=null)return -1;
+  const comparison=av==null?0:text?collation.compare(av,bv):av-bv;
+  return direction*comparison||(ranks.get(String(a.id))??0)-(ranks.get(String(b.id))??0)||collation.compare(a.name||'',b.name||'')||String(a.id).localeCompare(String(b.id));
+ }
+ function columnHeader(key,label){
+  const active=sortMode()===key,direction=sortDirection(),next=active?(direction==='asc'?'desc':'asc'):defaultDirection(key);
+  return `<th scope="col" class="desk-sortable-heading"${active?` aria-sort="${direction==='asc'?'ascending':'descending'}"`:''}><button type="button" data-desk-column="${key}" aria-label="${esc(label)}: sort ${next==='asc'?'ascending':'descending'}">${esc(label)}<span aria-hidden="true">${active?(direction==='asc'?'↑':'↓'):'↕'}</span></button></th>`;
+ }
  function playerTable(){
   const ranks=new Map((config.tools?.ordered(config.players)||config.players).map((p,i)=>[String(p.id),i+1]));
-  const rows=config.players.filter(p=>(ui.showDrafted||!drafted(p))&&(ui.position==='ALL'||position(p.position)===ui.position)&&(!ui.search||`${p.name} ${p.nfl_team} ${p.position}`.toLowerCase().includes(ui.search.toLowerCase()))).sort((a,b)=>{const mode=config.tools?.state.editing?'personal':ui.sort||'personal';if(mode==='personal')return ranks.get(String(a.id))-ranks.get(String(b.id));if(mode==='rank')return Number(a.yahoo_rank??a.rank??99999)-Number(b.yahoo_rank??b.rank??99999);const av=config.tools?.metric(a)?.[mode],bv=config.tools?.metric(b)?.[mode];if(av==null)return bv==null?0:1;if(bv==null)return -1;return mode==='yahoo_adp'?av-bv:bv-av;});
-  return `${rankTools()}<div class="desk-filters"><label><span class="desk-sr">Position</span><select data-desk-position>${['ALL','QB','RB','WR','TE','K','DEF'].map(v=>`<option value="${v}" ${ui.position===v?'selected':''}>${v==='ALL'?'All positions':v}</option>`).join('')}</select></label><label class="desk-search"><span aria-hidden="true">⌕</span><input data-desk-search placeholder="Search for a player" aria-label="Search for a player" value="${esc(ui.search)}"></label><label class="desk-checkbox"><input type="checkbox" data-desk-drafted ${ui.showDrafted?'checked':''}>Show drafted</label><label>Sort <select data-desk-sort ${config.tools?.state.editing?'disabled':''}>${[['personal','My Rankings'],['rank','Yahoo Rank'],['yahoo_adp','Yahoo ADP'],['previous_fantasy_points','Previous points'],['projected_fantasy_points','Projected points']].map(([v,l])=>`<option value="${v}" ${(ui.sort||'personal')===v?'selected':''}>${l}</option>`).join('')}</select></label><span class="desk-count">${rows.length} players</span></div>
-  <div class="desk-table-scroll" data-desk-scroll="players"><table class="desk-player-table"><thead><tr><th scope="col">Queue</th><th scope="col">My Rank</th><th scope="col">Yahoo Rank</th><th scope="col">Player</th><th scope="col">Yahoo ADP</th><th scope="col">${config.tools?.state.context?.season_year?config.tools.state.context.season_year-1:"Previous"} FPTS</th><th scope="col">${config.tools?.state.context?.season_year||"Current"} Proj FPTS</th><th scope="col">Bye</th><th scope="col">Pass Yds</th><th scope="col">Rush Yds</th><th scope="col">Rec</th><th scope="col">Rec Yds</th><th scope="col">Status / Action</th></tr></thead><tbody>${rows.map(p=>`<tr class="${String(p.id)===String(ui.selected||config.activePlayer?.id)?'is-selected':''} ${drafted(p)?'is-drafted':''}"><td>${star(p)}</td><td>${config.tools?.state.editing?`<input class="desk-rank-input" type="number" min="1" max="${config.players.length}" value="${ranks.get(String(p.id))}" data-personal-rank="${esc(p.id)}" aria-label="Rank ${esc(p.name)}" ${config.tools.state.busy||config.tools.state.rankingReading||config.tools.state.rankingPreview?'disabled':''}>`:ranks.get(String(p.id))}</td><td>${number(p.yahoo_rank??p.rank)}</td><td>${selectButton(p)}<div class="desk-player-meta">${esc(p.nfl_team||'—')} · ${esc(position(p.position))}${p.rights_team_id?` · Rights: ${esc(config.teams.find(t=>t.id===p.rights_team_id)?.name||'Assigned')}`:''}</div></td><td title="${esc(config.tools?.metric(p)?.source||'Yahoo ADP not loaded')}">${number(config.tools?.metric(p)?.yahoo_adp)}</td><td title="${esc(config.tools?.metric(p)?.previous_source||'Previous season points not loaded')}">${number(config.tools?.metric(p)?.previous_fantasy_points)}</td><td title="${esc(config.tools?.metric(p)?.source||'Season projection not loaded')}">${number(config.tools?.metric(p)?.projected_fantasy_points)}</td><td>${number(p.bye)}</td><td>${stat(p,'PassYds')}</td><td>${stat(p,'RunYds')}</td><td>${stat(p,'REC')}</td><td>${stat(p,'RecYds')}</td><td>${drafted(p)?'Drafted':config.playerAction(p)||esc(p.status==='queued'?'Nominated':p.id===config.activePlayer?.id?'On the block':'Available')}</td></tr>`).join('')||'<tr><td colspan="13" class="desk-empty">No matching players.</td></tr>'}</tbody></table></div><div class="desk-data-note">${esc(config.sourceNote)} Yahoo ADP and full-season fantasy totals appear when verified data is loaded; missing figures display as dashes.</div>`;
+  const rows=config.players.filter(p=>(ui.showDrafted||!drafted(p))&&(ui.position==='ALL'||position(p.position)===ui.position)&&(!ui.search||`${p.name} ${p.nfl_team} ${p.position}`.toLowerCase().includes(ui.search.toLowerCase()))).sort((a,b)=>compareRows(a,b,ranks));
+  return `${rankTools()}<div class="desk-filters"><label><span class="desk-sr">Position</span><select data-desk-position>${['ALL','QB','RB','WR','TE','K','DEF'].map(v=>`<option value="${v}" ${ui.position===v?'selected':''}>${v==='ALL'?'All positions':v}</option>`).join('')}</select></label><label class="desk-search"><span aria-hidden="true">⌕</span><input data-desk-search placeholder="Search for a player" aria-label="Search for a player" value="${esc(ui.search)}"></label><label class="desk-checkbox"><input type="checkbox" data-desk-drafted ${ui.showDrafted?'checked':''}>Show drafted</label><label>Sort <select data-desk-sort>${columns().map(([v,l])=>`<option value="${v}" ${sortMode()===v?'selected':''}>${esc(l)}</option>`).join('')}</select></label><span class="desk-count">${rows.length} players</span></div>
+  <div class="desk-table-scroll" data-desk-scroll="players"><table class="desk-player-table"><thead><tr>${columns().map(([key,label])=>columnHeader(key,label)).join('')}</tr></thead><tbody>${rows.map(p=>`<tr class="${String(p.id)===String(ui.selected||config.activePlayer?.id)?'is-selected':''} ${drafted(p)?'is-drafted':''}"><td>${star(p)}</td><td>${config.tools?.state.editing?`<input class="desk-rank-input" type="number" min="1" max="${config.players.length}" value="${ranks.get(String(p.id))}" data-personal-rank="${esc(p.id)}" aria-label="Rank ${esc(p.name)}" ${config.tools.state.busy||config.tools.state.rankingReading||config.tools.state.rankingPreview?'disabled':''}>`:ranks.get(String(p.id))}</td><td>${number(p.yahoo_rank??p.rank)}</td><td>${selectButton(p)}<div class="desk-player-meta">${esc(p.nfl_team||'—')} · ${esc(position(p.position))}${p.rights_team_id?` · Rights: ${esc(config.teams.find(t=>t.id===p.rights_team_id)?.name||'Assigned')}`:''}</div></td><td title="${esc(config.tools?.metric(p)?.source||'Yahoo ADP not loaded')}">${number(config.tools?.metric(p)?.yahoo_adp)}</td><td title="${esc(config.tools?.metric(p)?.previous_source||'Previous season points not loaded')}">${number(config.tools?.metric(p)?.previous_fantasy_points)}</td><td title="${esc(config.tools?.metric(p)?.source||'Season projection not loaded')}">${number(config.tools?.metric(p)?.projected_fantasy_points)}</td><td>${number(p.bye)}</td><td>${stat(p,'PassYds')}</td><td>${stat(p,'RunYds')}</td><td>${stat(p,'REC')}</td><td>${stat(p,'RecYds')}</td><td>${drafted(p)?'Drafted':config.playerAction(p)||esc(p.status==='queued'?'Nominated':p.id===config.activePlayer?.id?'On the block':'Available')}</td></tr>`).join('')||'<tr><td colspan="13" class="desk-empty">No matching players.</td></tr>'}</tbody></table></div><div class="desk-data-note">${esc(config.sourceNote)} Yahoo ADP and full-season fantasy totals appear when verified data is loaded; missing figures display as dashes.</div>`;
  }
 
  function teamsPanel(){
@@ -61,13 +97,23 @@ export function createDraftRoom(phase,roomCode){
   root.querySelector('[data-rank-upload]')?.addEventListener('click',()=>{if(t.state.rankingUploadOpen)t.closeRankingUpload();else t.state.rankingUploadOpen=true;rerender();});
   root.querySelectorAll('[data-rank-upload-close]').forEach(el=>el.addEventListener('click',()=>{t.closeRankingUpload();rerender();}));
   root.querySelector('[data-rank-file]')?.addEventListener('change',async e=>{const file=e.target.files?.[0];if(!file)return;const pending=t.previewRankingFile(file,config.players);rerender();await pending;rerender();});
-  root.querySelector('[data-rank-use]')?.addEventListener('click',()=>{if(t.useRankingPreview(config.players)){ui.sort='personal';ui.search='';ui.position='ALL';}rerender();});
+  root.querySelector('[data-rank-use]')?.addEventListener('click',()=>{if(t.useRankingPreview(config.players)){ui.sort='personal';ui.sortDirection='asc';ui.search='';ui.position='ALL';}rerender();});
   root.querySelector('[data-rank-template]')?.addEventListener('click',()=>{
    const url=URL.createObjectURL(new Blob(['\uFEFFrank,player_name,team,position\r\n'],{type:'text/csv;charset=utf-8'}));
    const link=document.createElement('a');link.href=url;link.download='GLSK-my-rankings-template.csv';document.body.appendChild(link);link.click();link.remove();setTimeout(()=>URL.revokeObjectURL(url),1000);
   });
-  root.querySelector('[data-desk-sort]')?.addEventListener('change',e=>{ui.sort=e.target.value;rerender();});
-  root.querySelector('[data-rank-edit]')?.addEventListener('click',()=>{t.edit(config.players);ui.sort='personal';rerender();});
+  const applySort=(key,toggle=false)=>{
+   if(!columns().some(([k])=>k===key))return;
+   const direction=toggle&&sortMode()===key?(sortDirection()==='asc'?'desc':'asc'):defaultDirection(key);
+   ui.sort=key;ui.sortDirection=direction;rerender();
+   const table=root.querySelector('[data-desk-scroll="players"]');if(table)table.scrollTop=0;
+   if(toggle)root.querySelector(`[data-desk-column="${key}"]`)?.focus({preventScroll:true});
+  };
+  root.querySelectorAll('[data-desk-column]').forEach(button=>button.addEventListener('click',()=>applySort(button.dataset.deskColumn,true)));
+  const sortSelect=root.querySelector('[data-desk-sort]');
+  if(sortSelect)sortSelect.value=sortMode();
+  sortSelect?.addEventListener('change',e=>applySort(e.target.value));
+  root.querySelector('[data-rank-edit]')?.addEventListener('click',()=>{t.edit(config.players);ui.sort='personal';ui.sortDirection='asc';rerender();});
   root.querySelector('[data-rank-cancel]')?.addEventListener('click',()=>{t.state.editing=false;t.state.order=[...t.state.saved];t.state.notice='';rerender();});
   root.querySelector('[data-rank-reset]')?.addEventListener('click',()=>{t.state.order=config.players.slice().sort((a,b)=>Number(a.yahoo_rank??a.rank??99999)-Number(b.yahoo_rank??b.rank??99999)).map(p=>String(p.id));rerender();});
   root.querySelectorAll('[data-personal-rank]').forEach(el=>el.addEventListener('change',()=>{t.move(el.dataset.personalRank,Number(el.value));rerender();}));
@@ -86,10 +132,11 @@ export function createDraftRoom(phase,roomCode){
  }
  function capture(root){
   const focused=root.querySelector('[data-desk-search]'),hasFocus=focused&&document.activeElement===focused,start=focused?.selectionStart,end=focused?.selectionEnd;
+  const headerKey=root.contains(document.activeElement)?document.activeElement?.dataset?.deskColumn:null;
   const scrolls=[...root.querySelectorAll('[data-desk-scroll]')].map(e=>[e.dataset.deskScroll,e.scrollTop,e.scrollLeft]);
   const details=[...root.querySelectorAll('.desk-order,.desk-commissioner')].map(e=>[e.className,e.open]);
   const teamOpen=[...root.querySelectorAll('[data-desk-detail]')].filter(e=>e.open).map(e=>e.dataset.deskDetail);
-  return ()=>{if(hasFocus){const e=root.querySelector('[data-desk-search]');e?.focus({preventScroll:true});e?.setSelectionRange(start,end);}for(const [key,top,left] of scrolls){const e=root.querySelector(`[data-desk-scroll="${key}"]`);if(e){e.scrollTop=top;e.scrollLeft=left;}}for(const [cls,open]of details){const e=root.querySelector('.'+cls);if(e)e.open=open;}for(const e of root.querySelectorAll('[data-desk-detail]'))e.open=teamOpen.includes(e.dataset.deskDetail);};
+  return ()=>{if(hasFocus){const e=root.querySelector('[data-desk-search]');e?.focus({preventScroll:true});e?.setSelectionRange(start,end);}if(headerKey)root.querySelector(`[data-desk-column="${headerKey}"]`)?.focus({preventScroll:true});for(const [key,top,left] of scrolls){const e=root.querySelector(`[data-desk-scroll="${key}"]`);if(e){e.scrollTop=top;e.scrollLeft=left;}}for(const [cls,open]of details){const e=root.querySelector('.'+cls);if(e)e.open=open;}for(const e of root.querySelectorAll('[data-desk-detail]'))e.open=teamOpen.includes(e.dataset.deskDetail);};
  }
  return {view,bind,capture};
 }

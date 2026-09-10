@@ -178,3 +178,11 @@
 .desk-rank-upload .desk-upload-error{color:#923426;background:#ffede8;border:1px solid #eac3b9;border-radius:4px;padding:10px}.desk-upload-note{color:#567286;font-size:13px}
 .desk-ranking-preview:focus-visible{outline:3px solid #32a7f5;outline-offset:2px}
 @media(max-width:700px){.desk-rank-upload{padding:12px 10px}.desk-upload-actions{align-items:flex-start}.desk-upload-actions label{width:100%}}
+/* Full header buttons work with mouse, touch, Enter and Space. */
+.desk-player-table th.desk-sortable-heading{padding:0}
+.desk-sortable-heading>button{display:flex;align-items:center;justify-content:space-between;gap:9px;width:100%;min-height:44px;padding:10px 12px;border:0;border-radius:0;background:transparent;color:inherit;text-align:left;white-space:nowrap;font:inherit;font-weight:inherit;cursor:pointer;touch-action:manipulation}
+.desk-sortable-heading>button>span{font-size:14px;line-height:1;color:#778d9e}
+.desk-sortable-heading>button:hover{background:#e2edf7}
+.desk-player-table th.desk-sortable-heading[aria-sort]{background:#dfedf8;color:#16486b}
+.desk-sortable-heading[aria-sort]>button>span{color:#146496;font-weight:900}
+.draft-desk .desk-sortable-heading>button:focus-visible{outline:3px solid #258bc9;outline-offset:-3px}
