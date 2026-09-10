@@ -186,3 +186,8 @@
 .desk-player-table th.desk-sortable-heading[aria-sort]{background:#dfedf8;color:#16486b}
 .desk-sortable-heading[aria-sort]>button>span{color:#146496;font-weight:900}
 .draft-desk .desk-sortable-heading>button:focus-visible{outline:3px solid #258bc9;outline-offset:-3px}
+
+/* Round boundaries in the Supplemental and Snake drafting-order rails. */
+.desk-round-divider{display:flex;align-items:center;justify-content:center;gap:10px;padding:12px 14px;margin:0;background:#192630;color:#d7e9f6;border-top:1px solid #607b8f;border-bottom:1px solid #475f71;font-size:14px;font-weight:800;white-space:nowrap}
+.desk-round-divider::before,.desk-round-divider::after{content:"";height:1px;flex:1;background:#607b8f}
+@media(max-width:700px){.desk-round-divider{flex:0 0 100px;align-self:stretch;min-height:64px;padding:10px;border:0;border-left:1px solid #607b8f;border-right:1px solid #607b8f}.desk-round-divider::before,.desk-round-divider::after{display:none}}
