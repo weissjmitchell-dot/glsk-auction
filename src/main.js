@@ -5,6 +5,9 @@ import { supabase, configured } from './supabase.js';
 import { ROOM_CODE, LEAGUE_NAME } from './config.js';
 import { requireOwnerAccount, legacySessionFromAccount, signOutOwner, promptOwnerPush } from './auth.js';
 
+import {createDraftRoom} from './draft-room.js';
+import './draft-room.css';
+const desk=createDraftRoom('auction',ROOM_CODE);
 const app = document.querySelector('#app');
 const STORAGE_KEY = `glsk-auction-session-${ROOM_CODE}`;
 const SOUND_STORAGE_KEY = `glsk-auction-sound-${ROOM_CODE}`;
@@ -316,7 +319,7 @@ function topBar() {
     </header>`;
 }
 
-function actionView() {
+function auctionStageView() {
   if (state.room.status === 'complete') {
     return `<div class="card hero-complete"><div class="trophy">🏆</div><h2>Auction Complete</h2><p class="muted">All 40 auction players have been sold.</p><div class="row gap-8 wrap" style="justify-content:center;margin-top:12px"><button class="btn btn-dark" data-tab="log">View Results</button><a class="btn btn-primary phase-button" href="/supplemental">Open Phase 2 →</a><a class="btn btn-outline phase-button" href="/phase3">Phase 3 →</a></div></div>`;
   }
@@ -358,20 +361,7 @@ function actionView() {
       <div>${state.room.status === 'setup' ? 'The commissioner will start the draft shortly.' : state.room.status === 'paused' ? 'The auction is paused.' : 'Waiting for the commissioner to nominate a player.'}</div>
     </div>`;
 
-  const q = queuedPlayers();
-  const queue = `
-    <div class="card queue-card">
-      <div class="queue-title">Nomination Queue</div>
-      ${q.length ? q.slice(0, 8).map((x,i) => `
-        <div class="player-row">
-          <div class="rank">#${x.rank}</div>
-          ${positionBadge(x.position)}
-          <div class="player-row-name">${escapeHtml(x.name)}<div class="player-row-sub">${escapeHtml(x.nfl_team)}</div>${rightsBadge(x)}</div>
-          <span class="tag ${i === 0 ? 'tag-next' : 'tag-queued'}">${i === 0 ? 'Up next' : 'Queued'}</span>
-        </div>`).join('') : `<div class="empty">No players are queued.</div>`}
-    </div>`;
-
-  return `<div class="desktop-grid"><div>${stage}${commishPanel()}</div>${queue}</div>`;
+  return stage;
 }
 
 function commishPanel() {
@@ -486,14 +476,29 @@ function setupErrorView() {
   return `<div class="login-wrap"><div class="login-card"><div class="login-head"><h1>Auction App Ready</h1><p>Database connection still needs to be added.</p></div><div class="login-body"><div class="notice">Create a <code>.env</code> file from <code>.env.example</code>, add the Supabase project URL and anon key, then restart the app.</div></div></div></div>`;
 }
 
+
+function draftDeskView(){
+ const p=activePlayer(),me=myTeam(),room=state.room;
+ const order=queuedPlayers().map((x,i)=>`<div class="desk-order-item ${i===0?'is-current':''}"><span class="desk-order-number">${i+1}</span><div><strong>${escapeHtml(x.name)}</strong><small>${escapeHtml(x.nfl_team)} · ${escapeHtml(x.position)}</small></div></div>`).join('');
+ return desk.view({players:state.players,teams:state.teams,myTeam:me,roster:myRosterEntries(),rosterLimit:18,activePlayer:p,
+ timerId:'timer',clockLabel:room.status==='live'?'Auction clock':room.status,clockDetail:`${state.sales.length} of ${state.players.length} sold`,turnNote:p?'Bidding is open to eligible teams.':'Waiting for the next nomination.',orderTitle:'Nomination Queue',orderHtml:order,
+ stageHtml:auctionStageView(),commissionerHtml:commishPanel(),
+ tabs:[{key:'action',label:'Players',active:['action','players'].includes(state.tab)},{key:'teams',label:'Teams',active:state.tab==='teams'},{key:'log',label:'Draft Results',active:state.tab==='log'},{key:'myteam',label:'My Team',active:state.tab==='myteam'}],
+ contentHtml:state.tab==='teams'?teamsView():state.tab==='log'?logView():state.tab==='myteam'?myTeamView():null,
+ playerAction:x=>isCommish()&&room.status!=='complete'?(x.status==='available'?`<button class="btn btn-sm btn-primary" data-queue="${x.id}">Queue for auction</button>`:x.status==='queued'?`<button class="btn btn-sm btn-outline" data-unqueue="${x.id}">Unqueue</button>`:''):'',
+ sourceNote:'Top 40 auction order. Projection fields display only when available in the player record.'});
+}
+
 function render() {
   if (!configured) { app.innerHTML = setupErrorView(); return; }
   if (state.loading) { app.innerHTML = `<div class="login-wrap"><div style="color:white;font-weight:900">Loading auction room…</div></div>`; return; }
   if (!state.session) { app.innerHTML = loginView(); bindEvents(); return; }
-  let content = state.tab === 'players' ? playersView() : state.tab === 'teams' ? teamsView() : state.tab === 'log' ? logView() : state.tab === 'myteam' ? myTeamView() : actionView();
-  app.innerHTML = `<div class="app-shell">${topBar()}<main class="main">${content}</main>${bottomNav()}</div>`;
+  const restore=desk.capture(app);
+  app.innerHTML = `<div class="draft-desk-shell">${topBar()}${draftDeskView()}</div>`;
   bindEvents();
+  desk.bind(app,render);
   updateCountdown();
+  restore();
 }
 
 async function join() {

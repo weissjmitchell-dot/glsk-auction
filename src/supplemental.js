@@ -5,6 +5,9 @@ import { supabase, configured } from './supabase.js';
 import { ROOM_CODE, LEAGUE_NAME } from './config.js';
 import { requireOwnerAccount, legacySessionFromAccount, signOutOwner, promptOwnerPush } from './auth.js';
 
+import {createDraftRoom} from './draft-room.js';
+import './draft-room.css';
+const desk=createDraftRoom('supplemental',ROOM_CODE);
 const app = document.querySelector('#app');
 const STORAGE_KEY = `glsk-auction-session-${ROOM_CODE}`;
 const SOUND_STORAGE_KEY = `glsk-auction-sound-${ROOM_CODE}`;
@@ -170,7 +173,7 @@ function stageView(){
   let body='';
   if(s.stage==='pick'){
     const mineOn=mine&&cp&&mine.id===cp.id;
-    body=`<div class="pick-label">Pick ${s.current_pick_no} • Round ${roundForPick(s.current_pick_no)}</div><div class="on-clock">${escapeHtml(cp?.name||'—')} is on the clock</div><p class="muted small" style="margin-top:7px">Select any available player. After the selection, the league gets a 10-second challenge window.</p>${mineOn?'<div class="notice" style="margin-top:12px">You are on the clock. Choose a player below or from the Players tab.</div>':''}<div class="supp-mini-list">${availablePlayers().slice(0,7).map(p=>playerRow(p,true)).join('')}</div>`;
+    body=`<div class="pick-label">Pick ${s.current_pick_no} • Round ${roundForPick(s.current_pick_no)}</div><div class="on-clock">${escapeHtml(cp?.name||'—')} is on the clock</div><p class="muted small" style="margin-top:7px">Select any available player. After the selection, the league gets a 10-second challenge window.</p>${mineOn?'<div class="notice" style="margin-top:12px">You are on the clock. Choose a player below or from the Players tab.</div>':''}`;
   } else if(s.stage==='challenge'){
     const isSelector=mine?.id===s.selected_by_team_id, isRights=mine&&rights&&mine.id===rights.id;
     body=`<div class="pick-label">Pick ${s.current_pick_no} • Challenge Window</div>${sp?`<div class="player-line" style="margin-top:7px">${positionBadge(sp.position)}<div class="player-main"><div class="player-name">${escapeHtml(sp.name)}</div><div class="player-meta">${escapeHtml(sp.nfl_team)} • Yahoo #${sp.yahoo_rank}</div></div></div>`:''}<div class="challenge-banner"><strong>${escapeHtml(teamById(s.selected_by_team_id)?.name||'Picker')}</strong> selected this player. If nobody challenges, the player is awarded for <strong>$0</strong>.</div>${rights?`<div class="rights-banner">Restricted rights: <strong>${escapeHtml(rights.name)}</strong> can start a head-to-head auction at <strong>2 bids</strong>. Any third team can instead open normal league bidding at 6.</div>`:''}<div class="supp-actions">${mine&&!isSelector?`<button class="btn btn-challenge" data-action="challenge-open" ${mine.remaining_budget<6?'disabled':''}>Challenge at $6</button>`:''}${isRights&&!isSelector?`<button class="btn btn-rights-live" data-action="challenge-rights" ${mine.remaining_budget<2?'disabled':''}>Use Rookie Rights • $2 H2H</button>`:''}${isSelector?'<span class="notice">Your selection is being challenged for 10 seconds.</span>':''}</div>`;
@@ -209,13 +212,27 @@ function loginView(){const opts=state.teams.map(t=>`<option value="${t.id}">${es
 function migrationView(){return `<div class="login-wrap"><div class="login-card"><div class="login-head"><h1>Phase 2 App Ready</h1><p>The Supplemental database migration still needs to be installed.</p></div><div class="login-body"><div class="notice">Run <strong>supabase/phase2.sql</strong> in the GLSK Supabase SQL Editor, then refresh this page.</div><a class="btn-link btn-block" href="/" style="display:block;text-align:center;text-decoration:none">← Auction room</a></div></div></div>`;}
 function connectionView(e){return `<div class="login-wrap"><div class="login-card"><div class="login-head"><h1>Connection Error</h1><p>Supplemental room could not load.</p></div><div class="login-body"><div class="error">${escapeHtml(e.message)}</div></div></div></div>`;}
 
+
+function draftDeskView(){
+ const me=myTeam(),s=state.settings,cp=currentPicker();
+ const remaining=Array.from({length:24},(_,i)=>i+1).filter(n=>n>=s.current_pick_no&&!state.picks.some(p=>p.pick_no===n));
+ const until=remaining.findIndex(n=>pickerForPick(n)?.id===me?.id);
+ const order=remaining.map(n=>{const t=pickerForPick(n);return `<div class="desk-order-item ${n===s.current_pick_no&&s.status==='live'?'is-current':''} ${t?.id===me?.id?'is-mine':''}"><span class="desk-order-number">${n}</span><div><strong>${escapeHtml(t?.name||'—')}</strong><small>Round ${roundForPick(n)}</small></div></div>`}).join('');
+ return desk.view({players:state.players,teams:state.teams,myTeam:me,roster:myRosterEntries(),rosterLimit:18,activePlayer:selectedPlayer(),timerId:'supp-timer',clockLabel:s.status==='live'?s.stage.replaceAll('_',' '):s.status,clockDetail:s.status==='complete'?'Draft complete':`Round ${roundForPick(s.current_pick_no)} · Pick ${s.current_pick_no}`,turnNote:s.status==='complete'?'All supplemental picks completed.':until===0?'Your turn':until>0?`${until} picks until your turn`:'Your supplemental picks are complete.',orderTitle:'Drafting Order',orderHtml:order,
+ stageHtml:stageView(),commissionerHtml:commishPanel(),
+ tabs:[{key:'draft',label:'Players',active:['draft','players'].includes(state.tab)},{key:'teams',label:'Teams',active:state.tab==='teams'},{key:'results',label:'Draft Results',active:state.tab==='results'},{key:'order',label:'Order & Timers',active:state.tab==='order'},{key:'myteam',label:'My Team',active:state.tab==='myteam'}],
+ contentHtml:state.tab==='teams'?draftTeamsView():state.tab==='results'?resultsView():state.tab==='order'?orderView():state.tab==='myteam'?myTeamView():null,
+ playerAction:p=>p.status==='available'&&canCurrentUserSelect()?`<button class="btn btn-sm btn-primary" data-select-player="${p.id}">Select</button>`:'',sourceNote:'Yahoo Half-PPR rank snapshot: September 5, 2026. Available raw projections: June 9 snapshot. Missing values display as dashes.'});
+}
+function draftTeamsView(){return `<div class="team-grid">${state.teams.map(t=>`<div class="team-row"><div class="team-name">${escapeHtml(t.name)}</div><div class="team-budget">${money(t.remaining_budget)}</div></div>`).join('')}</div>`;}
+
 function render(){
   if(!configured){app.innerHTML=migrationView();return;}
   if(state.loading){app.innerHTML='<div class="login-wrap"><div style="color:white;font-weight:900">Loading Supplemental Draft…</div></div>';return;}
   if(state.migrationMissing){app.innerHTML=migrationView();return;}
   if(!state.session){app.innerHTML=loginView();bindEvents();return;}
-  let content=state.tab==='players'?playersView():state.tab==='order'?orderView():state.tab==='results'?resultsView():state.tab==='myteam'?myTeamView():draftView();
-  app.innerHTML=`<div class="app-shell">${topBar()}<main class="main">${content}</main>${bottomNav()}</div>`;bindEvents();updateCountdown();
+  const restore=desk.capture(app);
+  app.innerHTML=`<div class="draft-desk-shell">${topBar()}${draftDeskView()}</div>`;bindEvents();desk.bind(app,render);updateCountdown();restore();
 }
 
 async function join(){unlockAudio();const teamId=document.querySelector('#join-team')?.value,pin=document.querySelector('#team-pin')?.value.trim(),err=document.querySelector('#join-error');if(!teamId||!pin){err.innerHTML='<div class="error">Select your team and enter its PIN.</div>';return;}try{await rpc('join_room',{p_room_code:ROOM_CODE,p_team_id:teamId,p_pin:pin});const t=teamById(teamId);let commishPin=null;if(t?.name===COMMISH_TEAM_NAME){const valid=await rpc('commish_login',{p_room_code:ROOM_CODE,p_pin:pin});if(!valid?.valid)throw new Error('Commissioner access is not configured for this PIN.');commishPin=pin;}saveSession({teamId,pin,commishPin,spectator:false});render();}catch(e){err.innerHTML=`<div class="error">${escapeHtml(e.message)}</div>`;}}

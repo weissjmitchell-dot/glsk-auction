@@ -6,6 +6,9 @@ import { supabase, configured } from './supabase.js';
 import { ROOM_CODE, LEAGUE_NAME } from './config.js';
 import { requireOwnerAccount, legacySessionFromAccount, signOutOwner, promptOwnerPush } from './auth.js';
 
+import {createDraftRoom} from './draft-room.js';
+import './draft-room.css';
+const desk=createDraftRoom('snake',ROOM_CODE);
 const app = document.querySelector('#app');
 const STORAGE_KEY = `glsk-auction-session-${ROOM_CODE}`;
 const SOUND_STORAGE_KEY = `glsk-auction-sound-${ROOM_CODE}`;
@@ -197,7 +200,7 @@ function stageView(){
   if(s.status==='setup')return `<section class="card supp-stage"><div class="supp-stage-head"><div><div class="supp-stage-title">Roster-Fill Snake Draft</div><div class="supp-stage-sub">30-second picks • teams auto-skip at 18 players</div></div><div class="timer">--</div></div><div class="supp-body"><div class="on-clock">Ready for Phase 3</div><p class="muted">The commissioner can verify current roster counts, order, and timer before starting.</p></div></section>`;
 
   const mineOn=mine&&cp&&mine.id===cp.id;
-  return `<section class="card supp-stage"><div class="supp-stage-head"><div><div class="supp-stage-title">${s.status==='paused'?'Paused':'Roster-Fill Pick'}</div><div class="supp-stage-sub">Snake Round ${roundForTurn(s.current_turn_no)} • Turn ${s.current_turn_no}</div></div><div id="phase3-timer" class="timer">--</div></div><div class="supp-body"><div class="pick-label">On the clock</div><div class="on-clock">${escapeHtml(cp?.name||'—')}</div><div class="phase3-roster-line">${rs?`${rs.roster_count}/${rs.max_roster_size} rostered • ${Math.max(0,rs.max_roster_size-rs.roster_count)} spot${Math.max(0,rs.max_roster_size-rs.roster_count)===1?'':'s'} remaining`:''}</div>${mineOn?'<div class="notice" style="margin-top:12px">You are on the clock. Draft a player below or from the Players tab.</div>':''}<div class="supp-mini-list">${availablePlayers().slice(0,7).map(p=>playerRow(p,true)).join('')}</div></div></section>`;
+  return `<section class="card supp-stage"><div class="supp-stage-head"><div><div class="supp-stage-title">${s.status==='paused'?'Paused':'Roster-Fill Pick'}</div><div class="supp-stage-sub">Snake Round ${roundForTurn(s.current_turn_no)} • Turn ${s.current_turn_no}</div></div><div id="phase3-timer" class="timer">--</div></div><div class="supp-body"><div class="pick-label">On the clock</div><div class="on-clock">${escapeHtml(cp?.name||'—')}</div><div class="phase3-roster-line">${rs?`${rs.roster_count}/${rs.max_roster_size} rostered • ${Math.max(0,rs.max_roster_size-rs.roster_count)} spot${Math.max(0,rs.max_roster_size-rs.roster_count)===1?'':'s'} remaining`:''}</div>${mineOn?'<div class="notice" style="margin-top:12px">You are on the clock. Draft a player below or from the Players tab.</div>':''}</div></section>`;
 }
 
 function commishPanel(){
@@ -275,13 +278,24 @@ function loginView(){const opts=state.teams.map(t=>`<option value="${t.id}">${es
 function migrationView(){return `<div class="login-wrap"><div class="login-card"><div class="login-head"><h1>Phase 3 App Ready</h1><p>The Phase 3 database migration still needs to be installed.</p></div><div class="login-body"><div class="notice">Run <strong>supabase/phase3.sql</strong> in the GLSK Supabase SQL Editor, then refresh this page.</div><a class="btn-link btn-block" href="/supplemental" style="display:block;text-align:center;text-decoration:none">← Supplemental room</a></div></div></div>`;}
 function connectionView(e){return `<div class="login-wrap"><div class="login-card"><div class="login-head"><h1>Connection Error</h1><p>Phase 3 room could not load.</p></div><div class="login-body"><div class="error">${escapeHtml(e.message)}</div></div></div></div>`;}
 
+
+function draftDeskView(){
+ const me=myTeam(),s=state.settings,cp=currentPicker(),upcoming=predictedUpcoming(24),until=upcoming.findIndex(x=>x.team.id===me?.id);
+ const order=upcoming.map((x,i)=>`<div class="desk-order-item ${i===0&&s.status==='live'?'is-current':''} ${x.team.id===me?.id?'is-mine':''}"><span class="desk-order-number">${x.turn}</span><div><strong>${escapeHtml(x.team.name)}</strong><small>Round ${x.round}</small></div></div>`).join('');
+ return desk.view({players:state.players,teams:state.teams,myTeam:me,roster:myLeagueRosterEntries(),rosterLimit:s.max_roster_size||18,activePlayer:null,timerId:'phase3-timer',clockLabel:s.status==='live'?'Pick clock':s.status,clockDetail:s.status==='complete'?'Rosters complete':`Round ${roundForTurn(s.current_turn_no)} · Turn ${s.current_turn_no}`,turnNote:s.status==='complete'?'The roster-fill draft is complete.':until===0?'Your turn':until>0?`${until} picks until your turn`:me&&isFull(me.id)?'Your roster is full.':'More turns as roster spots open.',orderTitle:'Drafting Order',orderHtml:order,
+ stageHtml:stageView(),commissionerHtml:commishPanel(),
+ tabs:[{key:'draft',label:'Players',active:['draft','players'].includes(state.tab)},{key:'teams',label:'Teams',active:state.tab==='teams'},{key:'results',label:'Draft Results',active:state.tab==='results'},{key:'board',label:'Draft Board',active:state.tab==='board'},{key:'order',label:'Order & Timer',active:state.tab==='order'},{key:'myteam',label:'My Team',active:state.tab==='myteam'}],
+ contentHtml:state.tab==='teams'?rosterMini():state.tab==='results'?resultsView():state.tab==='order'?orderView():state.tab==='board'?boardView():state.tab==='myteam'?myTeamView():null,
+ playerAction:p=>s.status==='live'&&p.status==='available'&&((me&&cp&&me.id===cp.id&&!isFull(me.id))||isCommish())?`<button class="btn btn-sm btn-primary" data-select-player="${p.id}">Draft</button>`:'',sourceNote:'Ranks and available projected stats carry forward from the Supplemental snapshot. Missing values display as dashes.'});
+}
+
 function render(){
   if(!configured){app.innerHTML=migrationView();return;}
   if(state.loading){app.innerHTML='<div class="login-wrap"><div style="color:white;font-weight:900">Loading Phase 3…</div></div>';return;}
   if(state.migrationMissing){app.innerHTML=migrationView();return;}
   if(!state.session){app.innerHTML=loginView();bindEvents();return;}
-  const content=state.tab==='players'?playersView():state.tab==='order'?orderView():state.tab==='board'?boardView():state.tab==='results'?resultsView():state.tab==='myteam'?myTeamView():draftView();
-  app.innerHTML=`<div class="app-shell">${topBar()}<main class="main">${content}</main>${bottomNav()}</div>`;bindEvents();updateCountdown();
+  const restore=desk.capture(app);
+  app.innerHTML=`<div class="draft-desk-shell">${topBar()}${draftDeskView()}</div>`;bindEvents();desk.bind(app,render);updateCountdown();restore();
 }
 
 async function join(){
