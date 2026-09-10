@@ -645,13 +645,13 @@ function bottomNav(){
  return `<nav class="bottom-nav office-bottom-nav consolidated-nav"><div class="bottom-nav-inner" style="grid-template-columns:repeat(${items.length},minmax(0,1fr))">${items.map(([t,i,l])=>`<button class="nav-btn ${active===t?'active':''}" data-tab="${t}"><span class="nav-icon-wrap">${i}${t==='communications'&&state.chatUnread?`<b class="chat-nav-badge">${state.chatUnread>99?'99+':state.chatUnread}</b>`:''}</span>${l}</button>`).join('')}</div></nav>`;
 }
 
-function hubCard(tab,icon,title,body,badge=''){
-  return `<button class="nav-hub-card" data-tab="${tab}">
+function hubCard(tab,icon,title,body,badge='',href=''){
+  return `<${href?'a':'button'} class="nav-hub-card" ${href?`href="${esc(href)}" style="text-decoration:none;font:inherit"`:`data-tab="${tab}"`}>
     <div class="nav-hub-icon">${icon}</div>
     <div class="nav-hub-copy"><strong>${esc(title)}</strong><span>${esc(body)}</span></div>
     ${badge?`<b class="nav-hub-badge">${esc(badge)}</b>`:''}
     <div class="nav-hub-arrow">›</div>
-  </button>`;
+  </${href?'a':'button'}>`;
 }
 function teamHubView(){
   const me=myTeam();
@@ -726,12 +726,12 @@ function commissionerHubView(){
  return `${heading}<div class="row gap-8 wrap" style="margin-bottom:20px"><button class="btn btn-outline" data-commissioner-section="">‹ All Commissioner Tools</button><label>Section <select class="input" id="commissioner-section">${commissionerSections.map(([key,title])=>`<option value="${key}" ${key===section[0]?'selected':''}>${esc(title)}</option>`).join('')}</select></label></div>${views[section[0]]()}`;
 }
 
-function draftRoomsView(){
- if(state.draftPreparation)return `${pageHeading('Draft','Next-season draft preparation.','League Drafts')}<section class="card card-pad"><h2>Previous draft rooms archived</h2><p>The new season is in setup. Its player pools and draft rooms must be prepared before drafting resumes. The previous draft records have been preserved.</p></section>`;
- return `${pageHeading('Draft','Auction, supplemental and roster-fill draft rooms.','League Drafts')}<section class="office-section"><div class="office-section-head"><div><h2>Draft Rooms</h2><div class="section-caption">Choose a draft phase to open its room.</div></div></div><div class="draft-links"><a class="draft-link" href="/"><strong>⚡</strong><span>Auction</span><small>Top 40</small></a><a class="draft-link" href="/supplemental"><strong>↔</strong><span>Supplemental</span><small>2-round snake</small></a><a class="draft-link" href="/phase3"><strong>⇅</strong><span>Snake</span><small>Roster fill to 18</small></a></div></section>`;
+function draftHubView(){
+ const bids=hubCard('biddollars','$','Bid Dollars','Bid bank total and historical data.');
+ if(state.draftPreparation)return `${pageHeading('Draft','Next-season draft preparation.','League Drafts')}<section class="card card-pad"><h2>Previous draft rooms archived</h2><p>The new season is in setup. Its player pools and draft rooms must be prepared before drafting resumes. The previous draft records have been preserved.</p></section><div class="nav-hub-grid nav-hub-grid-three" style="margin-top:20px">${bids}</div>`;
+ return `${pageHeading('Draft','Auction, supplemental and roster-fill draft rooms.','League Drafts')}<section class="office-section"><div class="office-section-head"><div><h2>Draft Rooms</h2><div class="section-caption">Choose a draft phase to open its room.</div></div></div><div class="nav-hub-grid nav-hub-grid-three">${hubCard('','⚡','Auction','Top 40','','/')}${hubCard('','↔','Supplemental','2-round snake','','/supplemental')}${hubCard('','⇅','Snake','Roster fill to 18','','/phase3')}${bids}</div></section>`;
 }
 
-function draftHubView(){return draftRoomsView()+`<div class="hub-grid" style="margin-top:20px">${hubCard('biddollars','$','Bid Dollars','Bid bank total and historical data.')}</div>`;}
 function bidDollarsView(){return `${pageHeading('Bid Dollars','League bid bank and historical accounting.','Draft')}<div class="hub-grid">${hubCard('bidbank','$','Bid Bank total','Bid dollars collected for next season’s redistribution.')}${hubCard('bidhistory','↗','Historical Data','Auction stats, bid pool size by year and beginning bid trend.')}</div>`;}
 function bidBankPage(){return `${pageHeading('Bid Bank total','Bid dollars collected for next season’s redistribution.','Draft → Bid Dollars')}<button class="btn btn-outline" data-tab="biddollars" style="margin-bottom:16px">‹ Bid Dollars</button>${bidBankView(state.bidBank)}`;}
 function bidHistoryPage(){return `${pageHeading('Historical Data','Pre-auction workbook history.','Draft → Bid Dollars')}<button class="btn btn-outline" data-tab="biddollars" style="margin-bottom:16px">‹ Bid Dollars</button>${historicalBidView(state.bidHistoryTab||'auction')}`;}
