@@ -6,8 +6,11 @@ import { ROOM_CODE, LEAGUE_NAME } from './config.js';
 import { requireOwnerAccount, legacySessionFromAccount, signOutOwner, promptOwnerPush } from './auth.js';
 
 import {createDraftRoom} from './draft-room.js';
+import {createDraftTools} from './draft-tools.js';
+import {mountDraftComms,unmountDraftComms} from './draft-comms.js';
 import './draft-room.css';
 const desk=createDraftRoom('auction',ROOM_CODE);
+const draftTools=createDraftTools(supabase,'auction',ROOM_CODE);
 const app = document.querySelector('#app');
 const STORAGE_KEY = `glsk-auction-session-${ROOM_CODE}`;
 const SOUND_STORAGE_KEY = `glsk-auction-sound-${ROOM_CODE}`;
@@ -261,6 +264,7 @@ async function loadData() {
   state.rosterEntries = rosterRes.data || [];
   state.loading = false;
   if (previousSoundState) handleSoundTransitions(previousSoundState, soundSnapshot());
+ await draftTools.load();
 }
 
 function scheduleRefresh() {
@@ -480,7 +484,7 @@ function setupErrorView() {
 function draftDeskView(){
  const p=activePlayer(),me=myTeam(),room=state.room;
  const order=queuedPlayers().map((x,i)=>`<div class="desk-order-item ${i===0?'is-current':''}"><span class="desk-order-number">${i+1}</span><div><strong>${escapeHtml(x.name)}</strong><small>${escapeHtml(x.nfl_team)} · ${escapeHtml(x.position)}</small></div></div>`).join('');
- return desk.view({players:state.players,teams:state.teams,myTeam:me,roster:myRosterEntries(),rosterLimit:18,activePlayer:p,
+ return desk.view({tools:draftTools,allRoster:state.rosterEntries,players:state.players,teams:state.teams,myTeam:me,roster:myRosterEntries(),rosterLimit:18,activePlayer:p,
  timerId:'timer',clockLabel:room.status==='live'?'Auction clock':room.status,clockDetail:`${state.sales.length} of ${state.players.length} sold`,turnNote:p?'Bidding is open to eligible teams.':'Waiting for the next nomination.',orderTitle:'Nomination Queue',orderHtml:order,
  stageHtml:auctionStageView(),commissionerHtml:commishPanel(),
  tabs:[{key:'action',label:'Players',active:['action','players'].includes(state.tab)},{key:'teams',label:'Teams',active:state.tab==='teams'},{key:'log',label:'Draft Results',active:state.tab==='log'},{key:'myteam',label:'My Team',active:state.tab==='myteam'}],
@@ -492,11 +496,11 @@ function draftDeskView(){
 function render() {
   if (!configured) { app.innerHTML = setupErrorView(); return; }
   if (state.loading) { app.innerHTML = `<div class="login-wrap"><div style="color:white;font-weight:900">Loading auction room…</div></div>`; return; }
-  if (!state.session) { app.innerHTML = loginView(); bindEvents(); return; }
+  if (!state.session) { unmountDraftComms();app.innerHTML = loginView(); bindEvents(); return; }
   const restore=desk.capture(app);
   app.innerHTML = `<div class="draft-desk-shell">${topBar()}${draftDeskView()}</div>`;
   bindEvents();
-  desk.bind(app,render);
+  desk.bind(app,render);mountDraftComms({supabase,roomCode:ROOM_CODE,session:state.session,team:myTeam(),context:draftTools.state.context});
   updateCountdown();
   restore();
 }

@@ -7,8 +7,11 @@ import { ROOM_CODE, LEAGUE_NAME } from './config.js';
 import { requireOwnerAccount, legacySessionFromAccount, signOutOwner, promptOwnerPush } from './auth.js';
 
 import {createDraftRoom} from './draft-room.js';
+import {createDraftTools} from './draft-tools.js';
+import {mountDraftComms,unmountDraftComms} from './draft-comms.js';
 import './draft-room.css';
 const desk=createDraftRoom('snake',ROOM_CODE);
+const draftTools=createDraftTools(supabase,'snake',ROOM_CODE);
 const app = document.querySelector('#app');
 const STORAGE_KEY = `glsk-auction-session-${ROOM_CODE}`;
 const SOUND_STORAGE_KEY = `glsk-auction-sound-${ROOM_CODE}`;
@@ -138,6 +141,7 @@ async function loadData(){
   for(const r of[o,rs,re,p,pk,lre]) if(r.error) throw r.error;
   state.order=o.data||[];state.rosterState=rs.data||[];state.rosterEntries=re.data||[];state.players=p.data||[];state.picks=pk.data||[];state.leagueRosterEntries=lre.data||[];state.loading=false;
   const curr=snapshot();if(prev)handleTransitions(prev,curr);
+ await draftTools.load();
 }
 function scheduleRefresh(){clearTimeout(state.refreshTimer);state.refreshTimer=setTimeout(async()=>{try{await loadData();render();}catch(e){console.error(e);}},90);}
 function subscribeRealtime(){
@@ -282,7 +286,7 @@ function connectionView(e){return `<div class="login-wrap"><div class="login-car
 function draftDeskView(){
  const me=myTeam(),s=state.settings,cp=currentPicker(),upcoming=predictedUpcoming(24),until=upcoming.findIndex(x=>x.team.id===me?.id);
  const order=upcoming.map((x,i)=>`<div class="desk-order-item ${i===0&&s.status==='live'?'is-current':''} ${x.team.id===me?.id?'is-mine':''}"><span class="desk-order-number">${x.turn}</span><div><strong>${escapeHtml(x.team.name)}</strong><small>Round ${x.round}</small></div></div>`).join('');
- return desk.view({players:state.players,teams:state.teams,myTeam:me,roster:myLeagueRosterEntries(),rosterLimit:s.max_roster_size||18,activePlayer:null,timerId:'phase3-timer',clockLabel:s.status==='live'?'Pick clock':s.status,clockDetail:s.status==='complete'?'Rosters complete':`Round ${roundForTurn(s.current_turn_no)} · Turn ${s.current_turn_no}`,turnNote:s.status==='complete'?'The roster-fill draft is complete.':until===0?'Your turn':until>0?`${until} picks until your turn`:me&&isFull(me.id)?'Your roster is full.':'More turns as roster spots open.',orderTitle:'Drafting Order',orderHtml:order,
+ return desk.view({tools:draftTools,allRoster:state.leagueRosterEntries,players:state.players,teams:state.teams,myTeam:me,roster:myLeagueRosterEntries(),rosterLimit:s.max_roster_size||18,activePlayer:null,timerId:'phase3-timer',clockLabel:s.status==='live'?'Pick clock':s.status,clockDetail:s.status==='complete'?'Rosters complete':`Round ${roundForTurn(s.current_turn_no)} · Turn ${s.current_turn_no}`,turnNote:s.status==='complete'?'The roster-fill draft is complete.':until===0?'Your turn':until>0?`${until} picks until your turn`:me&&isFull(me.id)?'Your roster is full.':'More turns as roster spots open.',orderTitle:'Drafting Order',orderHtml:order,
  stageHtml:stageView(),commissionerHtml:commishPanel(),
  tabs:[{key:'draft',label:'Players',active:['draft','players'].includes(state.tab)},{key:'teams',label:'Teams',active:state.tab==='teams'},{key:'results',label:'Draft Results',active:state.tab==='results'},{key:'board',label:'Draft Board',active:state.tab==='board'},{key:'order',label:'Order & Timer',active:state.tab==='order'},{key:'myteam',label:'My Team',active:state.tab==='myteam'}],
  contentHtml:state.tab==='teams'?rosterMini():state.tab==='results'?resultsView():state.tab==='order'?orderView():state.tab==='board'?boardView():state.tab==='myteam'?myTeamView():null,
@@ -293,9 +297,9 @@ function render(){
   if(!configured){app.innerHTML=migrationView();return;}
   if(state.loading){app.innerHTML='<div class="login-wrap"><div style="color:white;font-weight:900">Loading Phase 3…</div></div>';return;}
   if(state.migrationMissing){app.innerHTML=migrationView();return;}
-  if(!state.session){app.innerHTML=loginView();bindEvents();return;}
+  if(!state.session){unmountDraftComms();app.innerHTML=loginView();bindEvents();return;}
   const restore=desk.capture(app);
-  app.innerHTML=`<div class="draft-desk-shell">${topBar()}${draftDeskView()}</div>`;bindEvents();desk.bind(app,render);updateCountdown();restore();
+  app.innerHTML=`<div class="draft-desk-shell">${topBar()}${draftDeskView()}</div>`;bindEvents();desk.bind(app,render);mountDraftComms({supabase,roomCode:ROOM_CODE,session:state.session,team:myTeam(),context:draftTools.state.context});updateCountdown();restore();
 }
 
 async function join(){

@@ -6,8 +6,11 @@ import { ROOM_CODE, LEAGUE_NAME } from './config.js';
 import { requireOwnerAccount, legacySessionFromAccount, signOutOwner, promptOwnerPush } from './auth.js';
 
 import {createDraftRoom} from './draft-room.js';
+import {createDraftTools} from './draft-tools.js';
+import {mountDraftComms,unmountDraftComms} from './draft-comms.js';
 import './draft-room.css';
 const desk=createDraftRoom('supplemental',ROOM_CODE);
+const draftTools=createDraftTools(supabase,'supplemental',ROOM_CODE);
 const app = document.querySelector('#app');
 const STORAGE_KEY = `glsk-auction-session-${ROOM_CODE}`;
 const SOUND_STORAGE_KEY = `glsk-auction-sound-${ROOM_CODE}`;
@@ -127,6 +130,7 @@ async function loadData(){
   for(const r of[o,p,pk,b,re]) if(r.error) throw r.error;
   state.order=o.data||[];state.players=p.data||[];state.picks=pk.data||[];state.bids=b.data||[];state.rosterEntries=re.data||[];state.loading=false;
   const curr=snapshot();if(prev)handleTransitions(prev,curr);audioState.snapshot=curr;
+ await draftTools.load();
 }
 function scheduleRefresh(){clearTimeout(state.refreshTimer);state.refreshTimer=setTimeout(async()=>{try{await loadData();render();}catch(e){console.error(e);}},90);}
 function subscribeRealtime(){
@@ -218,7 +222,7 @@ function draftDeskView(){
  const remaining=Array.from({length:24},(_,i)=>i+1).filter(n=>n>=s.current_pick_no&&!state.picks.some(p=>p.pick_no===n));
  const until=remaining.findIndex(n=>pickerForPick(n)?.id===me?.id);
  const order=remaining.map(n=>{const t=pickerForPick(n);return `<div class="desk-order-item ${n===s.current_pick_no&&s.status==='live'?'is-current':''} ${t?.id===me?.id?'is-mine':''}"><span class="desk-order-number">${n}</span><div><strong>${escapeHtml(t?.name||'—')}</strong><small>Round ${roundForPick(n)}</small></div></div>`}).join('');
- return desk.view({players:state.players,teams:state.teams,myTeam:me,roster:myRosterEntries(),rosterLimit:18,activePlayer:selectedPlayer(),timerId:'supp-timer',clockLabel:s.status==='live'?s.stage.replaceAll('_',' '):s.status,clockDetail:s.status==='complete'?'Draft complete':`Round ${roundForPick(s.current_pick_no)} · Pick ${s.current_pick_no}`,turnNote:s.status==='complete'?'All supplemental picks completed.':until===0?'Your turn':until>0?`${until} picks until your turn`:'Your supplemental picks are complete.',orderTitle:'Drafting Order',orderHtml:order,
+ return desk.view({tools:draftTools,allRoster:state.rosterEntries,players:state.players,teams:state.teams,myTeam:me,roster:myRosterEntries(),rosterLimit:18,activePlayer:selectedPlayer(),timerId:'supp-timer',clockLabel:s.status==='live'?s.stage.replaceAll('_',' '):s.status,clockDetail:s.status==='complete'?'Draft complete':`Round ${roundForPick(s.current_pick_no)} · Pick ${s.current_pick_no}`,turnNote:s.status==='complete'?'All supplemental picks completed.':until===0?'Your turn':until>0?`${until} picks until your turn`:'Your supplemental picks are complete.',orderTitle:'Drafting Order',orderHtml:order,
  stageHtml:stageView(),commissionerHtml:commishPanel(),
  tabs:[{key:'draft',label:'Players',active:['draft','players'].includes(state.tab)},{key:'teams',label:'Teams',active:state.tab==='teams'},{key:'results',label:'Draft Results',active:state.tab==='results'},{key:'order',label:'Order & Timers',active:state.tab==='order'},{key:'myteam',label:'My Team',active:state.tab==='myteam'}],
  contentHtml:state.tab==='teams'?draftTeamsView():state.tab==='results'?resultsView():state.tab==='order'?orderView():state.tab==='myteam'?myTeamView():null,
@@ -230,9 +234,9 @@ function render(){
   if(!configured){app.innerHTML=migrationView();return;}
   if(state.loading){app.innerHTML='<div class="login-wrap"><div style="color:white;font-weight:900">Loading Supplemental Draft…</div></div>';return;}
   if(state.migrationMissing){app.innerHTML=migrationView();return;}
-  if(!state.session){app.innerHTML=loginView();bindEvents();return;}
+  if(!state.session){unmountDraftComms();app.innerHTML=loginView();bindEvents();return;}
   const restore=desk.capture(app);
-  app.innerHTML=`<div class="draft-desk-shell">${topBar()}${draftDeskView()}</div>`;bindEvents();desk.bind(app,render);updateCountdown();restore();
+  app.innerHTML=`<div class="draft-desk-shell">${topBar()}${draftDeskView()}</div>`;bindEvents();desk.bind(app,render);mountDraftComms({supabase,roomCode:ROOM_CODE,session:state.session,team:myTeam(),context:draftTools.state.context});updateCountdown();restore();
 }
 
 async function join(){unlockAudio();const teamId=document.querySelector('#join-team')?.value,pin=document.querySelector('#team-pin')?.value.trim(),err=document.querySelector('#join-error');if(!teamId||!pin){err.innerHTML='<div class="error">Select your team and enter its PIN.</div>';return;}try{await rpc('join_room',{p_room_code:ROOM_CODE,p_team_id:teamId,p_pin:pin});const t=teamById(teamId);let commishPin=null;if(t?.name===COMMISH_TEAM_NAME){const valid=await rpc('commish_login',{p_room_code:ROOM_CODE,p_pin:pin});if(!valid?.valid)throw new Error('Commissioner access is not configured for this PIN.');commishPin=pin;}saveSession({teamId,pin,commishPin,spectator:false});render();}catch(e){err.innerHTML=`<div class="error">${escapeHtml(e.message)}</div>`;}}
