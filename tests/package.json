@@ -1,1 +1,12 @@
-{"private":true,"type":"module","scripts":{"test":"node rankings-csv.test.mjs"},"devDependencies":{"happy-dom":"20.14.2"}}
+{
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "node rankings-csv.test.mjs",
+    "test:msf": "node --test msf-trial.test.mjs && node msf-database.test.mjs && node msf-ui.test.mjs"
+  },
+  "devDependencies": {
+    "happy-dom": "20.14.2",
+    "@electric-sql/pglite": "0.5.8"
+  }
+}

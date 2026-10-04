@@ -1,3 +1,4 @@
+import {msfConnectionView,bindMsfConnection} from './msf-connection.js';
 import {yahooConnectionView,bindYahooConnection} from './yahoo-connection.js';
 import {bidBankView,historicalBidView} from './bid-bank.js';
 import './autocomplete.js';
@@ -703,6 +704,7 @@ function settingsHubView(){
 }
 
 const commissionerSections=[
+ ['msf','MySportsFeeds Trial','Test NFL data access before importing stats and projections.'],
  ['yahoo','Yahoo Connection','Connect your Yahoo account and check Fantasy Sports API access.'],
  ['rollover','Season Rollover','Preview the next season, confirm changes and undo an untouched rollover.'],
  ['teams','Rosters','Manual player additions and retirement or ban corrections.'],
@@ -725,7 +727,7 @@ function commissionerHubView(){
  const section=commissionerSections.find(([key])=>key===state.commissionerSection);
  const heading=`<button class="btn btn-outline" data-tab="settingshub" style="margin-bottom:16px">‹ Settings</button>${pageHeading('Commissioner','All League Office administration tools in one place.','League Administration')}`;
  if(!section)return `${heading}<section class="nav-hub-grid">${commissionerSections.map(([key,title,description])=>`<button class="nav-hub-card" data-commissioner-section="${key}"><div class="nav-hub-copy"><strong>${esc(title)}</strong><span>${esc(description)}</span></div><div class="nav-hub-arrow">›</div></button>`).join('')}</section>`;
- const views={yahoo:yahooConnectionView,rollover:rolloverView,teams:teamsView,contracts:contractsView,freeagents:freeAgencyView,trades:tradesView,lineup:lineupSetupPanel,matchups:matchupsView,reconcile:reconcileView,rules:rulesView,deadlines:deadlinesView,finances:financesView,transactions:transactionsView,history:historyView,board:boardView,chat:chatView};
+ const views={msf:msfConnectionView,yahoo:yahooConnectionView,rollover:rolloverView,teams:teamsView,contracts:contractsView,freeagents:freeAgencyView,trades:tradesView,lineup:lineupSetupPanel,matchups:matchupsView,reconcile:reconcileView,rules:rulesView,deadlines:deadlinesView,finances:financesView,transactions:transactionsView,history:historyView,board:boardView,chat:chatView};
  return `${heading}<div class="row gap-8 wrap" style="margin-bottom:20px"><button class="btn btn-outline" data-commissioner-section="">‹ All Commissioner Tools</button><label>Section <select class="input" id="commissioner-section">${commissionerSections.map(([key,title])=>`<option value="${key}" ${key===section[0]?'selected':''}>${esc(title)}</option>`).join('')}</select></label></div>${views[section[0]]()}`;
 }
 
@@ -2183,6 +2185,7 @@ function bind(){
  app.querySelectorAll("[data-bid-history]").forEach(b=>b.addEventListener("click",()=>{state.bidHistoryTab=b.dataset.bidHistory;render();}));
  bindRollover({state,rpc,refresh:async()=>{await loadData();render();}});
  bindYahooConnection({state});
+ bindMsfConnection({state});
  app.querySelectorAll('[data-open-team]').forEach(link=>link.addEventListener('click',event=>{
    if(event.button!==0||event.ctrlKey||event.metaKey||event.shiftKey||event.altKey)return;
    event.preventDefault();
