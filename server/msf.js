@@ -39,8 +39,8 @@ export async function rpc(auth, action, feed='games', fetcher=fetch) {
 }
 // Describe leaf field names/types, not player names, API credentials or stat values.
 export function summarize(data, feed) {
-  const collection=FEEDS[feed][0], rows=data?.[collection];
-  if (!Array.isArray(rows)) throw new MsfError('The feed returned an unfamiliar format. Its schema needs review before importing.');
+  const collection=FEEDS[feed][0], matched=Array.isArray(data?.[collection]);
+  const rows=matched?data[collection]:[data];
   const types=new Map(); let visits=0;
   function visit(value,path,depth=0) {
     if (++visits > 200000 || depth > 12 || types.size >= 800) return;
@@ -57,9 +57,9 @@ export function summarize(data, feed) {
   }
   for (const row of rows.slice(0,500)) visit(row,'');
   const fields=[...types].map(([path,t])=>({path,types:[...t].sort()})).sort((a,b)=>a.path.localeCompare(b.path));
-  return {records:rows.length, inspected:Math.min(rows.length,500), fields,
+  return {schemaRecognized:matched, records:matched?rows.length:null, inspected:matched?Math.min(rows.length,500):null, fields,
     schemaOnly:true, scoringVerified:false, importsEnabled:false,
-    note:rows.length?'Access worked. Field names are available for mapping; scoring coverage is not verified.':'Access worked, but this feed contains no records for the selection.'};
+    note:!matched?'MySportsFeeds returned HTTP 200 with a different JSON structure. Download the test report so its field names can be mapped before importing.':rows.length?'Access worked. Field names are available for mapping; scoring coverage is not verified.':'Access worked, but this feed contains no records for the selection.'};
 }
 async function boundedJSON(response) {
   if (!response.body) throw new MsfError('MySportsFeeds returned no content.');
@@ -74,6 +74,24 @@ async function boundedJSON(response) {
     return JSON.parse(Buffer.concat(chunks).toString('utf8'));
   } catch (e) { if (e instanceof MsfError) throw e; throw new MsfError('MySportsFeeds returned an unreadable response.'); }
 }
+// Classify bounded provider errors into fixed messages; never expose the raw body.
+async function errorHint(response) {
+  if (!response.body) return '';
+  const reader=response.body.getReader(); let text='',size=0;
+  try {
+    while (size<16384) {
+      const {value,done}=await reader.read(); if(done) break;
+      const part=value.subarray(0,16384-size);size+=part.length;
+      text+=new TextDecoder().decode(part);
+    }
+  } catch {} finally {await reader.cancel().catch(()=>{});}
+  const hints=[];
+  if (/trial/i.test(text)) hints.push('trial restrictions');
+  if (/season/i.test(text)) hints.push('season access or selection');
+  if (/subscription|subscribed/i.test(text)) hints.push('subscription access');
+  if (/frequency|rate limit|too many requests/i.test(text)) hints.push('request limits');
+  return hints.length?' Provider response mentions: '+hints.join(', ')+'.':'';
+}
 export async function checkFeed(input, fetcher=fetch) {
   const key=process.env.MSF_API_KEY?.trim();
   if (!key) throw new MsfError('Add MSF_API_KEY in Vercel and redeploy before testing.',503);
@@ -83,13 +101,13 @@ export async function checkFeed(input, fetcher=fetch) {
     signal:AbortSignal.timeout(20000),redirect:'error'
   }); } catch { throw new MsfError('MySportsFeeds did not respond. Try again later.'); }
   if (response.status!==200) {
-    await response.body?.cancel().catch(()=>{});
+    const hint=await errorHint(response);
     const messages={204:'The selected feed is not available yet. Trial restrictions or game timing may apply.',
       401:'MySportsFeeds rejected the API key. Check MSF_API_KEY in Vercel.',
-      403:'This API key does not have access to the selected feed. Check the NFL subscription and trial restrictions.',
+      403:'MySportsFeeds denied this request (HTTP 403).',
       404:'This feed or season was not found. Check the selection and API documentation.',
       429:'MySportsFeeds rate limit reached. Wait before testing again.'};
-    throw new MsfError(messages[response.status] || 'MySportsFeeds is temporarily unavailable.',response.status===429?429:502);
+    throw new MsfError((messages[response.status] || 'MySportsFeeds is temporarily unavailable.')+hint+' Request: '+new URL(providerURL(input)).pathname,response.status===429?429:502);
   }
   const summary=summarize(await boundedJSON(response),input.feed);
   return {feed:input.feed,year:input.year,week:input.feed==='injuries'?null:input.week,checkedAt:new Date().toISOString(),...summary};

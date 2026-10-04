@@ -40,9 +40,9 @@ export function bindMsfConnection({state}) {
         status.textContent=result.configured?'Ready to test':'Key not configured';
         message.textContent=result.configured?'Select a feed and test it. Start with a completed week.':'Add MSF_API_KEY in Vercel after starting your trial, then redeploy.';
       } else {
-        report=result; status.textContent=result.records?'Feed access confirmed':'No records returned';
+        report=result; status.textContent=result.schemaRecognized===false?'Response received — mapping needed':result.records?'Feed access confirmed':'No records returned';
         message.textContent=result.note;
-        root.querySelector('[data-msf-summary]').textContent=`${result.records} records returned; ${result.inspected} inspected. Scoring has not been verified.`;
+        root.querySelector('[data-msf-summary]').textContent=result.schemaRecognized===false?'Field names and types only; no player values are included. Scoring has not been verified.':`${result.records} records returned; ${result.inspected} inspected. Scoring has not been verified.`;
         root.querySelector('[data-msf-fields]').textContent=result.fields.map(f=>f.path+' ('+f.types.join(', ')+')').join('\n');
         root.querySelector('[data-msf-result]').hidden=false;
       }

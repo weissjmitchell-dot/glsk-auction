@@ -44,18 +44,21 @@ test('fixed NFL endpoints reject arbitrary paths and seasons',()=>{
   assert.equal(providerURL({feed:'players',year:2026,week:1}),'https://api.mysportsfeeds.com/v2.1/pull/nfl/2026-regular/week/1/player_gamelogs.json');
   for (const body of [{action:'import'},{action:'test',feed:'../secret',year:2026,week:1},{action:'test',feed:'players',year:'2026',week:1}]) assert.throws(()=>validateRequest(body));
 });
-test('schema report discards actual records and rejects unexpected shapes',()=>{
+test('schema report discards values and describes unfamiliar shapes',()=>{
   const result=summarize({gamelogs:[{player:{id:123,firstName:'PRIVATE PLAYER'},stats:{passing:{passYards:321}}}]},'players');
   assert.equal(result.records,1);assert.equal(result.scoringVerified,false);
   assert(result.fields.some(f=>f.path==='stats.passing.passYards'));
   assert(!JSON.stringify(result).includes('PRIVATE PLAYER'));assert(!JSON.stringify(result).includes('321'));
-  assert.throws(()=>summarize({unexpected:[]},'players'));
+  const unknown=summarize({injuries:[{player:{name:'PRIVATE PLAYER'},status:'PRIVATE STATUS'}]},'injuries');
+  assert.equal(unknown.schemaRecognized,false);assert.equal(unknown.records,null);
+  assert(unknown.fields.some(f=>f.path==='injuries[].player.name'));
+  assert(!JSON.stringify(unknown).includes('PRIVATE'));
   assert.equal(summarize({gamelogs:[]},'players').records,0);
 });
 test('provider HTTP failures are distinct and never relay provider error bodies',async()=>{
   const previous=process.env.MSF_API_KEY;process.env.MSF_API_KEY='unit-test-key';
   try {
-    for (const [status,message] of [[204,/not available yet/],[401,/rejected/],[403,/does not have access/],[429,/rate limit/],[500,/temporarily/]]) {
+    for (const [status,message] of [[204,/not available yet/],[401,/rejected/],[403,/denied this request/],[429,/rate limit/],[500,/temporarily/]]) {
       await assert.rejects(()=>checkFeed({feed:'players',year:2026,week:1},async()=>new Response(status===204?null:'SECRET ERROR',{status})),message);
     }
     await assert.rejects(()=>checkFeed({feed:'players',year:2026,week:1},async()=>new Response('not json')),/unreadable/);
