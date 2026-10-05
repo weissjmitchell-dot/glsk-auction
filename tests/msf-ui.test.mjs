@@ -6,9 +6,10 @@ const window=new Window({url:'https://glsk-auction.vercel.app/league'}),document
 let fetches=0;
 const response={records:1,inspected:1,note:'Access worked; scoring not verified.',fields:[{path:'stats.passYards',types:['number']}],feed:'players',year:2026,week:1};
 const context=vm.createContext({document,Date,Number,Error,JSON,URL,Blob,setTimeout,AbortSignal,
+  previewView:()=>'',bindPreview:()=>{},
   supabase:{auth:{getSession:async()=>({data:{session:{user:{id:'commissioner'},access_token:'fake'}}})}},
   fetch:async()=>{fetches++;return {ok:true,json:async()=>response};}});
-const source=fs.readFileSync(new URL('../src/msf-connection.js',import.meta.url),'utf8').replace(/^import.*\n/,'').replaceAll('export function','function');
+const source=fs.readFileSync(new URL('../src/msf-connection.js',import.meta.url),'utf8').replace(/^import.*\n/gm,'').replaceAll('export function','function');
 vm.runInContext(source,context);
 document.body.innerHTML=vm.runInContext('msfConnectionView()',context);
 context.state={tab:'commissioner',commissionerSection:'msf',authAccount:{is_commissioner:false},authUser:{id:'commissioner'}};

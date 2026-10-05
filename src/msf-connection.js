@@ -1,3 +1,4 @@
+import {previewView,bindPreview} from './msf-preview.js';
 import {supabase} from './supabase.js';
 
 export function msfConnectionView() {
@@ -6,18 +7,20 @@ export function msfConnectionView() {
     <p>Test NFL feed access before importing player data into GLSK.</p>
     <div class="row gap-8 wrap" style="margin:16px 0">
       <label>Season <input class="input" data-msf-year type="number" min="2025" max="2100" value="${new Date().getFullYear()}"></label>
-      <label>Week <input class="input" data-msf-week type="number" min="1" max="18" value="1"></label>
+      <label>Week <input class="input" data-msf-week type="number" min="1" max="18" value="4"></label>
       <label>Feed <select class="input" data-msf-feed><option value="games">Schedule and scores</option><option value="players">Player game statistics</option><option value="teams">Team game statistics</option><option value="injuries">Current injuries</option></select></label>
     </div>
     <div class="row gap-8 wrap"><button class="btn btn-outline" data-msf-action="status">Check Setup</button><button class="btn btn-primary" data-msf-action="test">Test Selected Feed</button></div>
     <p data-msf-message role="status" aria-live="polite"></p>
     <div data-msf-result hidden><p data-msf-summary></p><button class="btn btn-outline" data-msf-download>Download Test Report</button><details style="margin-top:12px"><summary>Field names found</summary><pre data-msf-fields style="white-space:pre-wrap;overflow-wrap:anywhere;max-height:320px;overflow:auto"></pre></details></div>
     <div class="notice" style="margin-top:16px">Trial tests do not change rosters, scores or standings. A successful request confirms access only. Projections and custom scoring still require validation. Injury results are current, regardless of the selected week.</div>
+    ${previewView()}
   </section>`;
 }
 export function bindMsfConnection({state}) {
   const root=document.getElementById('msf-connection');
   if (!root || state.tab!=='commissioner' || state.commissionerSection!=='msf' || !state.authAccount?.is_commissioner || !state.authUser?.id) return;
+  bindPreview({state,root});
   const user=state.authUser.id;
   let busy=false, report=null;
   const message=root.querySelector('[data-msf-message]'), status=root.querySelector('[data-msf-status]');

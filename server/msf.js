@@ -6,7 +6,7 @@ export const FEEDS = {
   games: ['games', 'games.json'],
   players: ['gamelogs', 'player_gamelogs.json'],
   teams: ['gamelogs', 'team_gamelogs.json'],
-  injuries: ['playerInjuries', null]
+  injuries: ['players', null]
 };
 export function validateRequest(body) {
   if (!body || !['status','test'].includes(body.action)) throw new MsfError('Invalid request.',400);
@@ -92,7 +92,7 @@ async function errorHint(response) {
   if (/frequency|rate limit|too many requests/i.test(text)) hints.push('request limits');
   return hints.length?' Provider response mentions: '+hints.join(', ')+'.':'';
 }
-export async function checkFeed(input, fetcher=fetch) {
+export async function fetchFeed(input, fetcher=fetch) {
   const key=process.env.MSF_API_KEY?.trim();
   if (!key) throw new MsfError('Add MSF_API_KEY in Vercel and redeploy before testing.',503);
   let response;
@@ -109,6 +109,9 @@ export async function checkFeed(input, fetcher=fetch) {
       429:'MySportsFeeds rate limit reached. Wait before testing again.'};
     throw new MsfError((messages[response.status] || 'MySportsFeeds is temporarily unavailable.')+hint+' Request: '+new URL(providerURL(input)).pathname,response.status===429?429:502);
   }
-  const summary=summarize(await boundedJSON(response),input.feed);
+  return boundedJSON(response);
+}
+export async function checkFeed(input, fetcher=fetch) {
+  const summary=summarize(await fetchFeed(input,fetcher),input.feed);
   return {feed:input.feed,year:input.year,week:input.feed==='injuries'?null:input.week,checkedAt:new Date().toISOString(),...summary};
 }
