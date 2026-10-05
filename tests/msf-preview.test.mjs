@@ -39,3 +39,21 @@ test('preview authenticates and claims cooldown before fetching provider',async(
  calls=[];global.fetch=async()=>Response.json({message:'forbidden'},{status:403});res=response();await handler({method:'POST',headers:{origin:'https://glsk-auction.vercel.app',authorization:'Bearer fake'},body:{action:'test',feed:'players',year:2026,week:4}},res);assert.equal(res.code,403);
  }finally{global.fetch=old;if(key===undefined)delete process.env.MSF_API_KEY;else process.env.MSF_API_KEY=key;}
 });
+test('one active defense roster ID takes priority while aliases stay visible',()=>{
+ const row={name:'BAL D/ST',team:'BAL',position:'DST'};
+ const roster={player_key:'baltimoreravens',nfl_team:'BAL',position:'DEF',matchSource:'active-roster'};
+ const directory={player_key:'dst:bal',nfl_team:'BAL',position:'DST'};
+ const result=matchPlayer(row,[directory,roster]);assert.equal(result.playerKey,'baltimoreravens');assert.equal(result.candidates.length,2);
+ assert.equal(matchPlayer(row,[roster,{...directory,matchSource:'active-roster'}]).status,'Ambiguous');
+});
+test('suffix variations require review rather than silent matching',()=>{
+ const m=matchPlayer({name:'James Cook',position:'RB',team:'BUF'},[{player_key:'jamescookiii',player_name:'James Cook III',position:'RB',nfl_team:'BUF'}]);assert.equal(m.playerKey,null);assert.equal(m.status,'Name variation — review');assert.deepEqual(m.candidates,['jamescookiii']);
+});
+test('defense evidence preserves numbers and missing fields without claiming scoring coverage',()=>{
+ const r=normalizeLog({stats:{standings:{pointsAgainst:24},interceptions:{intTD:1,kB:0}}},'teams');assert.equal(r.providerEvidence['standings.pointsAgainst'],24);assert.equal(r.providerEvidence['interceptions.intTD'],1);assert.equal(r.providerEvidence['fumbles.fumTD'],null);assert.equal(r.stats.dst_td,undefined);
+});
+test('user-supplied Burrow and Giants comparison cases reproduce expected totals',()=>{
+ const b=structuredClone(log);Object.assign(b.stats.passing,{passYards:428,passTD:1,passInt:2});Object.assign(b.stats.rushing,{rushYards:6,rushTD:1});assert.equal(scorePlayer(normalizeLog(b,'players').stats,rules,'QB',{bonusMode:'cumulative'}).points,24.87);
+ // Screenshot reference only: these are not inferred provider mappings.
+ const reference={dst_sack:2,dst_int:3,dst_tfl:5,dst_fumble_recovery:0,dst_safety:0,dst_td:1,dst_block_kick:0,dst_points_allowed:24,dst_extra_point_return:0};assert.equal(scorePlayer(reference,rules,'DST').points,22);
+});

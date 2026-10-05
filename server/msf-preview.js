@@ -6,7 +6,12 @@ export function normalizeLog(log,feed) {
   const put=(key,path)=>{const v=get(s,path);if(typeof v==='number'&&Number.isFinite(v))stats[key]=v;sources[key]=path;};
   const sum=(key,paths)=>{const v=paths.map(p=>get(s,p));if(v.every(x=>typeof x==='number'&&Number.isFinite(x)))stats[key]=v.reduce((a,b)=>a+b,0);sources[key]=paths.join(' + ');};
   const diff=(key,a,b)=>{const x=get(s,a),y=get(s,b);if(finite(x)&&finite(y)&&x>=y)stats[key]=x-y;sources[key]=a+' - '+b;};
-  const review=[];
+  const review=[], providerEvidence={};
+  if(feed==='teams') {
+    for(const path of ['standings.pointsAgainst','interceptions.intTD','interceptions.kB','fumbles.fumTD','fumbles.offFumTD','kickoffReturns.krTD','puntReturns.prTD','extraPointAttempt.xpBlk','fieldGoals.fgBlk','punting.puntBlk','twoPointAttempts.twoPtMade']) {
+      const v=get(s,path);providerEvidence[path]=typeof v==='number'&&Number.isFinite(v)?v:null;
+    }
+  }
   if(feed==='players') {
     const mapping={pass_yds:'passing.passYards',pass_td:'passing.passTD',interceptions:'passing.passInt',rush_yds:'rushing.rushYards',rush_td:'rushing.rushTD',receptions:'receiving.receptions',rec_yds:'receiving.recYards',rec_td:'receiving.recTD',fumbles_lost:'fumbles.fumLost',off_fumble_return_td:'fumbles.offFumTD',pat_made:'extraPointAttempts.xpMade'};
     for(const [k,p] of Object.entries(mapping))put(k,p);
@@ -26,7 +31,7 @@ export function normalizeLog(log,feed) {
   }
   return {providerId:feed==='players'?log.player?.id:log.team?.id,gameId:log.game?.id,week:log.game?.week,
     name:feed==='players'?[log.player?.firstName,log.player?.lastName].filter(Boolean).join(' '):String(log.team?.abbreviation||'')+' D/ST',
-    position:feed==='players'?String(log.player?.position||''):'DST',team:String(log.team?.abbreviation||''),stats,sources,review};
+    position:feed==='players'?String(log.player?.position||''):'DST',team:String(log.team?.abbreviation||''),stats,sources,review,providerEvidence};
 }
 export function previewFeed(data,input) {
   if(!Array.isArray(data?.gamelogs))throw new Error('Unrecognized game-log response.');

@@ -1,0 +1,37 @@
+GLSK MSF matching and defense review update — October 5, 2026
+
+Upload the extracted contents of this ZIP to the GitHub repository root,
+replacing matching files. Commit and wait for Vercel Production to show Ready.
+This patch requires the previously installed Scoring Preview update.
+No new SQL, credentials or environment settings.
+
+Then refresh GLSK > Commissioner > MySportsFeeds Trial.
+Select 2026 / Week 4 / Team game statistics and click Preview Selected Feed.
+Download Scoring Preview and send the new report for inspection.
+
+Changes:
+- Loads the full room player directory (up to 10,000 entries) for matching.
+  If the read fails, the preview explicitly reports its fallback to loaded entries.
+- Prefers a unique active roster ID over directory aliases, preserving alternatives.
+  It does not merge, rewrite or create IDs.
+- Suffix differences such as James Cook vs James Cook III become review candidates.
+- Offers a dropdown for ambiguous/name-variation matches. The selection changes
+  only the preview and downloaded report, not league records.
+- Adds numeric providerEvidence for defense touchdown components, points against,
+  blocked-kick-related fields and two-point data; absent fields stay null.
+- Notes that passing yardage bonuses are confirmed to stack by the Burrow comparison.
+
+Important limits:
+The prior report discarded the raw defense fields needed to finish mapping.
+This update exposes those fields for comparison; it does NOT claim they already
+match Yahoo's definitions. In particular, offensive fumble touchdowns, defensive
+points allowed and conversion returns need accurate definitions. Do not assume
+that an absent conversion-return field means zero. Full D/ST totals still show
+Incomplete. Imports and automatic scoring remain off.
+
+The Giants screenshot is a reference result (22.00); its values have NOT been
+hard-coded into provider data. Regression tests reproduce that reference and
+Burrow's 24.87. These tests validate the arithmetic, not missing provider mappings.
+
+Validation: 19 total Node tests (existing diagnostics/scorer plus preview),
+preview DOM test and production build passed. No live provider calls made here.
