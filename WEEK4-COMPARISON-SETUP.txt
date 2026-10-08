@@ -1,0 +1,22 @@
+GLSK Week 4 Scoring Comparison Update
+
+Apply over the previously installed MSF Scoring Preview and Matching Review updates.
+1. Extract this ZIP.
+2. Upload the included server, src, and tests folders into the ROOT of your existing GitHub repository, preserving the folder structure. Commit to main.
+3. Wait for the Vercel production deployment to show Ready, then refresh GLSK.
+4. Settings > Commissioner > MySportsFeeds Trial: choose Season 2026, Week 4, Player game statistics.
+5. Scroll to Scoring preview and click Preview Selected Feed (not Test Selected Feed).
+6. Compare the Stacked column with Week 4 in your Yahoo GLSK league. Enter Yahoo scores in the new column. Differences are GLSK minus Yahoo.
+7. Download Scoring Preview BEFORE switching feeds; typed comparisons are not stored on the server.
+8. Repeat with Team game statistics and download that report too. Send both downloaded reports back.
+
+No SQL changes or environment variable changes. Keep MSF_API_KEY as it is.
+No scores, rosters, matchups, or standings are imported or changed. This does not enable automatic live scoring.
+
+Defense totals are comparison-only assumptions: pointsAgainst without fantasy exclusions; interceptions.kB for blocked kicks; intTD+fumTD+krTD+prTD for touchdowns; defensive extra-point returns assumed zero. Missing other required fields still produce Incomplete. The report preserves normalized source stats separately from provisional comparison inputs. Review rare return coverage and fumble classification before publishing official scores.
+
+Passing bonuses stack per the supplied Burrow comparison. Rushing/receiving stacking still needs comparison.
+
+Before live publishing: resolve discrepancies, review player/team matches, implement and deploy authenticated scheduled ingestion with correction handling, verify live subscription entitlement and permitted refresh interval, and verify Week 5 lineup/lock handling. Successful preview alone does not perform those steps.
+
+Validated: 11 scoring/mapping/API tests, browser DOM comparison-field test, production Vite build.

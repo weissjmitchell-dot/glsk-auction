@@ -15,5 +15,7 @@ context.state={authUser:{id:'u'},authAccount:{is_commissioner:true},season:{id:'
 vm.runInContext('bindPreview({state,root})',context);
 document.querySelector('[data-preview-run]').click();await new Promise(r=>setTimeout(r,25));
 assert.equal(fetches,1);assert.equal(document.querySelector('[data-preview-results]').hidden,false);assert.equal(document.querySelectorAll('[data-preview-rows] tr').length,1);assert.equal(document.querySelectorAll('img').length,0);assert.match(document.querySelector('[data-preview-rows]').textContent,/10.00/);assert.match(document.querySelector('[data-preview-rows]').textContent,/Unmatched/);
+const yahoo=document.querySelector('[aria-label^="Yahoo score"]');yahoo.value='12';yahoo.dispatchEvent(new window.Event('input'));assert.match(document.querySelector('[data-preview-rows]').textContent,/-2.00/);
+yahoo.value='';yahoo.dispatchEvent(new window.Event('input'));assert(!document.querySelector('[data-preview-rows]').textContent.includes('-2.00'));
 document.querySelector('[data-msf-year]').value='2025';document.querySelector('[data-preview-run]').click();await new Promise(r=>setTimeout(r,10));assert.equal(fetches,1);assert.match(document.querySelector('[data-preview-message]').textContent,/current GLSK season/);
 await window.happyDOM.close();console.log('PASS: preview renders totals safely and blocks wrong-season rules.');

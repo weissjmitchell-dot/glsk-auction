@@ -57,3 +57,13 @@ test('user-supplied Burrow and Giants comparison cases reproduce expected totals
  // Screenshot reference only: these are not inferred provider mappings.
  const reference={dst_sack:2,dst_int:3,dst_tfl:5,dst_fumble_recovery:0,dst_safety:0,dst_td:1,dst_block_kick:0,dst_points_allowed:24,dst_extra_point_return:0};assert.equal(scorePlayer(reference,rules,'DST').points,22);
 });
+test('provisional defense comparison is separate, explicit, and still rejects missing TD components',()=>{
+ const fixture={stats:{tackles:{sacks:2,tacklesForLoss:5},interceptions:{interceptions:3,safeties:0,intTD:1,kB:0},fumbles:{fumOppRec:0,fumTD:0},kickoffReturns:{krTD:0},puntReturns:{prTD:0},standings:{pointsAgainst:24},fieldGoals:{fgBlk:1}}};
+ const row=normalizeLog(fixture,'teams');
+ assert.equal(scorePlayer(row.stats,rules,'DST').points,null);
+ assert.equal(scorePlayer(row.comparisonStats,rules,'DST').points,22);
+ assert.equal(row.comparisonStats.dst_block_kick,0); // Do not score the team's own blocked kick.
+ assert(row.comparisonAssumptions.some(s=>s.includes('ZERO')));
+ delete fixture.stats.puntReturns;
+ assert.equal(scorePlayer(normalizeLog(fixture,'teams').comparisonStats,rules,'DST').points,null);
+});

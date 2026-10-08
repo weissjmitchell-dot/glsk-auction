@@ -8,10 +8,10 @@ export function previewView() {
     <button class="btn btn-primary" data-preview-run>Preview Selected Feed</button>
     <p data-preview-message role="status" aria-live="polite"></p>
     <div data-preview-results hidden><p data-preview-summary></p>
-    <p>Passing bonuses are confirmed to stack from the Burrow comparison. Rushing/receiving bonus stacking still needs confirmation. Provisional calculations only. “Stacked” adds every reached yardage bonus; “highest” uses only the highest reached bonus. Missing required statistics produce no total. Defense totals remain incomplete until the flagged rules are validated.</p>
+    <p>Passing bonuses are confirmed to stack from the Burrow comparison. Rushing/receiving bonus stacking still needs confirmation. Provisional calculations only. “Stacked” adds every reached yardage bonus; “highest” uses only the highest reached bonus. Missing required statistics produce no total. Defense comparison totals use the assumptions shown in View details, including ZERO defensive extra-point returns. They are not verified scores. Enter Yahoo scores from the same week and league; differences use the Stacked column. Entries are saved only in the downloaded report and are lost on refresh or rerun.</p>
     <label>Find player or team <input class="input" data-preview-search type="search"></label>
     <button class="btn btn-outline" data-preview-download>Download Scoring Preview</button>
-    <div style="overflow:auto;max-height:650px;margin-top:12px"><table style="width:100%;min-width:650px"><thead><tr><th>Player</th><th>GLSK match</th><th>Stacked</th><th>Highest</th><th>Breakdown / issues</th></tr></thead><tbody data-preview-rows></tbody></table></div></div>
+    <div style="overflow:auto;max-height:650px;margin-top:12px"><table style="width:100%;min-width:650px"><thead><tr><th>Player</th><th>GLSK match</th><th>Stacked</th><th>Highest</th><th>Yahoo score</th><th>GLSK − Yahoo</th><th>Breakdown / issues</th></tr></thead><tbody data-preview-rows></tbody></table></div></div>
     <p class="small muted">No imports or automatic updates. Matches must be reviewed before use. Players absent from the feed are not assigned zero points.</p>
   </section>`;
 }
@@ -34,9 +34,13 @@ export function bindPreview({state,root}) {
         select.addEventListener('change',()=>{if(!active())return;row.match={...row.match,playerKey:select.value||null,status:select.value?'Commissioner-selected (preview only)':'Needs review'};render();});matchCell.append(select);
       }
       cell(tr,row.stacked.points===null?'Incomplete':row.stacked.points.toFixed(2));cell(tr,row.highest.points===null?'Incomplete':row.highest.points.toFixed(2));
+      const yahooCell=cell(tr,''), yahoo=document.createElement('input');yahoo.type='number';yahoo.step='0.01';yahoo.style.width='90px';yahoo.setAttribute('aria-label','Yahoo score for '+row.name);yahoo.value=row.yahooPoints??'';yahooCell.append(yahoo);
+      const delta=cell(tr,'');
+      const updateDelta=()=>{row.difference=row.yahooPoints!==null&&row.yahooPoints!==undefined&&row.stacked.points!==null?Math.round((row.stacked.points-row.yahooPoints)*100)/100:null;delta.textContent=row.difference===null?'—':row.difference.toFixed(2);};
+      yahoo.addEventListener('input',()=>{if(!active())return;row.yahooPoints=yahoo.value.trim()===''||!Number.isFinite(yahoo.valueAsNumber)?null:yahoo.valueAsNumber;updateDelta();});updateDelta();
       const td=cell(tr,''),details=document.createElement('details'),summary=document.createElement('summary');summary.textContent='View details';details.append(summary);
       const pre=document.createElement('pre');pre.style.whiteSpace='pre-wrap';pre.style.maxWidth='500px';
-      pre.textContent=JSON.stringify({providerId:row.providerId,gameId:row.gameId,match:row.match,stats:row.stats,sources:row.sources,stacked:row.stacked,highest:row.highest,review:row.review,providerEvidence:row.providerEvidence},null,2);details.append(pre);td.append(details);tbody.append(tr);
+      pre.textContent=JSON.stringify({providerId:row.providerId,gameId:row.gameId,match:row.match,stats:row.stats,sources:row.sources,stacked:row.stacked,highest:row.highest,review:row.review,providerEvidence:row.providerEvidence,comparisonStats:row.comparisonStats,comparisonAssumptions:row.comparisonAssumptions,normalizedInputScore:row.normalizedInputScore},null,2);details.append(pre);td.append(details);tbody.append(tr);
     }
   }
   button.addEventListener('click',async()=>{
@@ -70,7 +74,7 @@ export function bindPreview({state,root}) {
       if(!active())return;
       if(!response.ok)throw new Error(result.error||'Preview failed.');
       report={...result,seasonId:state.season.id,rules,matchingScope:directoryNote+' Active roster IDs take priority over aliases; suggestions only.',
-        rows:result.rows.map(row=>({...row,match:matchPlayer(row,candidates),stacked:scorePlayer(row.stats,rules,row.position,{bonusMode:'cumulative'}),highest:scorePlayer(row.stats,rules,row.position,{bonusMode:'highest'})}))};
+        rows:result.rows.map(row=>({...row,match:matchPlayer(row,candidates),normalizedInputScore:scorePlayer(row.stats,rules,row.position,{bonusMode:'cumulative'}),stacked:scorePlayer(row.comparisonStats||row.stats,rules,row.position,{bonusMode:'cumulative'}),highest:scorePlayer(row.comparisonStats||row.stats,rules,row.position,{bonusMode:'highest'})}))};
       const matched=report.rows.filter(r=>r.match.playerKey).length,complete=report.rows.filter(r=>r.stacked.complete).length;
       msg.textContent='Preview ready. No league data was changed.';
       panel.querySelector('[data-preview-summary]').textContent=`${year} Week ${week}: ${report.rows.length} fantasy-position game records from ${result.providerRecords} provider records. ${matched} suggested matches; ${complete} have enough fields for provisional totals. Verify totals and matches before importing. ${directoryNote}`;
