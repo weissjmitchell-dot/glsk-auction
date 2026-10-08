@@ -6,7 +6,7 @@ import {scorePlayer} from '../server/msf-scoring.js';
 import {matchPlayer} from '../shared/msf-matching.js';
 const window=new Window(),document=window.document;
 let fetches=0;
-const context=vm.createContext({document,Date,Number,String,Error,JSON,URL,Blob,setTimeout,AbortSignal,structuredClone,scorePlayer,matchPlayer,
+const context=vm.createContext({document,Date,Number,String,Error,JSON,URL,Blob,setTimeout,clearTimeout,AbortSignal,structuredClone,scorePlayer,matchPlayer,
  supabase:{auth:{getSession:async()=>({data:{session:{user:{id:'u'},access_token:'fake'}}})}},
  fetch:async()=>{fetches++;return {ok:true,json:async()=>({feed:'players',year:2026,week:4,providerRecords:1,rows:[{name:'<img src=x onerror=alert(1)>',position:'QB',team:'DET',stats:{pass_yds:300},sources:{pass_yds:'passing.passYards'},review:[]}]})};}});
 vm.runInContext(fs.readFileSync(new URL('../src/msf-preview.js',import.meta.url),'utf8').replace(/^import.*\n/gm,'').replaceAll('export function','function'),context);
