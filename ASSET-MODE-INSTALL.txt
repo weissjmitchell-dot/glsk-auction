@@ -1,0 +1,72 @@
+GLSK Asset Management update — October 25, 2026
+
+INSTALL
+1. Keep the original GitHub ZIP you downloaded as your source backup.
+2. Unzip this update on your computer.
+3. In your existing Supabase project, open SQL Editor > New query.
+   Copy the entire contents of supabase/asset-management-mode.sql and run it.
+   This adds a mode setting and an authenticated function. It does not delete,
+   reset or migrate your existing players, contracts, rights, drafts or scores.
+4. Open the existing GLSK GitHub repository. Use Add file > Upload files.
+   Upload the api, server, src, supabase and tests folders from this update at
+   the repository root, preserving their folder paths. Commit the changes.
+   These are replacement/additional files, not a replacement repository.
+   Do not delete other project files. Do not upload the ZIP itself as code.
+5. Let Vercel deploy that new commit to Production. Confirm it says Ready.
+   If deploying manually, select the new commit, not an older deployment.
+   No environment variable changes are required for this update.
+6. Refresh GLSK. It defaults to Asset Management mode. Ask owners to refresh.
+
+CHECK AFTER DEPLOYMENT
+- Home and Assets show owned players, rookie ownership rights, bids and picks.
+- Contracts and Trades remain available, including owner trade responses.
+- Acquisitions retains existing add/waiver controls and league restrictions.
+- Owners can drop owned players; existing contract fines still apply.
+- Draft opens the existing auction, supplemental and roster-fill rooms.
+- History and transaction records remain accessible.
+- Commissioner > App Mode shows Asset Management selected.
+- Weekly lineup, matchup, schedule, standings and feed screens are hidden.
+
+PRESERVATION AND RESTORE
+Settings > Commissioner > App Mode > Full Fantasy > Save Mode restores the
+weekly screens. Owners then refresh. The original weekly features remain in
+code and their database records are retained. Changing mode does not reset
+or prepare a new season, reconnect a provider, buy a subscription or enable
+new score-import functionality. Those tasks remain separate next offseason.
+
+Asset mode blocks new MySportsFeeds test/preview and Yahoo connect/test
+requests server-side, including requests from an old open browser tab.
+An external request already in flight when mode changes can still finish.
+It does not erase saved Yahoo authorization or credentials.
+
+Player ownership records still exist because trades, acquisitions and drops
+need them. Existing capacity limits, waiver timing, penalties and trade rules
+are unchanged. Rookie rights are visible even without an active ownership
+entry; rights are not separately tradable under the existing rules. Active
+rights follow the player. Draft pick trade eligibility is unchanged.
+
+There is no live NFL data feed in asset mode. NFL labels and player directory
+entries are stored records. Acquisitions and trades in GLSK do not automatically
+update Yahoo; continue making the corresponding Yahoo changes separately.
+
+If the mode migration is absent/unavailable, the new frontend defaults to
+Asset Management and feed requests remain blocked. Fix the migration before
+attempting to restore Full Fantasy.
+
+VALIDATION
+Production build passed. Dedicated UI tests cover asset listings, independent
+rookie rights visibility, drop controls/fines, acquisitions, trade assets,
+all draft links, commissioner access and restoration of full-mode navigation.
+Database tests cover membership, commissioner-only changes, repeat-safe
+migration and mode defaults. API tests cover blocked provider requests and
+failed lookups. Existing player-profile permission/action tests passed.
+All auction, supplemental and phase3 room source files are unchanged.
+No tests were run against the live league database; no production deployment
+or real owner transaction has been performed by this update.
+
+Optional developer checks (with project/test dependencies installed):
+  node tests/asset-mode-ui.test.cjs
+  node tests/asset-mode-database.test.mjs
+  node tests/asset-mode-server.test.mjs
+  node tests/player-profile.test.mjs
+  npm run build

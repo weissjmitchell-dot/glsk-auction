@@ -1,3 +1,4 @@
+import {requireFullMode} from '../server/app-mode.js';
 import {YahooError,config,headers,bearer,checkOrigin,nonce,hash,seal,unseal,tokenPurpose,setFlowCookie,authorizeURL,db,exchange,probe,publicStatus,sendError} from '../server/yahoo.js';
 
 export default async function handler(req,res){
@@ -15,6 +16,7 @@ export default async function handler(req,res){
    const result=await db(auth,'disconnect');setFlowCookie(res);
    return res.status(200).json(publicStatus(result));
   }
+  try{await requireFullMode(auth);}catch{throw new YahooError('mode',409);}
   if(body.action==='connect'){
    const state=nonce(),flow=seal({state,bearer:auth,user:c.user_id,origin:cfg.origin,exp:Date.now()+600000},'oauth-flow',cfg);
    // Reject an oversized session before making a pending authorization.

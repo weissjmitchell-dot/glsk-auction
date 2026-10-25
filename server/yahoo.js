@@ -7,6 +7,7 @@ const LOGIN='https://api.login.yahoo.com/oauth2';
 const PROBE='https://fantasysports.yahooapis.com/fantasy/v2/users;use_login=1/games;game_codes=nfl?format=json';
 export class YahooError extends Error {constructor(code,status=400){super(code);this.code=code;this.status=status;}}
 export const messages={
+ mode:'Feeds are disabled. Check App Mode in Commissioner settings.',
  configuration:'Check the three Yahoo environment variables in Vercel, then deploy again.',
  setup:'Install the GLSK v745 Yahoo SQL migration in Supabase first.',
  auth:'Sign in to GLSK again, then retry.', forbidden:'Commissioner access is required.',

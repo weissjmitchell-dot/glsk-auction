@@ -1,3 +1,4 @@
+import {requireFullMode} from '../server/app-mode.js';
 import {MsfError,validateRequest,rpc,checkFeed} from '../server/msf.js';
 
 export default async function handler(req,res) {
@@ -15,6 +16,7 @@ export default async function handler(req,res) {
     const configured=Boolean(process.env.MSF_API_KEY?.trim());
     if (body.action==='status') return res.status(200).json({configured,importsEnabled:false});
     if (!configured) throw new MsfError('Add MSF_API_KEY in Vercel and redeploy before testing.',503);
+    try{await requireFullMode(auth);}catch{throw new MsfError('Feeds are disabled. Check App Mode in Commissioner settings.',409);}
     await rpc(auth,'claim',body.feed);
     return res.status(200).json(await checkFeed(body));
   } catch (error) {

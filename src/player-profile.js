@@ -129,6 +129,13 @@ function draw(player, data) {
     statsTable(Object.keys(stats).length?[{...stats,label:`${data.season?.season_year || ''} Season`}]:[]),
     statsTable(projections.map(p=>({...p,label:`Week ${p.week}${p.projection_source || p.source ? ` · ${p.projection_source || p.source}`:''}`})),true)
   ].map((html,i)=>`<section role="tabpanel" id="gp-panel-${i}" aria-labelledby="gp-tab-${i}" tabindex="0" ${i?'hidden':''}>${html}</section>`).join('')}</div></div>`;
+  if(data.appMode==='assets'){
+    dialog.querySelector('.gp-summary')?.remove();
+    dialog.querySelector('.gp-content')?.remove();
+    dialog.querySelector('.gp-injury')?.remove();
+    const identity=dialog.querySelector('.gp-identity p');
+    identity.textContent=[player.position,player.nfl_team].filter(Boolean).join(' • ');
+  }
   dialog.querySelector('.gp-close').onclick = () => {if(!busy)dialog.close();};
   dialog.querySelector('img')?.addEventListener('error',e=>{e.target.parentElement.textContent=initials;});
   const tabs = [...dialog.querySelectorAll('[role="tab"]')];

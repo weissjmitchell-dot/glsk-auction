@@ -1,3 +1,4 @@
+import {requireFullMode} from '../server/app-mode.js';
 import {YahooError,config,headers,readFlow,equal,hash,seal,tokenPurpose,setFlowCookie,db,exchange,messages} from '../server/yahoo.js';
 
 export default async function handler(req,res){
@@ -15,6 +16,7 @@ export default async function handler(req,res){
   if(url.searchParams.has('error'))throw new YahooError(url.searchParams.get('error')==='invalid_scope'?'permissions':'denied');
   const code=url.searchParams.get('code');
   if(url.searchParams.getAll('code').length!==1||!code||code.length>5000)throw new YahooError('callback');
+  try{await requireFullMode(flow.bearer);}catch{throw new YahooError('mode',409);}
   const tokens=await exchange(cfg,{grant_type:'authorization_code',code,redirect_uri:cfg.redirect});
   await db(flow.bearer,'save',{p_hash:lock,p_revision:c.revision,p_sealed_tokens:seal(tokens,tokenPurpose(c),cfg),p_new_connection:true});
   outcome='connected';

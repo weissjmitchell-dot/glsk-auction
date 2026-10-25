@@ -450,12 +450,15 @@ async function loadWaiverCenter(){
 
 async function loadData(){
   const {data:room,error:re}=await supabase.from('rooms').select('*').eq('code',ROOM_CODE).single(); if(re)throw re; state.room=room;
+  const modeResult=await supabase.rpc("league_app_mode",{p_room_code:ROOM_CODE});
+  state.appMode=modeResult.data?.mode==='full'?'full':'assets';
+  state.appModeReady=!modeResult.error;
   const [teams,seasons,roster,contracts,rules,distro,deadlines,statuses,options,transactions,trades,tradeAssets,futurePicks,rookieRights,extensionCosts,extensionEligibility,historySeasons,historyTeamSeasons,historyAllTime,historyFranchises,historyImportRuns,playerStats,gameSettings,lineupSlots,weekStates,schedule,lineups,weeklyScores,matchupScores,shadowStandings,scoringRules,weeklyHostSettings,playerProjections,boardThreads,boardPosts,notificationPlayers,playerStatusUpdates]=await Promise.all([
     q('teams','*',[['room_id',room.id]]),q('league_seasons','*',[['room_id',room.id]]),q('league_roster_entries','*',[['room_id',room.id]]),
     q('league_contracts','*'),q('league_rule_settings','*'),q('redistribution_rules','*'),q('league_deadlines','*'),q('league_deadline_team_status','*'),q('contract_options','*'),
     q('league_transactions','*'),q('league_trades','*'),q('league_trade_assets','*'),q('league_future_picks','*',[['room_id',room.id]]),q('league_rookie_rights','*',[['room_id',room.id]]),q('league_extension_costs','*'),q('league_contract_extension_eligibility','*'),
-    q('league_history_seasons','*',[['room_id',room.id]]),q('league_history_team_seasons','*'),q('league_history_all_time','*',[['room_id',room.id]]),q('league_franchises','*',[['room_id',room.id]]),q('league_history_import_runs','*',[['room_id',room.id]]),q('league_player_stats','*',[['room_id',room.id]]),
-    q('league_game_settings','*'),q('league_lineup_slots','*'),q('league_week_states','*'),q('league_schedule','*'),q('league_lineups','*'),q('league_weekly_player_scores','*'),q('league_matchup_live_scores','*'),q('league_shadow_standings','*'),q('league_scoring_rules','*'),q('league_weekly_host_settings','*'),q('league_player_projections','*',[['room_id',room.id]]),
+    q('league_history_seasons','*',[['room_id',room.id]]),q('league_history_team_seasons','*'),q('league_history_all_time','*',[['room_id',room.id]]),q('league_franchises','*',[['room_id',room.id]]),q('league_history_import_runs','*',[['room_id',room.id]]),(assetMode()?Promise.resolve([]):q('league_player_stats','*',[['room_id',room.id]])),
+    q('league_game_settings','*'),q('league_lineup_slots','*'),q('league_week_states','*'),q('league_schedule','*'),q('league_lineups','*'),(assetMode()?Promise.resolve([]):q('league_weekly_player_scores','*')),(assetMode()?Promise.resolve([]):q('league_matchup_live_scores','*')),(assetMode()?Promise.resolve([]):q('league_shadow_standings','*')),q('league_scoring_rules','*'),q('league_weekly_host_settings','*'),(assetMode()?Promise.resolve([]):q('league_player_projections','*',[['room_id',room.id]])),
     qBoardAll('league_message_threads',room.id),qBoardAll('league_message_posts',room.id),
     q('phase3_players','id,name,nfl_team,position,status',[['room_id',room.id]]),q('league_player_status_updates','*',[['room_id',room.id]])
   ]);
@@ -511,6 +514,7 @@ function rosterPositionClass(pos){const p=String(pos||'').toUpperCase();return [
 function acquisitionLabel(v){return String(v||'current_roster').replaceAll('_',' ').replace(/\b\w/g,c=>c.toUpperCase());}
 function statForPlayer(playerKey){return state.playerStats.find(s=>s.player_key===playerKey);}
 function playerStatLine(r,compact=false){
+ if(assetMode())return "";
  const s=statForPlayer(r.player_key);
  if(!s)return compact?'':'<div class="player-stat-line stats-pending">Season stats sync pending</div>';
  const actual=Number(s.games_played||0)>0||s.fantasy_points!=null||s.position_rank!=null||s.season_rank!=null;
@@ -639,8 +643,8 @@ function bottomNav(){
  const items=[
    ['home','⌂','Home'],
    ['leaguehub','☷','League'],
-   ['teamhub','♟','Team'],
-   ['freeagents','+','Free Agents'],
+   ['teamhub','♟',assetMode()?'Assets':'Team'],
+   ['freeagents','+',assetMode()?'Acquisitions':'Free Agents'],
    ['communications','💬','Communication'],
    ['draft','⇅','Draft'],
    ['settingshub','⚙','Settings']
@@ -657,6 +661,7 @@ function hubCard(tab,icon,title,body,badge='',href=''){
   </${href?'a':'button'}>`;
 }
 function teamHubView(){
+ if(assetMode())return assetTeamHub();
   const me=myTeam();
   return `${pageHeading('My Team','Everything directly related to managing your franchise.','Team Management')}
     ${me?`<section class="card nav-hub-summary">
@@ -681,6 +686,7 @@ function communicationsHubView(){
     </section>`;
 }
 function leagueHubView(){
+ if(assetMode())return assetLeagueHub();
   const week=Number(state.gameSettings?.current_week||1);
   return `${pageHeading('League','League-wide competition, rosters, activity and history.','League Information')}
     <section class="nav-hub-grid">
@@ -704,6 +710,7 @@ function settingsHubView(){
 }
 
 const commissionerSections=[
+ ['mode','App Mode','Choose Asset Management or the full fantasy interface.'],
  ['msf','MySportsFeeds Trial','Test NFL data access before importing stats and projections.'],
  ['yahoo','Yahoo Connection','Connect your Yahoo account and check Fantasy Sports API access.'],
  ['rollover','Season Rollover','Preview the next season, confirm changes and undo an untouched rollover.'],
@@ -724,11 +731,12 @@ const commissionerSections=[
 ];
 function commissionerHubView(){
  if(!isCommish())return '<div class="card empty">Commissioner access is required.</div>';
- const section=commissionerSections.find(([key])=>key===state.commissionerSection);
+ const sections=availableCommissionerSections();
+ const section=sections.find(([key])=>key===state.commissionerSection);
  const heading=`<button class="btn btn-outline" data-tab="settingshub" style="margin-bottom:16px">‹ Settings</button>${pageHeading('Commissioner','All League Office administration tools in one place.','League Administration')}`;
- if(!section)return `${heading}<section class="nav-hub-grid">${commissionerSections.map(([key,title,description])=>`<button class="nav-hub-card" data-commissioner-section="${key}"><div class="nav-hub-copy"><strong>${esc(title)}</strong><span>${esc(description)}</span></div><div class="nav-hub-arrow">›</div></button>`).join('')}</section>`;
- const views={msf:msfConnectionView,yahoo:yahooConnectionView,rollover:rolloverView,teams:teamsView,contracts:contractsView,freeagents:freeAgencyView,trades:tradesView,lineup:lineupSetupPanel,matchups:matchupsView,reconcile:reconcileView,rules:rulesView,deadlines:deadlinesView,finances:financesView,transactions:transactionsView,history:historyView,board:boardView,chat:chatView};
- return `${heading}<div class="row gap-8 wrap" style="margin-bottom:20px"><button class="btn btn-outline" data-commissioner-section="">‹ All Commissioner Tools</button><label>Section <select class="input" id="commissioner-section">${commissionerSections.map(([key,title])=>`<option value="${key}" ${key===section[0]?'selected':''}>${esc(title)}</option>`).join('')}</select></label></div>${views[section[0]]()}`;
+ if(!section)return `${heading}<section class="nav-hub-grid">${sections.map(([key,title,description])=>`<button class="nav-hub-card" data-commissioner-section="${key}"><div class="nav-hub-copy"><strong>${esc(title)}</strong><span>${esc(description)}</span></div><div class="nav-hub-arrow">›</div></button>`).join('')}</section>`;
+ const views={mode:appModeView,msf:msfConnectionView,yahoo:yahooConnectionView,rollover:rolloverView,teams:teamsView,contracts:contractsView,freeagents:freeAgencyView,trades:tradesView,lineup:lineupSetupPanel,matchups:matchupsView,reconcile:reconcileView,rules:rulesView,deadlines:deadlinesView,finances:financesView,transactions:transactionsView,history:historyView,board:boardView,chat:chatView};
+ return `${heading}<div class="row gap-8 wrap" style="margin-bottom:20px"><button class="btn btn-outline" data-commissioner-section="">‹ All Commissioner Tools</button><label>Section <select class="input" id="commissioner-section">${sections.map(([key,title])=>`<option value="${key}" ${key===section[0]?'selected':''}>${esc(title)}</option>`).join('')}</select></label></div>${views[section[0]]()}`;
 }
 
 function draftHubView(){
@@ -742,6 +750,7 @@ function bidBankPage(){return `${pageHeading('Bid Bank total','Bid dollars colle
 function bidHistoryPage(){return `${pageHeading('Historical Data','Pre-auction workbook history.','Draft → Bid Dollars')}<button class="btn btn-outline" data-tab="biddollars" style="margin-bottom:16px">‹ Bid Dollars</button>${historicalBidView(state.bidHistoryTab||'auction')}`;}
 
 function dashboard(){
+ if(assetMode())return assetDashboard();
  const rosterLimit=state.season?.roster_limit||18,full=state.teams.filter(t=>activeRosterFor(t.id).length>=rosterLimit).length,totalBids=state.teams.reduce((s,t)=>s+Number(t.remaining_budget||0),0),open=state.deadlines.filter(d=>d.status==='open').length;
  const next=state.deadlines.find(d=>d.status==='open'&&new Date(d.due_at)>new Date());
  const me=myTeam();
@@ -1186,6 +1195,7 @@ function faFilteredPlayers(all,me){
    if(state.faNfl&&p.nfl_team!==state.faNfl)return false;
    return !search||`${p.player_name} ${p.nfl_team||''} ${pos}`.toLowerCase().includes(search);
  });
+ if(assetMode())return list.sort((a,b)=>String(a.player_name).localeCompare(String(b.player_name)));
  const value=p=>{const d=faData(p);return state.faSort==='name'?String(p.player_name):state.faSort==='rank'?p.yahoo_rank:state.faSort==='position_rank'?(d.projected_position_rank??d.position_rank):state.faSort==='points'?(state.faStats==='projected'?d.projected_fantasy_points:d.fantasy_points):d[state.faSort];};
  return list.sort((a,b)=>{const av=value(a),bv=value(b);const missing=v=>v==null||v===''||(typeof v!=='string'&&!Number.isFinite(Number(v)));
    if(missing(av)||missing(bv))return Number(missing(av))-Number(missing(bv));
@@ -1194,6 +1204,7 @@ function faFilteredPlayers(all,me){
  });
 }
 function faMarketTable(players,all,me,settings){
+ if(assetMode())return assetMarketTable(players,all,me,settings);
  const week=Number(state.faWeek||currentWeek());
  const teams=[...new Set(all.map(p=>p.nfl_team).filter(Boolean))].sort();
  const sources=[...new Set(state.playerProjections.map(r=>r.projection_source||r.source).filter(Boolean))].sort();
@@ -1252,7 +1263,7 @@ function freeAgencyView(){
           <span class="${rosterPositionClass(selected.position)}">${esc(selected.position)}</span>
           <div>
             <h2>${esc(selected.player_name)}</h2>
-            <div class="section-caption">${esc(selected.nfl_team||'FA')}${selected.yahoo_rank?` • Yahoo rank ${selected.yahoo_rank}`:''}</div>
+            <div class="section-caption">${esc(selected.nfl_team||'FA')}${!assetMode()&&selected.yahoo_rank?` • Yahoo rank ${selected.yahoo_rank}`:''}</div>
           </div>
         </div>
         <span class="fa-status-chip ${selected.availability==='waivers'?'waiver':'free'}">${selected.availability==='waivers'?(selected.awaiting_processing?'Processing':'Waivers'):'Free Agent'}</span>
@@ -1371,6 +1382,7 @@ function orderedTeamRoster(teamId){
 }
 
 function teamsView(teamId=null){
+ if(assetMode())return assetTeamsView(teamId);
  const selected=teamId==null?null:state.teams.find(t=>String(t.id)===String(teamId));
  const visibleTeams=selected?[selected]:state.teams;
  const lim=state.season?.roster_limit||18,cap=state.season?.salary_cap_points||100;
@@ -2176,16 +2188,20 @@ function accountView(){
 }
 
 function setupError(){return `<div class="login-wrap"><div class="login-card"><div class="login-head"><h1>League Office Ready</h1><p>Database connection is missing.</p></div></div></div>`;}
-function render(){if(!configured){app.innerHTML=setupError();return;}if(state.loading){app.innerHTML='<div class="login-wrap"><div style="color:white;font-weight:900">Loading League Office…</div></div>';return;}if(!state.session){app.innerHTML=loginView();bind();return;}if(state.tab==='reconcile'){state.commissionerSection='reconcile';state.tab='commissioner';}let content=state.tab==='team'?teamPageView():state.tab==='biddollars'?bidDollarsView():state.tab==='bidbank'?bidBankPage():state.tab==='bidhistory'?bidHistoryPage():state.tab==='draft'?draftHubView():state.tab==='teamhub'?teamHubView():state.tab==='communications'?communicationsHubView():state.tab==='leaguehub'?leagueHubView():state.tab==='settingshub'?settingsHubView():state.tab==='commissioner'?commissionerHubView():state.tab==='lineup'?lineupView():state.tab==='freeagents'?freeAgencyView():state.tab==='chat'?chatView():state.tab==='matchups'?matchupsView():state.tab==='schedule'?scheduleView():state.tab==='standings'?standingsView():state.tab==='board'?boardView():state.tab==='notifications'?notificationView():state.tab==='teams'?teamsView():state.tab==='contracts'?contractsView():state.tab==='trades'?tradesView():state.tab==='transactions'?transactionsView():state.tab==='history'?historyView():state.tab==='rules'?rulesView():state.tab==='deadlines'?deadlinesView():state.tab==='finances'?financesView():state.tab==='account'?accountView():state.tab==='reconcile'?reconcileView():dashboard();app.innerHTML=`<div class="office-shell">${topBar()}<main class="main">${content}</main>${bottomNav()}</div>`;bind();}
+function render(){if(assetMode()&&['lineup','matchups','schedule','standings','reconcile'].includes(state.tab))state.tab='teamhub';if(!configured){app.innerHTML=setupError();return;}if(state.loading){app.innerHTML='<div class="login-wrap"><div style="color:white;font-weight:900">Loading League Office…</div></div>';return;}if(!state.session){app.innerHTML=loginView();bind();return;}if(state.tab==='reconcile'){state.commissionerSection='reconcile';state.tab='commissioner';}let content=state.tab==='team'?teamPageView():state.tab==='biddollars'?bidDollarsView():state.tab==='bidbank'?bidBankPage():state.tab==='bidhistory'?bidHistoryPage():state.tab==='draft'?draftHubView():state.tab==='teamhub'?teamHubView():state.tab==='communications'?communicationsHubView():state.tab==='leaguehub'?leagueHubView():state.tab==='settingshub'?settingsHubView():state.tab==='commissioner'?commissionerHubView():state.tab==='lineup'?lineupView():state.tab==='freeagents'?freeAgencyView():state.tab==='chat'?chatView():state.tab==='matchups'?matchupsView():state.tab==='schedule'?scheduleView():state.tab==='standings'?standingsView():state.tab==='board'?boardView():state.tab==='notifications'?notificationView():state.tab==='teams'?teamsView():state.tab==='contracts'?contractsView():state.tab==='trades'?tradesView():state.tab==='transactions'?transactionsView():state.tab==='history'?historyView():state.tab==='rules'?rulesView():state.tab==='deadlines'?deadlinesView():state.tab==='finances'?financesView():state.tab==='account'?accountView():state.tab==='reconcile'?reconcileView():dashboard();app.innerHTML=`<div class="office-shell">${topBar()}<main class="main">${content}</main>${bottomNav()}</div>`;bind();}
 
 async function logout(){const t=myTeam();await signOutOwner({roomCode:ROOM_CODE,teamId:t?.id||null,legacyStorageKey:STORAGE_KEY});location.reload();}
 async function commish(name,args={},msg='Saved.'){try{await rpc(name,{p_room_code:ROOM_CODE,p_commish_pin:state.session.commishPin,...args});toast(msg);await loadData();render();}catch(e){toast(e.message,'error');}}
 
 function bind(){
+ app.querySelector('#save-app-mode')?.addEventListener('click',async e=>{
+   const mode=app.querySelector('#app-mode').value;e.currentTarget.disabled=true;
+   try{await rpc('league_app_mode',{p_room_code:ROOM_CODE,p_mode:mode});await loadData();render();toast('App mode saved. Other owners can refresh to see it.');}
+   catch(error){toast(error.message,'error');e.currentTarget.disabled=false;}
+ });
  app.querySelectorAll("[data-bid-history]").forEach(b=>b.addEventListener("click",()=>{state.bidHistoryTab=b.dataset.bidHistory;render();}));
  bindRollover({state,rpc,refresh:async()=>{await loadData();render();}});
- bindYahooConnection({state});
- bindMsfConnection({state});
+ if(!assetMode()){bindYahooConnection({state});bindMsfConnection({state});}
  app.querySelectorAll('[data-open-team]').forEach(link=>link.addEventListener('click',event=>{
    if(event.button!==0||event.ctrlKey||event.metaKey||event.shiftKey||event.altKey)return;
    event.preventDefault();
@@ -2195,7 +2211,7 @@ function bind(){
  }));
  const openCommissionerSection=key=>{
    if(!isCommish())return;
-   state.commissionerSection=commissionerSections.some(([id])=>id===key)?key:null;
+   state.commissionerSection=availableCommissionerSections().some(([id])=>id===key)?key:null;
    setTab('commissioner');
  };
  app.querySelectorAll('[data-commissioner-section]').forEach(b=>b.addEventListener('click',()=>openCommissionerSection(b.dataset.commissionerSection)));
@@ -2712,7 +2728,7 @@ function bind(){
  app.querySelector('[data-action="save-correction"]')?.addEventListener('click',()=>{const desc=document.getElementById('corr-desc')?.value.trim();if(!desc)return toast('Enter a correction description.','error');commish('league_commish_correction',{p_team_id:document.getElementById('corr-team')?.value||null,p_bid_delta:Number(document.getElementById('corr-bids')?.value||0),p_description:desc,p_reverse_transaction_id:document.getElementById('corr-reverse')?.value||null},'Correction recorded.');});
 }
 
-async function subscribe(){if(state.realtime)await supabase.removeChannel(state.realtime);state.realtime=supabase.channel(`league-office-${ROOM_CODE}`).on('postgres_changes',{event:'*',schema:'public',table:'league_roster_entries'},refresh).on('postgres_changes',{event:'*',schema:'public',table:'teams'},refresh).on('postgres_changes',{event:'*',schema:'public',table:'league_contracts'},refresh).on('postgres_changes',{event:'*',schema:'public',table:'league_rule_settings'},refresh).on('postgres_changes',{event:'*',schema:'public',table:'redistribution_rules'},refresh).on('postgres_changes',{event:'*',schema:'public',table:'league_deadlines'},refresh).on('postgres_changes',{event:'*',schema:'public',table:'league_deadline_team_status'},refresh).on('postgres_changes',{event:'*',schema:'public',table:'league_history_seasons'},refresh).on('postgres_changes',{event:'*',schema:'public',table:'league_history_team_seasons'},refresh).on('postgres_changes',{event:'*',schema:'public',table:'league_player_stats'},refresh).on('postgres_changes',{event:'*',schema:'public',table:'league_lineups'},refresh).on('postgres_changes',{event:'*',schema:'public',table:'league_weekly_player_scores'},refresh).on('postgres_changes',{event:'*',schema:'public',table:'league_schedule'},refresh).on('postgres_changes',{event:'*',schema:'public',table:'league_week_states'},refresh).on('postgres_changes',{event:'*',schema:'public',table:'league_scoring_rules'},refresh).on('postgres_changes',{event:'*',schema:'public',table:'league_player_projections'},refresh).on('postgres_changes',{event:'*',schema:'public',table:'league_message_threads'},refresh).on('postgres_changes',{event:'*',schema:'public',table:'league_message_posts'},refresh).on('postgres_changes',{event:'*',schema:'public',table:'league_transactions'},refresh).on('postgres_changes',{event:'*',schema:'public',table:'league_trades'},refresh).on('postgres_changes',{event:'*',schema:'public',table:'league_player_status_updates'},refresh).on('postgres_changes',{event:'*',schema:'public',table:'league_free_agent_settings'},refresh).on('postgres_changes',{event:'*',schema:'public',table:'league_player_directory'},refresh).on('postgres_changes',{event:'*',schema:'public',table:'league_waiver_holds'},refresh).on('postgres_changes',{event:'*',schema:'public',table:'league_waiver_priority'},refresh).on('postgres_changes',{event:'*',schema:'public',table:'league_waiver_runs'},refresh).on('postgres_changes',{event:'*',schema:'public',table:'league_chat_messages'},chatRefresh).on('postgres_changes',{event:'*',schema:'public',table:'league_chat_reactions'},chatRefresh).subscribe();}
+async function subscribe(){if(state.realtime)await supabase.removeChannel(state.realtime);state.realtime=supabase.channel(`league-office-${ROOM_CODE}`).on('postgres_changes',{event:'*',schema:'public',table:'league_roster_entries'},refresh).on('postgres_changes',{event:'*',schema:'public',table:'teams'},refresh).on('postgres_changes',{event:'*',schema:'public',table:'league_contracts'},refresh).on('postgres_changes',{event:'*',schema:'public',table:'league_future_picks'},refresh).on('postgres_changes',{event:'*',schema:'public',table:'league_rookie_rights'},refresh).on('postgres_changes',{event:'*',schema:'public',table:'league_rule_settings'},refresh).on('postgres_changes',{event:'*',schema:'public',table:'redistribution_rules'},refresh).on('postgres_changes',{event:'*',schema:'public',table:'league_deadlines'},refresh).on('postgres_changes',{event:'*',schema:'public',table:'league_deadline_team_status'},refresh).on('postgres_changes',{event:'*',schema:'public',table:'league_history_seasons'},refresh).on('postgres_changes',{event:'*',schema:'public',table:'league_history_team_seasons'},refresh).on('postgres_changes',{event:'*',schema:'public',table:'league_player_stats'},refresh).on('postgres_changes',{event:'*',schema:'public',table:'league_lineups'},refresh).on('postgres_changes',{event:'*',schema:'public',table:'league_weekly_player_scores'},refresh).on('postgres_changes',{event:'*',schema:'public',table:'league_schedule'},refresh).on('postgres_changes',{event:'*',schema:'public',table:'league_week_states'},refresh).on('postgres_changes',{event:'*',schema:'public',table:'league_scoring_rules'},refresh).on('postgres_changes',{event:'*',schema:'public',table:'league_player_projections'},refresh).on('postgres_changes',{event:'*',schema:'public',table:'league_message_threads'},refresh).on('postgres_changes',{event:'*',schema:'public',table:'league_message_posts'},refresh).on('postgres_changes',{event:'*',schema:'public',table:'league_transactions'},refresh).on('postgres_changes',{event:'*',schema:'public',table:'league_trades'},refresh).on('postgres_changes',{event:'*',schema:'public',table:'league_player_status_updates'},refresh).on('postgres_changes',{event:'*',schema:'public',table:'league_free_agent_settings'},refresh).on('postgres_changes',{event:'*',schema:'public',table:'league_player_directory'},refresh).on('postgres_changes',{event:'*',schema:'public',table:'league_waiver_holds'},refresh).on('postgres_changes',{event:'*',schema:'public',table:'league_waiver_priority'},refresh).on('postgres_changes',{event:'*',schema:'public',table:'league_waiver_runs'},refresh).on('postgres_changes',{event:'*',schema:'public',table:'league_chat_messages'},chatRefresh).on('postgres_changes',{event:'*',schema:'public',table:'league_chat_reactions'},chatRefresh).subscribe();}
 let refreshTimer=null;function refresh(){clearTimeout(refreshTimer);refreshTimer=setTimeout(async()=>{try{await loadData();render();}catch(e){console.warn(e);}},180);}
 let chatRefreshTimer=null;function chatRefresh(){clearTimeout(chatRefreshTimer);chatRefreshTimer=setTimeout(async()=>{try{await loadChat(false);await loadNotifications();if(state.tab==='chat')await markChatRead();render();}catch(e){console.warn(e);}},80);}
 
@@ -2737,3 +2753,22 @@ async function init(){
 }
 
 init();
+
+// Asset mode keeps ownership records and transaction rules; weekly views remain reversible.
+function assetMode(){return state.appMode!=='full';}
+function availableCommissionerSections(){return commissionerSections.filter(([key])=>!assetMode()||!['msf','yahoo','lineup','matchups','reconcile'].includes(key)).map(([key,title,description])=>[key,key==='teams'&&assetMode()?'Team Assets':title,description]);}
+function appModeView(){return `<section class="card card-pad"><h2>App Mode</h2><p>Asset Management keeps ownership, contracts, rookie rights, bids, picks, acquisitions, releases, trades and drafts available. Weekly lineups, scoring and feed tools are hidden.</p><p>Full Fantasy restores those screens. Reconnecting a licensed data feed and preparing a new season are separate steps.</p>${state.appModeReady?'':'<p class="error">Install the Asset Management SQL migration before changing modes.</p>'}<label>League-wide mode <select id="app-mode" class="input"><option value="assets" ${assetMode()?'selected':''}>Asset Management</option><option value="full" ${!assetMode()?'selected':''}>Full Fantasy</option></select></label><button id="save-app-mode" class="btn btn-primary" ${state.appModeReady?'':'disabled'}>Save Mode</button><p class="small muted">Owners should refresh after a mode change. Changing modes does not delete records or reset drafts.</p></section>`;}
+function assetTeamHub(){const me=myTeam();return `${pageHeading('My Assets','Manage ownership, contracts, rookie rights and transactions.','Team Management')}<section class="nav-hub-grid">${me?hubCard('team','♟','My Team Assets','Owned players, rookie rights, draft picks and bid dollars.','','?tab=team&team='+encodeURIComponent(me.id)):hubCard('teams','♟','Team Assets','Browse league ownership.')}${hubCard('contracts','▤','Contracts','Review contracts, cap usage and extensions.')}${hubCard('trades','⇄','Trades','Propose and accept trades using existing league rules.')}${hubCard('freeagents','+','Acquisitions','Acquire players and submit waiver claims.')}</section>${me?assetTeamsView(me.id):''}`;}
+function assetLeagueHub(){return `${pageHeading('League','League assets, transactions and historical records.','League Information')}<section class="nav-hub-grid">${hubCard('teams','♟','Team Assets','Players, contracts, rookie rights, bids and draft picks.')}${hubCard('transactions','☷','Transactions','Acquisitions, releases, trades and draft activity.')}${hubCard('history','★','History','Preserved season records and franchise accomplishments.')}</section>`;}
+function assetDashboard(){return `${pageHeading('League Office','Asset Management • Contracts, rookie rights, bids, trades and drafts.','GLSK')}<section class="nav-hub-grid">${hubCard('teamhub','♟','My Assets','Review ownership and manage contracts.')}${hubCard('trades','⇄','Trades','Propose, accept and review trades.')}${hubCard('freeagents','+','Acquisitions','Add players or submit waiver claims.')}${hubCard('draft','⇅','Draft Rooms','Auction, supplemental and roster-fill drafts.')}${hubCard('transactions','☷','Transactions','Review league activity.')}${hubCard('deadlines','◷','Deadlines','Track contract and league deadlines.')}</section>${assetTeamsView()}`;}
+function assetTeamsView(teamId=null){
+ const selected=teamId==null?null:teamById(teamId),teams=selected?[selected]:state.teams;
+ return `${pageHeading(selected?selected.name:'Team Assets','Ownership records remain active for acquisitions, releases and trades.','League Assets')}${commissionerAddPlayerForm()}<div class="team-office-grid roster-team-grid">${teams.map(t=>{
+ const roster=rosterFor(t.id).slice().sort((a,b)=>String(a.player_name).localeCompare(String(b.player_name))),rights=rightsFor(t.id),picks=picksFor(t.id);
+ return `<details class="card office-team-card" ${selected?'open':''}><summary class="team-summary"><div class="office-team-name">${esc(t.name)}</div><div class="team-summary-metrics"><span><b>${bidMoney(t.remaining_budget)}</b><small>Bids</small></span><span><b>${capUsed(t.id)}/${state.season?.salary_cap_points||100}</b><small>Cap</small></span><span><b>${rights.length}</b><small>Rookie rights</small></span></div></summary><div class="team-roster-body"><h3>Owned Players</h3>${roster.map(r=>{
+ const c=contractForPlayer(t.id,r.player_key),penalty=c?(contractYear(c)===1?Number(c.cap_cost||0)*2:({2:5,3:10,4:20}[Number(c.length_years)]||0)):0;
+ return `<div class="roster-player-row"><span class="${rosterPositionClass(r.position)}">${esc(r.position||'—')}</span><div class="roster-player-main"><div class="contract-player">${esc(r.player_name)}</div><div class="contract-detail">${esc(r.nfl_team||'')} • ${c?esc(contractLabel(c)):'No active contract'}${penalty?` • Drop fine ${penalty}`:''}</div>${rights.some(x=>x.player_key===r.player_key)?'<span class="status-chip">Rookie rights</span>':''}</div><div class="roster-player-actions">${myTeam()?.id===t.id&&!state.session?.spectator?`<button class="btn btn-sm btn-reset" data-drop-player="${esc(r.player_key)}" data-drop-name="${esc(r.player_name)}" data-drop-penalty="${penalty}">Drop</button>`:''}${commissionerToolsActive()?`<button class="btn btn-sm btn-outline" data-exception-drop="${esc(r.player_key)}" data-exception-team="${esc(t.id)}" data-drop-name="${esc(r.player_name)}">Retire/Ban</button>`:''}</div></div>`;
+ }).join('')||'<p>No owned players.</p>'}<h3>Rookie Ownership Rights</h3>${rights.map(r=>`<div class="roster-player-row"><strong>${esc(r.player_name)}</strong><span>${esc(r.rookie_draft_year)} rookie draft</span></div>`).join('')||'<p>No active rookie rights.</p>'}<p class="small muted">Active rights follow the player in a trade under the existing league rules.</p><h3>Draft Picks</h3>${picks.map(pk=>`<div class="roster-player-row">${esc(pickLabel(pk))}</div>`).join('')||'<p>No active picks recorded.</p>'}</div></details>`;
+ }).join('')}</div>`;
+}
+function assetMarketTable(players,all,me,settings){return `<section class="fa-player-browser"><input id="fa-search" class="input fa-big-search" aria-label="Search player by name" placeholder="Search player by name" value="${esc(state.waiverSearch)}"><div class="fa-position-pills">${['ALL','QB','RB','WR','TE','K','DST'].map(pos=>`<button data-fa-position="${pos}" aria-pressed="${state.waiverPosition===pos}">${pos==='ALL'?'All Positions':pos}</button>`).join('')}<label><input id="fa-show-mine" type="checkbox" ${state.faShowMine?'checked':''}> Show my team</label></div><div class="fa-browser-filters"><label>Status<select id="fa-status" class="input">${[['ALL','Available Players'],['free_agent','Free Agents'],['waivers','Waivers'],['EVERYONE','All Players'],['rostered','Owned Players']].map(([v,label])=>`<option value="${v}" ${state.waiverStatus===v?'selected':''}>${label}</option>`).join('')}</select></label><label>NFL Team<select id="fa-nfl" class="input"><option value="">All Teams</option>${[...new Set(all.map(p=>p.nfl_team).filter(Boolean))].sort().map(v=>`<option ${v===state.faNfl?'selected':''}>${esc(v)}</option>`).join('')}</select></label><label>Owner<select id="fa-fantasy" class="input"><option value="">All Owners</option>${state.teams.map(t=>`<option value="${esc(t.id)}" ${t.id===state.faFantasy?'selected':''}>${esc(t.name)}</option>`).join('')}</select></label></div><p class="small muted">${players.length} players. Player directory and NFL team labels are saved records, not a live feed.</p>${players.map(p=>`<div class="roster-player-row"><div class="roster-player-main"><button class="fa-player-link" data-profile-key="${esc(p.player_key)}">${esc(p.player_name)}</button><div>${esc(p.position||'')} • ${esc(p.nfl_team||'')} • ${p.availability==='rostered'?esc(teamById(p.owner_team_id)?.name||'Owned'):p.availability==='waivers'?'Waivers':'Free agent'}</div></div><button class="btn btn-sm btn-outline" data-fa-select="${esc(p.player_key)}" ${!['free_agent','waivers'].includes(p.availability)||settings.enabled===false?'disabled':''}>${p.availability==='waivers'?'Claim':'Select'}</button></div>`).join('')||'<p>No players match these filters.</p>'}</section>`;}
