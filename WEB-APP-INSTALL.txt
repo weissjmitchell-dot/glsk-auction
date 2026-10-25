@@ -1,0 +1,18 @@
+GLSK HOME-SCREEN WEB APP UPDATE
+
+1. Unzip this download on your Windows laptop.
+2. Upload league.html and the src and public folders into the ROOT of the existing GitHub repository. Keep the folders intact. Do not upload the ZIP itself or create an extra enclosing folder.
+3. Commit the upload. Wait for the Vercel Production deployment to say Ready.
+4. Open https://glsk-auction.vercel.app/install.html on your iPhone in Safari.
+5. Use Share > Add to Home Screen. Enable Open as Web App if shown, then Add.
+6. Open the GLSK icon and sign in. Check your Assets, trades and Draft tabs.
+7. Share the install.html link with the other owners. It is also under GLSK Settings > Install & Share GLSK.
+
+No database migration, environment-variable change or additional subscription is needed. Existing permissions, asset mode and draft functions are preserved. This update adds an install guide/share page and static home-screen metadata. It does not publish an App Store app. The app requires internet; it does not queue offline transactions.
+
+Existing owners use their existing accounts. The commissioner must arrange access for anyone without a league account. Never share your own login.
+
+OWNER MESSAGE
+GLSK is ready to add to your iPhone home screen. Open https://glsk-auction.vercel.app/install.html in Safari and follow the steps. Sign in with your existing league account. We'll use it for contracts, rookie rights, acquisitions, trades and our offseason drafts.
+
+Rollback: remove the Install & Share link from Settings and the public/install.html and public/install.js files. No league data changes are involved.
