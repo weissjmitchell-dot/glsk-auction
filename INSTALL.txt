@@ -1,0 +1,1 @@
+Upload the src and tests folders to the existing GitHub repository root, preserving paths. Let Vercel deploy the new commit, then refresh GLSK. No SQL or environment changes are needed. This corrects the asset card layout using the existing roster card styling; ownership records and transaction behavior are unchanged.
