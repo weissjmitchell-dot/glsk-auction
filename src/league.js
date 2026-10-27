@@ -214,14 +214,14 @@ function base64UrlToUint8Array(value){
   return out;
 }
 async function getPushRegistration(){
-  if(!('serviceWorker' in navigator))return null;
+  if(!((location.protocol!=='capacitor:'&&'serviceWorker' in navigator)))return null;
   try{
     await navigator.serviceWorker.register('/sw.js',{scope:'/'});
     return await navigator.serviceWorker.ready;
   }catch(e){console.warn('service worker',e.message);return null;}
 }
 async function refreshPushState(){
-  state.pushSupported=Boolean('serviceWorker' in navigator&&'PushManager' in window&&'Notification' in window);
+  state.pushSupported=Boolean((location.protocol!=='capacitor:'&&'serviceWorker' in navigator)&&'PushManager' in window&&'Notification' in window);
   state.pushPermission=('Notification' in window)?Notification.permission:'denied';
   state.pushStandalone=isStandaloneApp();
   if(!state.pushSupported){state.pushSubscribed=false;return;}

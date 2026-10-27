@@ -1,0 +1,38 @@
+GLSK IPHONE TEST BUILD — October 27, 2026
+
+WHAT THIS PACKAGE DOES
+Adds a Capacitor iPhone project and a manual Codemagic workflow. Bundles the current GLSK screens into the app. Uses the same Supabase accounts and league database. Preserves asset mode, acquisitions/releases, trades, rookie rights, draft rooms, history and the website. Includes native CSV sharing, external link handling and a refresh button.
+
+UPLOAD
+1. Extract this ZIP on Windows.
+2. Upload the contents into the ROOT of glsk-auction on GitHub, preserving folders. Do not upload the ZIP itself or its enclosing folder. Commit all files together.
+3. Vercel can deploy the normal website using its existing npm run build command. No SQL or Vercel environment changes are required.
+4. In Codemagic, open GLSK, select main and Check for configuration file. The workflow is GLSK iPhone - TestFlight build.
+
+NEXT: APPLE SIGNING (complete before starting a build)
+The workflow expects an App Store Connect integration named exactly GLSK Apple.
+Create an App Store Connect team API key under Users and Access > Integrations. Use a role that permits certificate/provisioning management (Admin for this signing setup). Download its .p8 file once and keep it private. Add the key, Key ID and Issuer ID to Codemagic's Apple integration, naming it GLSK Apple. Do not put the private key in GitHub or send it in chat.
+In Codemagic's code-signing settings, generate/upload an Apple Distribution certificate and fetch/create its App Store provisioning profile for com.mitchellweiss.glsk. The certificate and profile must match. Stop here for guided setup if any screen differs.
+App Store Apple ID from your screenshot: 6826889896. Bundle ID: com.mitchellweiss.glsk.
+
+BUILD
+After signing is ready, start the workflow manually. It installs locked dependencies, builds bundled web assets, synchronizes the native project, applies signing, archives and uploads to App Store Connect. It does NOT submit for App Review or automatically invite external testers. Use TestFlight after processing to test on your iPhone. Build number uses Codemagic's project build number + 1; if an existing uploaded build has a higher number, adjust before upload.
+
+TEST BEFORE INVITING OWNERS
+- Sign in with an existing owner account and reopen the app to check session persistence.
+- Check Assets, rookie rights, bids, picks and all draft rooms.
+- Use a test league/account to exercise mutations; the app accesses the REAL league, not a sandbox. Do not make dummy trades or drops against live assets.
+- Confirm owner/commissioner restrictions, CSV Save to Files sharing, external links, account reset and optional video/audio permission prompts.
+- Check layout in portrait/landscape, keyboard and weak-network behavior.
+
+KNOWN LIMITS OF THIS FIRST TEST BUILD
+Native push notifications are not configured. Existing web push still works in the web app; the native app uses the in-app notifications list. Password reset and email confirmation links open the existing website; return to the app and sign in after finishing. Online league activity is required, with no offline queue. Native camera/microphone/video and file sharing need testing on a real iPhone. Website updates do not automatically update the bundled native screens; new native UI versions need a new build. Database changes are shared immediately.
+
+VALIDATION
+Web and iPhone web bundles and Capacitor synchronization can be checked here. The signed Xcode archive and device behavior must be verified on Codemagic/TestFlight; no Mac/Xcode or Apple signing credentials were available during preparation. This is a TestFlight preparation package, not a completed App Store submission.
+
+BEFORE APP STORE SUBMISSION
+Prepare a privacy/support page, accurate privacy/age disclosures, reviewer access to a demo league, device screenshots, and any necessary account-deletion and user-content moderation/reporting features. Review data licensing before enabling provider feeds. Apple review approval is not guaranteed.
+
+ROLLBACK
+The original web build remains npm run build. To stop native builds, simply stop running Codemagic. No league records were migrated or deleted. Restore the previous package files/src changes from GitHub history if reverting this package entirely.

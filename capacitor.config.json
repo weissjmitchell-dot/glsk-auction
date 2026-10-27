@@ -1,0 +1,17 @@
+{
+  "appId": "com.mitchellweiss.glsk",
+  "appName": "GLSK",
+  "webDir": "dist-ios",
+  "ios": {
+    "contentInset": "automatic",
+    "backgroundColor": "#17263f"
+  },
+  "plugins": {
+    "CapacitorHttp": {
+      "enabled": true
+    }
+  },
+  "server": {
+    "appStartPath": "league.html"
+  }
+}

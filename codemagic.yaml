@@ -1,0 +1,36 @@
+workflows:
+  glsk-ios-testflight:
+    name: GLSK iPhone - TestFlight build
+    instance_type: mac_mini_m2
+    max_build_duration: 60
+    integrations:
+      app_store_connect: GLSK Apple
+    environment:
+      node: 22
+      xcode: latest
+      ios_signing:
+        distribution_type: app_store
+        bundle_identifier: com.mitchellweiss.glsk
+      vars:
+        APP_STORE_APPLE_ID: "6826889896"
+    scripts:
+      - name: Install locked dependencies
+        script: npm ci
+      - name: Build and synchronize bundled iPhone app
+        script: |
+          export BUILD_NUMBER=$((PROJECT_BUILD_NUMBER + 1))
+          npm run sync:ios
+      - name: Validate package
+        script: node tests/ios-package.test.mjs
+      - name: Apply signing profiles
+        script: xcode-project use-profiles
+      - name: Archive and export iPhone app
+        script: xcode-project build-ipa --project ios/App/App.xcodeproj --scheme App
+    artifacts:
+      - build/ios/ipa/*.ipa
+      - /tmp/xcodebuild_logs/*.log
+    publishing:
+      app_store_connect:
+        auth: integration
+        submit_to_testflight: false
+        submit_to_app_store: false

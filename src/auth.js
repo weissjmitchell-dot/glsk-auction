@@ -18,10 +18,10 @@ function normalizeEmail(v){return String(v||'').trim().toLowerCase();}
 function validEmail(v){return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalizeEmail(v));}
 function passwordOkay(v){return String(v||'').length>=8;}
 function resetUrl(){
-  return `${location.origin}/league?reset=1`;
+  return `${location.protocol==='capacitor:'?'https://glsk-auction.vercel.app':location.origin}/league?reset=1`;
 }
 function claimRedirectUrl(){
-  return `${location.origin}/league`;
+  return `${location.protocol==='capacitor:'?'https://glsk-auction.vercel.app':location.origin}/league`;
 }
 function removeResetParam(){
   try{
@@ -282,14 +282,14 @@ function b64ToBytes(value){
   return Uint8Array.from(raw,c=>c.charCodeAt(0));
 }
 async function pushRegistration(){
-  if(!('serviceWorker' in navigator))return null;
+  if(!((location.protocol!=='capacitor:'&&'serviceWorker' in navigator)))return null;
   try{
     await navigator.serviceWorker.register('/sw.js',{scope:'/'});
     return await navigator.serviceWorker.ready;
   }catch{return null;}
 }
 async function enablePush(roomCode,account){
-  if(!('Notification' in window)||!('PushManager' in window)||!('serviceWorker' in navigator)){
+  if(!('Notification' in window)||!('PushManager' in window)||!((location.protocol!=='capacitor:'&&'serviceWorker' in navigator))){
     throw new Error('Push notifications are not supported on this browser.');
   }
   if(isIOS()&&!standalone()){
@@ -329,7 +329,7 @@ async function enablePush(roomCode,account){
 }
 async function maybePromptPush(roomCode,leagueName,account){
   if(!account?.team_id)return;
-  if(!('Notification' in window)||!('PushManager' in window)||!('serviceWorker' in navigator))return;
+  if(!('Notification' in window)||!('PushManager' in window)||!((location.protocol!=='capacitor:'&&'serviceWorker' in navigator)))return;
   if(Notification.permission==='denied')return;
 
   const reg=await pushRegistration();
@@ -438,7 +438,7 @@ export async function sendPasswordResetEmail(email){
 
 export async function signOutOwner({roomCode,teamId,legacyStorageKey}={}){
   try{
-    if(teamId&&'serviceWorker' in navigator){
+    if(teamId&&(location.protocol!=='capacitor:'&&'serviceWorker' in navigator)){
       const reg=await navigator.serviceWorker.ready.catch(()=>null);
       const sub=reg?await reg.pushManager?.getSubscription():null;
       if(sub){
