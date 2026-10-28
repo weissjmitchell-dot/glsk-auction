@@ -1,19 +1,19 @@
-GLSK acquisitions and rookie rights update
+GLSK Draft Results Update
 
-Extract this ZIP. Upload the src and tests folders into the ROOT of your existing GitHub repository, preserving their folder structure. Commit to main. Do not upload the ZIP itself.
+1. Extract this ZIP on your Windows laptop.
+2. In GitHub, open weissjmitchell-dot/glsk-auction on main.
+3. Choose Add file > Upload files from the repository root.
+4. Drag in the extracted src and tests folders. Commit the changes.
+   Keep src/league.js inside src; do not upload the ZIP itself.
+5. Let Vercel finish deploying for the website.
+6. In Codemagic, start the GLSK iPhone - TestFlight build workflow on main.
+7. Once Apple finishes processing, update GLSK in TestFlight.
+8. Open Draft > Draft Results > Auction, Supplemental, or Snake.
 
-The only application file changed is src/league.js. tests/asset-mode-ui.test.cjs contains regression checks.
+The new screens read the existing room results and never edit draft records.
+Auction results omit undone sales. Supplemental results show selecting and winning teams.
+Refresh Results fetches current records. Results use the existing room tables; this does not import past seasons or add a multi-season archive selector.
+No database migrations or environment-variable changes are required.
+Previous acquisitions and rookie-rights fixes are included.
 
-Vercel: allow the GitHub commit to deploy, then refresh the website.
-iPhone: start a new Codemagic build on main using GLSK iPhone - TestFlight build. After Apple processes it, update GLSK through TestFlight.
-
-No SQL migration, environment variable changes, certificate changes or new provisioning profile is required.
-
-Changes:
-- Asset Management hides acquisition/waiver navigation, home and team cards, and commissioner waiver tools. Old free-agent routes return to My Assets; the free-agency view is also guarded.
-- Full Fantasy mode retains the acquisition screens for future restoration.
-- Current rookie-rights displays and trade annotations ignore rights whose rookie draft year is earlier than the selected league season. This uses league season, not the calendar rollover, when the season is loaded.
-- Historical rights records are retained. Existing roster ownership, contracts, releases, trades, draft functions and transaction history are preserved.
-- Commissioner manual ownership corrections remain available.
-
-Validation: asset-mode regression checks, web production build, iOS web build/sync and native-package checks passed. A signed archive and device check follow through Codemagic and TestFlight.
+Validation: draft-results tests, asset-mode tests, web build, iOS bundle/sync and native package checks passed. Device verification follows your TestFlight build.

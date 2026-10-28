@@ -634,7 +634,7 @@ function navGroupForTab(tab){
   if(['communications','chat','board','notifications'].includes(tab))return 'communications';
   if(['leaguehub','teams','team','matchups','schedule','standings','transactions','history'].includes(tab))return 'leaguehub';
   if(['settingshub','commissioner','reconcile','rules','deadlines','finances'].includes(tab))return 'settingshub';
-  if(['draft','biddollars','bidbank','bidhistory'].includes(tab))return 'draft';
+  if(['draft','draftresults','auctionresults','supplementalresults','snakeresults','biddollars','bidbank','bidhistory'].includes(tab))return 'draft';
   if(tab==='home')return 'home';
   return '';
 }
@@ -741,9 +741,51 @@ function commissionerHubView(){
 }
 
 function draftHubView(){
+ const results=hubCard('draftresults','▤','Draft Results','View Auction, Supplemental and Snake results.');
  const bids=hubCard('biddollars','$','Bid Dollars','Bid bank total and historical data.');
- if(state.draftPreparation)return `${pageHeading('Draft','Next-season draft preparation.','League Drafts')}<section class="card card-pad"><h2>Previous draft rooms archived</h2><p>The new season is in setup. Its player pools and draft rooms must be prepared before drafting resumes. The previous draft records have been preserved.</p></section><div class="nav-hub-grid nav-hub-grid-three" style="margin-top:20px">${bids}</div>`;
- return `${pageHeading('Draft','Auction, supplemental and roster-fill draft rooms.','League Drafts')}<section class="office-section"><div class="office-section-head"><div><h2>Draft Rooms</h2><div class="section-caption">Choose a draft phase to open its room.</div></div></div><div class="nav-hub-grid nav-hub-grid-three">${hubCard('','⚡','Auction','Top 40','','/')}${hubCard('','↔','Supplemental','2-round snake','','/supplemental')}${hubCard('','⇅','Snake','Roster fill to 18','','/phase3')}${bids}</div></section>`;
+ if(state.draftPreparation)return `${pageHeading('Draft','Next-season draft preparation.','League Drafts')}<section class="card card-pad"><h2>Previous draft rooms archived</h2><p>The new season is in setup. Its player pools and draft rooms must be prepared before drafting resumes. The previous draft records have been preserved.</p></section><div class="nav-hub-grid nav-hub-grid-three" style="margin-top:20px">${results}${bids}</div>`;
+ return `${pageHeading('Draft','Auction, supplemental and roster-fill draft rooms.','League Drafts')}<section class="office-section"><div class="office-section-head"><div><h2>Draft Rooms</h2><div class="section-caption">Choose a draft phase to open its room.</div></div></div><div class="nav-hub-grid nav-hub-grid-three">${hubCard('','⚡','Auction','Top 40','','/')}${hubCard('','↔','Supplemental','2-round snake','','/supplemental')}${hubCard('','⇅','Snake','Roster fill to 18','','/phase3')}${bids}</div></section><section class="office-section"><div class="nav-hub-grid">${results}</div></section>`;
+}
+
+
+const draftResultPhases={auctionresults:{label:'Auction',players:'players',picks:'sales',order:'sold_at'},supplementalresults:{label:'Supplemental',players:'supplemental_players',picks:'supplemental_picks',order:'pick_no'},snakeresults:{label:'Snake',players:'phase3_players',picks:'phase3_picks',order:'pick_no'}};
+function draftResultsHubView(){
+ return `<button class="btn btn-outline" data-tab="draft" style="margin-bottom:16px">‹ Draft</button>${pageHeading('Draft Results','Review completed selections without entering a draft room.','League Drafts')}<div class="nav-hub-grid nav-hub-grid-three">${Object.entries(draftResultPhases).map(([tab,phase])=>hubCard(tab,'▤',phase.label,`View ${phase.label} results.`)).join('')}</div>`;
+}
+async function loadDraftResults(tab,force=false){
+ const phase=draftResultPhases[tab],roomId=state.room?.id;if(!phase||!roomId)return;
+ state.draftResultsCache ||= {};
+ const key=`${roomId}:${tab}`,previous=state.draftResultsCache[key];
+ if(previous?.loading||(!force&&previous))return;
+ const entry={loading:true};state.draftResultsCache[key]=entry;
+ try{
+  let picksQuery=supabase.from(phase.picks).select('*').eq('room_id',roomId);
+  if(tab==='auctionresults')picksQuery=picksQuery.eq('undone',false);
+  const responses=await Promise.all([picksQuery.order(phase.order,{ascending:true}),supabase.from(phase.players).select('*').eq('room_id',roomId),supabase.from('teams').select('*').eq('room_id',roomId)]);
+  for(const response of responses)if(response.error)throw response.error;
+  [entry.picks,entry.players,entry.teams]=responses.map(r=>r.data||[]);
+ }catch(error){entry.error='Unable to load draft results. Please try again.';console.warn('Draft results load failed',error.message);}
+ entry.loading=false;if(state.tab===tab&&state.room?.id===roomId)render();
+}
+function draftResultsView(){
+ const tab=state.tab,phase=draftResultPhases[tab],entry=state.draftResultsCache?.[`${state.room?.id}:${tab}`];
+ const head=`<button class="btn btn-outline" data-tab="draftresults" style="margin-bottom:16px">‹ Draft Results</button>${pageHeading(`${phase.label} Results`,'Saved selections from this league’s draft room.','Draft → Draft Results')}<button class="btn btn-outline" data-refresh-draft-results style="margin-bottom:16px" ${entry?.loading?'disabled':''}>Refresh Results</button>`;
+ if(!state.room?.id)return head+'<section class="card card-pad">Draft room unavailable.</section>';
+ if(!entry||entry.loading)return head+'<section class="card card-pad" role="status">Loading draft results…</section>';
+ if(entry.error)return head+`<section class="card card-pad" role="alert">${esc(entry.error)}</section>`;
+ if(!entry.picks.length)return head+`<section class="card card-pad">No ${phase.label} results recorded yet.</section>`;
+ const players=new Map(entry.players.map(p=>[p.id,p])),teams=new Map(entry.teams.map(t=>[t.id,t.name]));
+ return head+`<div class="small muted" style="margin-bottom:12px">${entry.picks.length} completed selection${entry.picks.length===1?'':'s'}</div><div class="list-stack">${entry.picks.map((pick,index)=>{
+  const player=players.get(pick.player_id),name=player?.name||'Player unavailable';
+  let owner='',extra='',price='';
+  if(tab==='supplementalresults'){
+   owner=`Selected by ${esc(teams.get(pick.selecting_team_id)||'Team unavailable')}`;
+   if(pick.winner_team_id!==pick.selecting_team_id)owner+=` → won by ${esc(teams.get(pick.winner_team_id)||'Team unavailable')}`;
+   extra=pick.outcome==='free'?'Unchallenged':pick.outcome==='rights_auction'?'Rookie Rights H2H':'Challenge Auction';
+  }else{owner=esc(teams.get(pick.team_id)||'Team unavailable');if(tab==='snakeresults')extra=`Round ${esc(pick.round)}`;}
+  if(tab!=='snakeresults')price=`<strong>$${Number(pick.price||0).toFixed(0)}</strong>`;
+  return `<section class="card card-pad"><div class="row between gap-12 wrap"><h3 style="margin:0">${esc(pick.pick_no||index+1)}. ${esc(name)}</h3>${price}</div><div class="small muted">${esc(player?.position||'')} ${esc(player?.nfl_team||'')}${extra?` • ${extra}`:''}</div><div style="margin-top:8px">${owner}</div></section>`;
+ }).join('')}</div>`;
 }
 
 function bidDollarsView(){return `${pageHeading('Bid Dollars','League bid bank and historical accounting.','Draft')}<div class="hub-grid">${hubCard('bidbank','$','Bid Bank total','Bid dollars collected for next season’s redistribution.')}${hubCard('bidhistory','↗','Historical Data','Auction stats, bid pool size by year and beginning bid trend.')}</div>`;}
@@ -2190,12 +2232,17 @@ function accountView(){
 }
 
 function setupError(){return `<div class="login-wrap"><div class="login-card"><div class="login-head"><h1>League Office Ready</h1><p>Database connection is missing.</p></div></div></div>`;}
-function render(){if(assetMode()&&['lineup','matchups','schedule','standings','reconcile','freeagents'].includes(state.tab))state.tab='teamhub';if(!configured){app.innerHTML=setupError();return;}if(state.loading){app.innerHTML='<div class="login-wrap"><div style="color:white;font-weight:900">Loading League Office…</div></div>';return;}if(!state.session){app.innerHTML=loginView();bind();return;}if(state.tab==='reconcile'){state.commissionerSection='reconcile';state.tab='commissioner';}let content=state.tab==='team'?teamPageView():state.tab==='biddollars'?bidDollarsView():state.tab==='bidbank'?bidBankPage():state.tab==='bidhistory'?bidHistoryPage():state.tab==='draft'?draftHubView():state.tab==='teamhub'?teamHubView():state.tab==='communications'?communicationsHubView():state.tab==='leaguehub'?leagueHubView():state.tab==='settingshub'?settingsHubView():state.tab==='commissioner'?commissionerHubView():state.tab==='lineup'?lineupView():state.tab==='freeagents'?freeAgencyView():state.tab==='chat'?chatView():state.tab==='matchups'?matchupsView():state.tab==='schedule'?scheduleView():state.tab==='standings'?standingsView():state.tab==='board'?boardView():state.tab==='notifications'?notificationView():state.tab==='teams'?teamsView():state.tab==='contracts'?contractsView():state.tab==='trades'?tradesView():state.tab==='transactions'?transactionsView():state.tab==='history'?historyView():state.tab==='rules'?rulesView():state.tab==='deadlines'?deadlinesView():state.tab==='finances'?financesView():state.tab==='account'?accountView():state.tab==='reconcile'?reconcileView():dashboard();app.innerHTML=`<div class="office-shell">${topBar()}<main class="main">${content}</main>${bottomNav()}</div>`;bind();}
+function render(){if(assetMode()&&['lineup','matchups','schedule','standings','reconcile','freeagents'].includes(state.tab))state.tab='teamhub';if(!configured){app.innerHTML=setupError();return;}if(state.loading){app.innerHTML='<div class="login-wrap"><div style="color:white;font-weight:900">Loading League Office…</div></div>';return;}if(!state.session){app.innerHTML=loginView();bind();return;}if(state.tab==='reconcile'){state.commissionerSection='reconcile';state.tab='commissioner';}let content=state.tab==='team'?teamPageView():state.tab==='biddollars'?bidDollarsView():state.tab==='bidbank'?bidBankPage():state.tab==='bidhistory'?bidHistoryPage():state.tab==='draft'?draftHubView():state.tab==='draftresults'?draftResultsHubView():draftResultPhases[state.tab]?draftResultsView():state.tab==='teamhub'?teamHubView():state.tab==='communications'?communicationsHubView():state.tab==='leaguehub'?leagueHubView():state.tab==='settingshub'?settingsHubView():state.tab==='commissioner'?commissionerHubView():state.tab==='lineup'?lineupView():state.tab==='freeagents'?freeAgencyView():state.tab==='chat'?chatView():state.tab==='matchups'?matchupsView():state.tab==='schedule'?scheduleView():state.tab==='standings'?standingsView():state.tab==='board'?boardView():state.tab==='notifications'?notificationView():state.tab==='teams'?teamsView():state.tab==='contracts'?contractsView():state.tab==='trades'?tradesView():state.tab==='transactions'?transactionsView():state.tab==='history'?historyView():state.tab==='rules'?rulesView():state.tab==='deadlines'?deadlinesView():state.tab==='finances'?financesView():state.tab==='account'?accountView():state.tab==='reconcile'?reconcileView():dashboard();app.innerHTML=`<div class="office-shell">${topBar()}<main class="main">${content}</main>${bottomNav()}</div>`;bind();}
 
 async function logout(){const t=myTeam();await signOutOwner({roomCode:ROOM_CODE,teamId:t?.id||null,legacyStorageKey:STORAGE_KEY});location.reload();}
 async function commish(name,args={},msg='Saved.'){try{await rpc(name,{p_room_code:ROOM_CODE,p_commish_pin:state.session.commishPin,...args});toast(msg);await loadData();render();}catch(e){toast(e.message,'error');}}
 
 function bind(){
+ if(draftResultPhases[state.tab]&&state.session&&!state.loading){
+  void loadDraftResults(state.tab);
+  app.querySelector('[data-refresh-draft-results]')?.addEventListener('click',()=>{void loadDraftResults(state.tab,true);render();});
+ }
+
  app.querySelector('#save-app-mode')?.addEventListener('click',async e=>{
    const mode=app.querySelector('#app-mode').value;e.currentTarget.disabled=true;
    try{await rpc('league_app_mode',{p_room_code:ROOM_CODE,p_mode:mode});await loadData();render();toast('App mode saved. Other owners can refresh to see it.');}
