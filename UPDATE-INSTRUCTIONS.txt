@@ -1,0 +1,19 @@
+GLSK acquisitions and rookie rights update
+
+Extract this ZIP. Upload the src and tests folders into the ROOT of your existing GitHub repository, preserving their folder structure. Commit to main. Do not upload the ZIP itself.
+
+The only application file changed is src/league.js. tests/asset-mode-ui.test.cjs contains regression checks.
+
+Vercel: allow the GitHub commit to deploy, then refresh the website.
+iPhone: start a new Codemagic build on main using GLSK iPhone - TestFlight build. After Apple processes it, update GLSK through TestFlight.
+
+No SQL migration, environment variable changes, certificate changes or new provisioning profile is required.
+
+Changes:
+- Asset Management hides acquisition/waiver navigation, home and team cards, and commissioner waiver tools. Old free-agent routes return to My Assets; the free-agency view is also guarded.
+- Full Fantasy mode retains the acquisition screens for future restoration.
+- Current rookie-rights displays and trade annotations ignore rights whose rookie draft year is earlier than the selected league season. This uses league season, not the calendar rollover, when the season is loaded.
+- Historical rights records are retained. Existing roster ownership, contracts, releases, trades, draft functions and transaction history are preserved.
+- Commissioner manual ownership corrections remain available.
+
+Validation: asset-mode regression checks, web production build, iOS web build/sync and native-package checks passed. A signed archive and device check follow through Codemagic and TestFlight.
