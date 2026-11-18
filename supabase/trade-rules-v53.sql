@@ -72,11 +72,11 @@ begin
   if v_receive_bid>(select remaining_budget from public.teams where id=v_trade.partner_team_id) then return jsonb_build_object('ok',false,'error','Partner does not have enough bid dollars.'); end if;
 
   select coalesce(sum(c.cap_cost),0) into v_prop_out
-  from public.league_trade_assets a join public.league_contracts c on c.season_id=v_season.id and c.team_id=v_trade.proposer_team_id and c.player_key=a.asset_key and c.status='active'
-  where a.trade_id=p_trade_id and a.direction='proposer_to_partner' and a.asset_type='player';
+  from public.league_trade_assets trade_asset join public.league_contracts c on c.season_id=v_season.id and c.team_id=v_trade.proposer_team_id and c.player_key=trade_asset.asset_key and c.status='active'
+  where trade_asset.trade_id=p_trade_id and trade_asset.direction='proposer_to_partner' and trade_asset.asset_type='player';
   select coalesce(sum(c.cap_cost),0) into v_part_out
-  from public.league_trade_assets a join public.league_contracts c on c.season_id=v_season.id and c.team_id=v_trade.partner_team_id and c.player_key=a.asset_key and c.status='active'
-  where a.trade_id=p_trade_id and a.direction='partner_to_proposer' and a.asset_type='player';
+  from public.league_trade_assets trade_asset join public.league_contracts c on c.season_id=v_season.id and c.team_id=v_trade.partner_team_id and c.player_key=trade_asset.asset_key and c.status='active'
+  where trade_asset.trade_id=p_trade_id and trade_asset.direction='partner_to_proposer' and trade_asset.asset_type='player';
   v_prop_in:=v_part_out; v_part_in:=v_prop_out;
 
   if v_prop_cap-v_prop_out+v_prop_in>v_limit then
