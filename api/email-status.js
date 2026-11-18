@@ -5,6 +5,6 @@ export default function handler(req,res){
   }
   res.setHeader('Cache-Control','no-store');
   return res.status(200).json({
-    configured:Boolean(process.env.RESEND_API_KEY && process.env.GLSK_EMAIL_FROM)
+    configured:Boolean(process.env.RESEND_API_KEY && process.env.GLSK_EMAIL_FROM && process.env.GLSK_EMAIL_ENABLED === 'true')
   });
 }
