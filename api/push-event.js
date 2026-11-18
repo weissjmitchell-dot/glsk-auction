@@ -106,6 +106,34 @@ function destination(event) {
   if (['injuries','player_availability'].includes(category)) return '/league?tab=lineup';
   return '/league?tab=notifications';
 }
+async function sendEmail(recipient, event) {
+  const title = String(event.title || 'League Update').replace(/[\r\n]+/g, ' ').slice(0,140);
+  const emailBody = [
+    title,
+    String(event.body || ''),
+    '',
+    'View GLSK: https://glsk-auction.vercel.app/league?tab=notifications',
+    '',
+    'To change these emails, go to Communications > Notifications > Email Alerts in GLSK.'
+  ].join('\n');
+  const r = await fetch('https://api.resend.com/emails', {
+    method: 'POST',
+    headers: {
+      Authorization: 'Bearer ' + process.env.RESEND_API_KEY,
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify({
+      from: process.env.GLSK_EMAIL_FROM,
+      to: [recipient.email],
+      subject: '[GLSK] ' + title,
+      text: emailBody
+    })
+  });
+  if (!r.ok) return { ok: false, providerId: null };
+  const result = await r.json();
+  return { ok: true, providerId: result.id || null };
+}
+
 async function sendOne(sub, event, config) {
   const payload = JSON.stringify({
     title: event.title || 'GLSK',
@@ -174,7 +202,39 @@ export default async function handler(req, res) {
     }));
 
     const sent = results.filter(x => x.status === 'fulfilled' && x.value.ok).length;
-    return res.status(200).json({ ok: true, eventId, recipients: subscriptions.length, sent, failed: subscriptions.length - sent });
+    let emailRecipients = 0, emailSent = 0, emailFailed = 0;
+    // Email delivery is opt-in only. No provider credentials => no send attempts.
+    if (process.env.RESEND_API_KEY && process.env.GLSK_EMAIL_FROM) {
+      try {
+        const job = await rpc('league_email_delivery_claim',{
+          p_event_id:eventId,p_webhook_secret:req.body.secret
+        });
+        if (job?.ok) {
+          const recipients = job.recipients || [];
+          emailRecipients = recipients.length;
+          const completed = await Promise.allSettled(recipients.map(async recipient => {
+            let result;
+            try { result = await sendEmail(recipient,job.event || {}); }
+            catch { result = {ok:false,providerId:null}; }
+            try {
+              await rpc('league_email_delivery_report',{
+                p_delivery_id:recipient.id,p_webhook_secret:req.body.secret,
+                p_success:result.ok,p_provider_id:result.providerId
+              });
+            } catch (error) { console.warn('GLSK email report failed',error?.message); }
+            return result;
+          }));
+          emailSent = completed.filter(x=>x.status==='fulfilled'&&x.value.ok).length;
+          emailFailed = emailRecipients - emailSent;
+        }
+      } catch (error) {
+        console.error('GLSK email dispatch failed',error?.message);
+      }
+    }
+    return res.status(200).json({
+      ok:true,eventId,recipients:subscriptions.length,sent,
+      failed:subscriptions.length-sent,emailRecipients,emailSent,emailFailed
+    });
   } catch (error) {
     console.error('GLSK push event failed', error);
     return res.status(500).json({ error: 'Push delivery failed' });
