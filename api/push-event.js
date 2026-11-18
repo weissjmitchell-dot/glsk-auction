@@ -204,7 +204,7 @@ export default async function handler(req, res) {
     const sent = results.filter(x => x.status === 'fulfilled' && x.value.ok).length;
     let emailRecipients = 0, emailSent = 0, emailFailed = 0;
     // Email delivery is opt-in only. No provider credentials => no send attempts.
-    if (process.env.RESEND_API_KEY && process.env.GLSK_EMAIL_FROM) {
+    if (process.env.RESEND_API_KEY && process.env.GLSK_EMAIL_FROM && process.env.GLSK_EMAIL_ENABLED === 'true') {
       try {
         const job = await rpc('league_email_delivery_claim',{
           p_event_id:eventId,p_webhook_secret:req.body.secret
