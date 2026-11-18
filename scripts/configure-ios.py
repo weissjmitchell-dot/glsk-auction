@@ -10,7 +10,7 @@ data['CFBundleDisplayName']='GLSK'
 with p.open('wb') as f: plistlib.dump(data,f)
 p=root/'App.xcodeproj/project.pbxproj'
 s=p.read_text()
-s=re.sub(r'MARKETING_VERSION = [^;]+;', 'MARKETING_VERSION = 1.0;', s)
+s=re.sub(r'MARKETING_VERSION = [^;]+;', 'MARKETING_VERSION = 1.1.0;', s)
 build=os.environ.get('BUILD_NUMBER','1')
 if not build.isdigit(): raise ValueError('BUILD_NUMBER must be numeric')
 s=re.sub(r'CURRENT_PROJECT_VERSION = [^;]+;', 'CURRENT_PROJECT_VERSION = '+build+';', s)
