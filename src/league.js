@@ -127,7 +127,7 @@ const state = {
   boardThreads:[], boardPosts:[], boardSelectedThread:null, boardMode:'current', boardSearch:'',
   chatMessages:[], chatYears:[], chatYear:null, chatUnread:0, chatHasMore:false, chatOldestAt:null,
   chatDisplayName:'', chatDraft:'', chatReplyTo:null, chatEditingId:null, chatReactionTarget:null, chatAutoScroll:true, chatError:null,
-  notifications:[], notificationPrefs:[], notificationUnread:0, playerWatches:[], notificationPlayers:[], playerStatusUpdates:[],
+  notifications:[], notificationPrefs:[], emailPrefs:[], emailDeliveryConfigured:false, notificationUnread:0, playerWatches:[], notificationPlayers:[], playerStatusUpdates:[],
   faNfl:'', faFantasy:'', faShowMine:false, faStats:'projected', faWeek:null, faSource:'', faSort:'points', faSortDesc:true,
   waiverCenter:null, waiverSearch:'', waiverPosition:'ALL', waiverStatus:'ALL', waiverSelectedPlayer:null,
   pushSupported:false, pushSubscribed:false, pushPermission:'default', pushStandalone:false, pushBusy:false,
@@ -366,6 +366,20 @@ async function loadNotifications(){
     state.notificationUnread=Number(data?.unread_count||0);
     state.playerWatches=data?.watches||[];
   }catch(e){console.warn('notification load',e.message);}
+  state.emailPrefs=[];
+  state.emailDeliveryConfigured=false;
+  try{
+    const resp=await fetch('/api/email-status',{cache:'no-store'});
+    if(resp.ok){
+      const data=await resp.json();
+      state.emailDeliveryConfigured=data?.configured===true;
+    }
+  }catch(e){console.warn('Email delivery status unavailable',e.message);}
+  try{
+    const {data,error}=await supabase.rpc('league_get_email_preferences',{p_room_code:ROOM_CODE});
+    if(error)throw error;
+    if(data?.ok===true)state.emailPrefs=data.preferences||[];
+  }catch(e){console.warn('email notification preference load',e.message);}
 }
 
 
@@ -1104,6 +1118,9 @@ function notificationPrefEnabled(category){
  const p=state.notificationPrefs.find(x=>x.category===category);
  return p?p.enabled!==false:true;
 }
+function notificationEmailPrefEnabled(category){
+ return state.emailPrefs.some(x=>x.category===category&&x.enabled===true);
+}
 function notificationRelatedTab(e){
  if(e.category==='league_chat')return 'chat';
  if(e.category==='message_board')return 'board';
@@ -1156,6 +1173,12 @@ function notificationView(){
        <div class="office-section-head"><div><h2>Notification Settings</h2><div class="section-caption">Each owner controls their own feed and push alerts.</div></div></div>
        <div class="notification-toggle-list">${categories.map(c=>{const [label]=notificationCategoryMeta(c);return `<label class="notification-toggle-row"><div><strong>${esc(label)}</strong><span>${c==='injuries'?'My roster + watched players':c==='player_availability'?'Watched players only':'League activity'}</span></div><input type="checkbox" class="notification-pref-toggle" data-notification-category="${c}" ${notificationPrefEnabled(c)?'checked':''}></label>`}).join('')}</div>
        <div class="notification-delivery-note"><strong>Delivery</strong><span>These settings control both the realtime GLSK activity feed and background phone/browser push alerts on subscribed devices.</span></div>
+     </section>
+
+     <section class="card card-pad office-section notification-settings-card">
+       <div class="office-section-head"><div><h2>Email Alerts</h2><div class="section-caption">Optional GLSK emails for league activity, independent of phone push alerts.</div></div></div>
+       <div class="notification-delivery-note"><strong>Your email</strong><span>${esc(state.authUser?.email||'GLSK sign-in email')} • Email alerts are off by default. ${state.emailDeliveryConfigured?'Select the alerts you want.':'Email sending is being configured; check back soon.'}</span></div>
+       <div class="notification-toggle-list">${categories.map(c=>{const [label]=notificationCategoryMeta(c);return `<label class="notification-toggle-row"><div><strong>${esc(label)}</strong><span>Send email for this activity</span></div><input type="checkbox" class="notification-email-toggle" data-email-category="${c}" ${!state.emailDeliveryConfigured?'disabled':''} ${notificationEmailPrefEnabled(c)?'checked':''}></label>`}).join('')}</div>
      </section>
 
      <section class="card card-pad office-section player-alerts-card">
@@ -2661,6 +2684,16 @@ function bind(){
      });
      await loadNotifications();render();
    }catch(e){toast(e.message,'error');}
+ }));
+ app.querySelectorAll('.notification-email-toggle').forEach(el=>el.addEventListener('change',async()=>{
+   el.disabled=true;
+   try{
+     await rpc('league_set_email_preference',{
+       p_room_code:ROOM_CODE,p_category:el.dataset.emailCategory,p_enabled:el.checked
+     });
+     await loadNotifications();render();
+     toast('Email preference saved.');
+   }catch(e){el.disabled=false;el.checked=!el.checked;toast(e.message,'error');}
  }));
  app.querySelector('[data-action="notification-add-watch"]')?.addEventListener('click',async()=>{
    const t=myTeam();if(!t)return;
