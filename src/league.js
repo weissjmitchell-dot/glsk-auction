@@ -127,7 +127,7 @@ const state = {
   boardThreads:[], boardPosts:[], boardSelectedThread:null, boardMode:'current', boardSearch:'',
   chatMessages:[], chatYears:[], chatYear:null, chatUnread:0, chatHasMore:false, chatOldestAt:null,
   chatDisplayName:'', chatDraft:'', chatReplyTo:null, chatEditingId:null, chatReactionTarget:null, chatAutoScroll:true, chatError:null,
-  notifications:[], notificationPrefs:[], emailPrefs:[], notificationUnread:0, playerWatches:[], notificationPlayers:[], playerStatusUpdates:[],
+  notifications:[], notificationPrefs:[], emailPrefs:[], emailDeliveryConfigured:false, notificationUnread:0, playerWatches:[], notificationPlayers:[], playerStatusUpdates:[],
   faNfl:'', faFantasy:'', faShowMine:false, faStats:'projected', faWeek:null, faSource:'', faSort:'points', faSortDesc:true,
   waiverCenter:null, waiverSearch:'', waiverPosition:'ALL', waiverStatus:'ALL', waiverSelectedPlayer:null,
   pushSupported:false, pushSubscribed:false, pushPermission:'default', pushStandalone:false, pushBusy:false,
@@ -367,6 +367,14 @@ async function loadNotifications(){
     state.playerWatches=data?.watches||[];
   }catch(e){console.warn('notification load',e.message);}
   state.emailPrefs=[];
+  state.emailDeliveryConfigured=false;
+  try{
+    const resp=await fetch('/api/email-status',{cache:'no-store'});
+    if(resp.ok){
+      const data=await resp.json();
+      state.emailDeliveryConfigured=data?.configured===true;
+    }
+  }catch(e){console.warn('Email delivery status unavailable',e.message);}
   try{
     const {data,error}=await supabase.rpc('league_get_email_preferences',{p_room_code:ROOM_CODE});
     if(error)throw error;
@@ -1169,8 +1177,8 @@ function notificationView(){
 
      <section class="card card-pad office-section notification-settings-card">
        <div class="office-section-head"><div><h2>Email Alerts</h2><div class="section-caption">Optional GLSK emails for league activity, independent of phone push alerts.</div></div></div>
-       <div class="notification-delivery-note"><strong>Your email</strong><span>${esc(state.authUser?.email||'GLSK sign-in email')} • All email alerts are off by default. Select the alerts you want.</span></div>
-       <div class="notification-toggle-list">${categories.map(c=>{const [label]=notificationCategoryMeta(c);return `<label class="notification-toggle-row"><div><strong>${esc(label)}</strong><span>Send email for this activity</span></div><input type="checkbox" class="notification-email-toggle" data-email-category="${c}" ${notificationEmailPrefEnabled(c)?'checked':''}></label>`}).join('')}</div>
+       <div class="notification-delivery-note"><strong>Your email</strong><span>${esc(state.authUser?.email||'GLSK sign-in email')} • Email alerts are off by default. ${state.emailDeliveryConfigured?'Select the alerts you want.':'Email sending is being configured; check back soon.'}</span></div>
+       <div class="notification-toggle-list">${categories.map(c=>{const [label]=notificationCategoryMeta(c);return `<label class="notification-toggle-row"><div><strong>${esc(label)}</strong><span>Send email for this activity</span></div><input type="checkbox" class="notification-email-toggle" data-email-category="${c}" ${!state.emailDeliveryConfigured?'disabled':''} ${notificationEmailPrefEnabled(c)?'checked':''}></label>`}).join('')}</div>
      </section>
 
      <section class="card card-pad office-section player-alerts-card">
