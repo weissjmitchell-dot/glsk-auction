@@ -1119,7 +1119,8 @@ function notificationPrefEnabled(category){
  return p?p.enabled!==false:true;
 }
 function notificationEmailPrefEnabled(category){
- return state.emailPrefs.some(x=>x.category===category&&x.enabled===true);
+ const pref=state.emailPrefs.find(x=>x.category===category);
+ return pref ? pref.enabled!==false : true;
 }
 function notificationRelatedTab(e){
  if(e.category==='league_chat')return 'chat';
@@ -1177,7 +1178,7 @@ function notificationView(){
 
      <section class="card card-pad office-section notification-settings-card">
        <div class="office-section-head"><div><h2>Email Alerts</h2><div class="section-caption">Optional GLSK emails for league activity, independent of phone push alerts.</div></div></div>
-       <div class="notification-delivery-note"><strong>Your email</strong><span>${esc(state.authUser?.email||'GLSK sign-in email')} • Email alerts are off by default. ${state.emailDeliveryConfigured?'Select the alerts you want.':'Email sending is being configured; check back soon.'}</span></div>
+       <div class="notification-delivery-note"><strong>Your email</strong><span>${esc(state.authUser?.email||'GLSK sign-in email')} • Email alerts are on by default for registered GLSK owners. Turn off any category you do not want. ${state.emailDeliveryConfigured?'Select the alerts you want.':'Email sending is being configured; check back soon.'}</span></div>
        <div class="notification-toggle-list">${categories.map(c=>{const [label]=notificationCategoryMeta(c);return `<label class="notification-toggle-row"><div><strong>${esc(label)}</strong><span>Send email for this activity</span></div><input type="checkbox" class="notification-email-toggle" data-email-category="${c}" ${!state.emailDeliveryConfigured?'disabled':''} ${notificationEmailPrefEnabled(c)?'checked':''}></label>`}).join('')}</div>
      </section>
 
