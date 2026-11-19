@@ -157,7 +157,11 @@ function contractYear(c){if(!c)return null;const y=Number(state.season?.season_y
 function contractLabel(c){if(!c)return 'No active contract';const y=contractYear(c);return `${c.length_years}-year • Year ${y} of ${c.length_years} • ${c.cap_cost} pts`;}
 function openContractDeadline(){return state.deadlines.find(d=>d.deadline_type==='contracts'&&d.status==='open')||null;}
 function openExtensionDeadline(){return state.deadlines.find(d=>d.deadline_type==='contract_extensions'&&d.status==='open')||null;}
-function rightsFor(id){return state.rookieRights.filter(r=>r.owner_team_id===id&&r.status==='active'&&Number(r.rookie_draft_year)>=Number(state.season?.season_year||new Date().getFullYear()));}
+function rightsFor(id){
+  // Active contracts supersede rookie rights, even if an older import still marks rights active.
+  const contracted=new Set(state.contracts.filter(c=>c.status==='active').map(c=>c.player_key));
+  return state.rookieRights.filter(r=>r.owner_team_id===id&&r.status==='active'&&Number(r.rookie_draft_year)>=Number(state.season?.season_year||new Date().getFullYear())&&!contracted.has(r.player_key));
+ }
 function picksFor(id){return state.futurePicks.filter(p=>p.owner_team_id===id&&p.status==='active').sort((a,b)=>a.draft_year-b.draft_year||a.draft_type.localeCompare(b.draft_type)||a.round-b.round);}
 function extensionEligibilityFor(id){return state.extensionEligibility.filter(e=>e.team_id===id&&e.status==='eligible');}
 function pickLabel(p){const o=teamById(p.original_team_id);return `${p.draft_year} ${p.draft_type==='rookie'?'Rookie':'Supplemental'} R${p.round}${o?` • orig. ${o.name}`:''}`;}
@@ -1583,7 +1587,7 @@ function tradeSide(teamId,cls,sideLabel='Assets'){
    <div class="trade-table-head"><span></span><span>Pos</span><span>Player</span><span>Cap</span></div>
    <div class="trade-player-list">${playerRows||'<div class="trade-empty">No rostered players.</div>'}</div>
    <div class="trade-picks-section">
-     <div class="trade-picks-header"><div><strong>${nextYear} Rookie Draft Picks</strong><span>Only next year's Rookie Draft picks are tradable.</span></div></div>
+     <div class="trade-picks-header"><div><strong>${nextYear} Rookie Draft Picks</strong><span>Only next year's Rookie Draft picks are tradable. Supplemental picks cannot be traded.</span></div></div>
      <div class="draft-pick-grid rookie-only-picks">${rookiePicks.length?rookiePicks.map(pickRow).join(''):'<div class="small muted trade-no-picks">No rookie picks owned.</div>'}</div>
    </div>
    <div class="trade-bid-row"><label>Bid dollars</label><input id="${cls==='trade-give'?'trade-give-bids':'trade-receive-bids'}" class="input" type="number" min="0" max="${team?.remaining_budget||0}" value="0"><span>max ${bidMoney(team?.remaining_budget||0)}</span></div>
@@ -1614,7 +1618,7 @@ function tradesView(){
    <div class="trade-submit-card card">
      <div class="trade-submit-summary"><span class="trade-step">2</span><div><strong>Review & submit</strong><small id="trade-selection-summary">Select players, rights, picks or bid dollars above.</small></div></div>
      <div class="trade-submit-actions"><input id="trade-note" class="input" placeholder="Optional trade note"><button class="btn btn-primary" data-action="propose-trade">Send Trade Proposal</button></div>
-     <div class="trade-rule-note">Contracted players retain their current contract year and original point value. The platform blocks deals that would leave either team above the 100-point contract cap.</div>
+     <div class="trade-rule-note">Contracted players retain their current contract year and original point value. Rookie rights end when a contract is assigned. Only eligible Rookie Draft picks may be traded; Supplemental Draft picks cannot. Deals exceeding the 100-point contract cap are blocked.</div>
    </div>
  </section>`:''}
  <section class="office-section trade-inbox"><div class="office-section-head"><div><h2>Trade Activity</h2><div class="section-caption">Proposed, pending commissioner review, completed and declined deals</div></div><span class="trade-count">${visible.length}</span></div>
