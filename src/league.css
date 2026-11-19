@@ -4008,3 +4008,141 @@ textarea:focus-visible {outline:3px solid #38c5f5;outline-offset:2px}
   transition:none!important;transform:none!important
  }
 }
+
+
+/* ================================================================
+   GLSK 8.1 — refined assets, trade ledger, settings and typography
+   ================================================================ */
+.office-shell {
+  font-family:Inter,-apple-system,BlinkMacSystemFont,"SF Pro Text","Segoe UI",system-ui,sans-serif;
+  font-size:14px;line-height:1.5;letter-spacing:-.007em;
+  -webkit-font-smoothing:antialiased;
+}
+.office-page-title-row h1,.office-home-hero h1,.brand-title,
+.office-team-name,.nav-hub-copy strong,.contract-player {
+  font-weight:850;letter-spacing:-.025em;
+}
+.office-section-head h2,.section-title {
+  font-weight:800;letter-spacing:.045em;
+}
+.office-shell .btn {font-weight:750;letter-spacing:0;font-size:13px}
+.office-shell .small,.office-shell .muted {line-height:1.45}
+.nav-hub-icon svg {width:22px;height:22px;stroke:#b2ebff}
+.office-bottom-nav.consolidated-nav .nav-btn .nav-icon-wrap {color:#b5c7d9}
+.office-bottom-nav.consolidated-nav .nav-btn.active .nav-icon-wrap {color:#8bdfff}
+.office-bottom-nav.consolidated-nav .nav-btn .nav-icon-wrap svg {stroke:currentColor}
+.auth-brand-mark {
+ display:block;width:68px;height:68px;border-radius:16px;margin:0 0 12px;
+ border:1px solid rgba(128,217,255,.7);
+ box-shadow:0 9px 20px rgba(2,20,53,.23)
+}
+/* League ledger: readable summaries instead of expanded raw JSON */
+.tx-card {overflow:hidden;border-color:#d7e3f1!important}
+.tx-card summary {
+ cursor:pointer;display:flex;align-items:flex-start;justify-content:space-between;
+ gap:12px;list-style:disclosure-closed;padding:15px 16px!important;
+ background:linear-gradient(170deg,#fff,#fafcff)
+}
+.tx-card summary>div:first-child {min-width:0;flex:1}
+.tx-card[open] summary {border-bottom:1px solid #dce8f4;background:#f6faff}
+.tx-card .log-name {
+ font-size:14px;font-weight:750;color:#122b4f;
+ overflow-wrap:anywhere;line-height:1.4;margin:8px 0 5px
+}
+.tx-card .small {font-size:11px}
+.tx-type {
+ background:#e9f5ff;color:#18599d;border:1px solid #d1e9fc;
+ border-radius:6px;padding:4px 8px;font-weight:800;letter-spacing:.08em
+}
+.tx-detail-content {padding:18px;background:#fff}
+.tx-detail-heading {font-size:12px;color:#1b508c;font-weight:850;margin-bottom:11px}
+.tx-trade-grid {
+ display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px
+}
+.tx-trade-side {
+ border:1px solid #dae7f4;background:#f6faff;border-radius:12px;
+ padding:14px;min-width:0
+}
+.tx-trade-side strong {
+ display:block;font-size:12px;line-height:1.4;font-weight:850;
+ color:#0d3266;overflow-wrap:anywhere
+}
+.tx-trade-side ul {list-style:none;padding:0;margin:10px 0 0}
+.tx-trade-side li {
+ padding:7px 0;border-top:1px solid #e2ecf7;color:#172e50;
+ font-size:13px;font-weight:650;overflow-wrap:anywhere
+}
+.tx-detail-note {padding:16px;color:#6a7c90;font-size:12px}
+.tx-detail-fields {display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;margin:0}
+.tx-detail-fields>div {padding:10px 12px;border-radius:9px;background:#f5f9ff}
+.tx-detail-fields dt {font-size:10px;text-transform:capitalize;color:#69809a;font-weight:750}
+.tx-detail-fields dd {margin:3px 0 0;font-weight:700;color:#193451;overflow-wrap:anywhere}
+.tx-deltas {flex-shrink:0;text-align:right;gap:4px}
+.tx-filter-card {top:78px;box-shadow:0 4px 20px rgba(8,37,72,.06)}
+/* Trade activity cards — compact header, legible status, distinct sides */
+.trade-inbox .office-section-head {align-items:center;gap:12px}
+.trade-inbox .section-caption {font-size:12px;max-width:650px}
+.trade-count {background:#e3f4ff;color:#0754a0;font-size:12px;min-width:34px;height:34px}
+.trade-card-v2 {
+ padding:0!important;border-radius:16px;overflow:hidden;
+ border:1px solid #d7e3f1;
+ box-shadow:0 5px 17px rgba(12,42,83,.06)
+}
+.trade-card-v2 .trade-card-head {
+ padding:16px 17px;display:flex;gap:14px;align-items:flex-start;
+ background:#fff;border-bottom:1px solid #dce7f2;
+ min-width:0
+}
+.trade-card-v2 .trade-card-head>div {min-width:0;flex:1}
+.trade-card-v2 .deadline-title {
+ font-size:15px;font-weight:850;color:#0d254b;letter-spacing:-.02em;
+ line-height:1.36;overflow-wrap:anywhere
+}
+.trade-card-v2 .deadline-meta {font-size:11px;line-height:1.5;margin-top:6px;color:#72839a}
+.trade-card-v2 .trade-arrow {color:#2484bd;padding:0 5px}
+.trade-card-v2 .trade-status {
+ display:inline-flex;align-items:center;justify-content:center;flex:0 0 auto;
+ border-radius:999px;padding:5px 10px;font-size:10px;font-weight:850;
+ text-transform:none;letter-spacing:0;white-space:nowrap;
+ background:#e9f3ff;color:#18589c;border:1px solid #d1e5fb
+}
+.trade-card-v2 .trade-status.approved,
+.trade-card-v2 .trade-status.completed {background:#e4f8ed;border-color:#bce7cc;color:#217047}
+.trade-card-v2 .trade-status.denied,
+.trade-card-v2 .trade-status.rejected {background:#fff0ed;border-color:#f3c9c2;color:#a33b31}
+.trade-card-v2 .trade-status.pending_commish,
+.trade-card-v2 .trade-status.proposed {background:#eaf4ff;border-color:#c7e2ff;color:#155ea0}
+.trade-card-v2 .trade-status.cancelled {background:#edf0f5;border-color:#dae0ea;color:#67748b}
+.trade-card-v2 .trade-columns {
+ display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;
+ padding:14px 17px!important
+}
+.trade-card-v2 .trade-columns>div {
+ background:#f7faff;border:1px solid #dfebf7;
+ border-radius:12px;padding:13px 14px;min-width:0
+}
+.trade-card-v2 .asset-title {
+ font-size:11px;line-height:1.35;color:#1c5a93;
+ font-weight:850;letter-spacing:.015em;overflow-wrap:anywhere
+}
+.trade-card-v2 .trade-line {
+ font-size:14px;line-height:1.45;color:#112e51;
+ font-weight:675;overflow-wrap:anywhere;
+ padding:5px 0
+}
+.trade-card-v2 .trade-line+.trade-line {border-top:1px solid #e0ebf6}
+.trade-card-v2 .trade-card-actions {
+ padding:10px 17px 15px;margin:0;border-top:1px solid #e2ebf5;
+}
+.trade-card-v2 .trade-card-actions:empty {display:none}
+@media(max-width:680px) {
+ .trade-inbox .office-section-head {align-items:flex-start}
+ .trade-card-v2 .trade-card-head {padding:14px;flex-direction:column;gap:9px}
+ .trade-card-v2 .trade-status {align-self:flex-start}
+ .trade-card-v2 .trade-columns {grid-template-columns:1fr;gap:8px;padding:10px 14px 14px!important}
+ .trade-card-v2 .trade-columns>div {padding:12px 13px}
+ .trade-card-v2 .trade-card-actions {padding:12px 14px}
+ .tx-trade-grid,.tx-detail-fields {grid-template-columns:1fr}
+ .tx-card summary {flex-wrap:wrap}
+ .tx-deltas {flex-direction:row;flex-wrap:wrap;text-align:left}
+}
