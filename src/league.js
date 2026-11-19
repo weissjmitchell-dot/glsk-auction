@@ -1566,7 +1566,7 @@ function tradeSide(teamId,cls,sideLabel='Assets'){
    return `<label class="trade-player-row">
      <span class="trade-check-cell"><input type="checkbox" class="${cls}" data-type="player" data-key="${esc(r.player_key)}" data-name="${esc(r.player_name)}"></span>
      <span class="${rosterPositionClass(r.position)} trade-pos">${esc(r.position||'—')}</span>
-     <span class="trade-player-info"><strong>${esc(r.player_name)}</strong><small>${esc(r.nfl_team||'')} ${c?`• ${esc(contractLabel(c))}`:'• No contract'}${hasRights?' • Rights follow player':''}</small>${playerStatLine(r,true)}</span>
+     <span class="trade-player-info"><strong>${esc(r.player_name)}</strong><small>${esc(r.nfl_team||'')} • ${c?esc(contractLabel(c)):hasRights?'Rookie rights':'Uncontracted'}</small>${playerStatLine(r,true)}</span>
      <span class="trade-cap-cell">${c?`${c.cap_cost} pts`:'—'}</span>
    </label>`;
  }).join('');
@@ -2891,16 +2891,79 @@ function availableCommissionerSections(){return commissionerSections.filter(([ke
 function appModeView(){return `<section class="card card-pad"><h2>App Mode</h2><p>Asset Management keeps ownership, contracts, rookie rights, bids, picks, releases, trades and drafts available. Acquisitions, waivers, weekly lineups, scoring and feed tools are hidden.</p><p>Full Fantasy restores those screens. Reconnecting a licensed data feed and preparing a new season are separate steps.</p>${state.appModeReady?'':'<p class="error">Install the Asset Management SQL migration before changing modes.</p>'}<label>League-wide mode <select id="app-mode" class="input"><option value="assets" ${assetMode()?'selected':''}>Asset Management</option><option value="full" ${!assetMode()?'selected':''}>Full Fantasy</option></select></label><button id="save-app-mode" class="btn btn-primary" ${state.appModeReady?'':'disabled'}>Save Mode</button><p class="small muted">Owners should refresh after a mode change. Changing modes does not delete records or reset drafts.</p></section>`;}
 function assetTeamHub(){const me=myTeam();return `${pageHeading('My Assets','Manage ownership, contracts, rookie rights and transactions.','Team Management')}<section class="nav-hub-grid">${me?hubCard('team',navIcon('teamhub'),'My Team Assets','Owned players, rookie rights, draft picks and bid dollars.','','?tab=team&team='+encodeURIComponent(me.id)):hubCard('teams',navIcon('teamhub'),'Team Assets','Browse league ownership.')}${hubCard('contracts','▤','Contracts','Review contracts, cap usage and extensions.')}${hubCard('trades','⇄','Trades','Propose and accept trades using existing league rules.')}</section>${me?assetTeamsView(me.id):''}`;}
 function assetLeagueHub(){return `${pageHeading('League','League assets, transactions and historical records.','League Information')}<section class="nav-hub-grid">${hubCard('teams',navIcon('teamhub'),'Team Assets','Players, contracts, rookie rights, bids and draft picks.')}${hubCard('transactions','☷','Transactions','Acquisitions, releases, trades and draft activity.')}${hubCard('history','★','History','Preserved season records and franchise accomplishments.')}</section>`;}
-function assetDashboard(){return `${pageHeading('League Office','Asset Management • Contracts, rookie rights, bids, trades and drafts.','GLSK')}<section class="nav-hub-grid">${hubCard('teamhub',navIcon('teamhub'),'My Assets','Review ownership and manage contracts.')}${hubCard('trades','⇄','Trades','Propose, accept and review trades.')}${hubCard('draft','⇅','Draft Rooms','Auction, supplemental and roster-fill drafts.')}${hubCard('transactions','☷','Transactions','Review league activity.')}${hubCard('deadlines','◷','Deadlines','Track contract and league deadlines.')}</section>${assetTeamsView()}`;}
+function assetDashboard(){
+ const me=myTeam();
+ const rights=me?rightsFor(me.id):[];
+ const roster=me?rosterFor(me.id).filter(r=>!!contractForPlayer(me.id,r.player_key)||rights.some(x=>x.player_key===r.player_key)):[];
+ const picks=me?picksFor(me.id):[];
+ const cap=me?capUsed(me.id):0;
+ const next=state.deadlines.filter(d=>d.status==='open'&&d.due_at&&new Date(d.due_at)>new Date()).sort((a,b)=>new Date(a.due_at)-new Date(b.due_at))[0];
+ const visibleTrades=state.trades.filter(tr=>isCommish()||!!me&&(tr.proposer_team_id===me.id||tr.partner_team_id===me.id)).sort((a,b)=>new Date(b.proposed_at||0)-new Date(a.proposed_at||0));
+ const recent=visibleTrades.slice(0,3);
+ const pending=visibleTrades.filter(tr=>['proposed','pending_commish'].includes(tr.status)).length;
+ return `<section class="glsk-home">
+   <div class="glsk-home-hero">
+     <div class="glsk-home-intro"><div class="glsk-home-kicker">GLSK • ${state.season?.season_year||2026} SEASON</div><h1>League Office</h1><p>${me?`Welcome back to ${esc(me.name)}.`:'Your private league headquarters.'} Keep up with the moves that matter.</p></div>
+     ${me?`<button class="glsk-home-franchise" data-tab="teamhub"><span>MY FRANCHISE</span><strong>${esc(me.name)}</strong><small>View my assets <span aria-hidden="true">›</span></small></button>`:''}
+   </div>
+   ${me?`<section class="glsk-home-metrics" aria-label="My franchise at a glance">
+     <div><span>Contracts</span><strong>${contractsFor(me.id).length}</strong></div>
+     <div><span>Cap used</span><strong>${cap}<small> / ${state.season?.salary_cap_points||100}</small></strong></div>
+     <div><span>Rookie rights</span><strong>${rights.length}</strong></div>
+     <div><span>Bid dollars</span><strong>${bidMoney(me.remaining_budget)}</strong></div>
+     <div><span>Draft picks</span><strong>${picks.length}</strong></div>
+   </section>`:''}
+   <section class="glsk-home-section">
+     <div class="glsk-home-section-title"><h2>Quick access</h2><span>Pick up where you left off</span></div>
+     <div class="glsk-home-actions">
+       <button data-tab="teamhub"><span class="glsk-home-action-icon">${navIcon('teamhub')}</span><span>My Assets<small>${roster.length} players with contracts or rights</small></span><b>›</b></button>
+       <button data-tab="trades"><span class="glsk-home-action-icon">${navIcon('leaguehub')}</span><span>Trades<small>${pending?`${pending} awaiting action`:'Proposals and activity'}</small></span><b>›</b></button>
+       <button data-tab="draft"><span class="glsk-home-action-icon">${navIcon('draft')}</span><span>Draft<small>Rooms and results</small></span><b>›</b></button>
+       <button data-tab="transactions"><span class="glsk-home-action-icon">${navIcon('communications')}</span><span>Transactions<small>League activity ledger</small></span><b>›</b></button>
+     </div>
+   </section>
+   <div class="glsk-home-bottom">
+     <section class="card glsk-home-pulse">
+       <div class="glsk-home-pulse-head"><div><h2>Recent trades</h2><span>Latest proposals and decisions</span></div><button data-tab="trades">See all ›</button></div>
+       ${recent.length?recent.map(tr=>`<button class="glsk-home-trade-row" data-tab="trades"><span><strong>${esc(teamById(tr.proposer_team_id)?.name||'Team')} <span class="glsk-home-swap">⇄</span> ${esc(teamById(tr.partner_team_id)?.name||'Team')}</strong><small>${tr.proposed_at?fmtDate(tr.proposed_at):'Trade activity'}</small></span><em class="glsk-home-trade-status ${esc(tr.status||'')}">${esc(tradeStatusLabel(tr.status))}</em></button>`).join(''):'<div class="glsk-home-empty">No recent trades.</div>'}
+     </section>
+     <section class="card glsk-home-next">
+       <div class="glsk-home-pulse-head"><div><h2>What's next</h2><span>Deadlines and league notices</span></div></div>
+       ${next?`<div class="glsk-home-deadline"><small>NEXT DEADLINE</small><strong>${esc(next.title)}</strong><span>${fmtDate(next.due_at)}</span><button data-tab="deadlines">View deadline ›</button></div>`:'<div class="glsk-home-empty">No upcoming league deadlines.</div>'}
+       ${state.notificationUnread?`<button class="glsk-home-notice" data-tab="notifications">${state.notificationUnread} unread league notifications <span aria-hidden="true">›</span></button>`:''}
+       <button class="glsk-home-league-link" data-tab="leaguehub">Browse all league teams and records <span aria-hidden="true">›</span></button>
+     </section>
+   </div>
+ </section>`;
+}
 function assetTeamsView(teamId=null){
  const selected=teamId==null?null:teamById(teamId),teams=selected?[selected]:state.teams;
- return `${pageHeading(selected?selected.name:'Team Assets','Manage player ownership, releases and trades.','League Assets')}${commissionerAddPlayerForm()}<div class="team-office-grid roster-team-grid">${teams.map(t=>{
- const rights=rightsFor(t.id),picks=picksFor(t.id);
- const roster=rosterFor(t.id).filter(r=>!!contractForPlayer(t.id,r.player_key)||rights.some(x=>x.player_key===r.player_key)).slice().sort((a,b)=>String(a.player_name).localeCompare(String(b.player_name)));
- return `<details class="card office-team-card roster-team-card" ${selected?'open':''}><summary class="team-summary"><div class="office-team-name">${esc(t.name)}</div><div class="team-summary-metrics"><span><b>${bidMoney(t.remaining_budget)}</b><small>Bids</small></span><span><b>${capUsed(t.id)}/${state.season?.salary_cap_points||100}</b><small>Cap</small></span><span><b>${rights.length}</b><small>Rookie rights</small></span></div></summary><div class="team-roster-body"><h3>Owned Players</h3>${roster.map(r=>{
- const c=contractForPlayer(t.id,r.player_key),penalty=c?(contractYear(c)===1?Number(c.cap_cost||0)*2:({2:5,3:10,4:20}[Number(c.length_years)]||0)):0;
- return `<div class="roster-player-row"><span class="${rosterPositionClass(r.position)}">${esc(r.position||'—')}</span><div class="roster-player-main"><div class="contract-player">${esc(r.player_name)}</div><div class="contract-detail">${esc(r.nfl_team||'')} • ${c?esc(contractLabel(c)):'No active contract'}${penalty?` • Drop fine ${penalty}`:''}</div>${rights.some(x=>x.player_key===r.player_key)?'<span class="status-chip">Rookie rights</span>':''}</div><div class="roster-player-actions">${myTeam()?.id===t.id&&!state.session?.spectator?`<button class="btn btn-sm btn-reset" data-drop-player="${esc(r.player_key)}" data-drop-name="${esc(r.player_name)}" data-drop-penalty="${penalty}">Drop</button>`:''}${commissionerToolsActive()?`<button class="btn btn-sm btn-outline" data-exception-drop="${esc(r.player_key)}" data-exception-team="${esc(t.id)}" data-drop-name="${esc(r.player_name)}">Retire/Ban</button>`:''}</div></div>`;
- }).join('')||'<p>No owned players.</p>'}<h3>Rookie Ownership Rights</h3>${rights.map(r=>`<div class="roster-player-row"><strong>${esc(r.player_name)}</strong><span>${esc(r.rookie_draft_year)} rookie draft</span></div>`).join('')||'<p>No active rookie rights.</p>'}<p class="small muted">Active rights follow the player in a trade under the existing league rules.</p><h3>Draft Picks</h3>${picks.map(pk=>`<div class="roster-player-row">${esc(pickLabel(pk))}</div>`).join('')||'<p>No active picks recorded.</p>'}</div></details>`;
+ return `${pageHeading(selected?selected.name:'League Team Assets',selected?'Contracts, rookie rights and draft picks for this franchise.':'Browse each team’s current contractual assets and rookie rights.','League Assets')}${commissionerAddPlayerForm()}<div class="team-office-grid roster-team-grid asset-compact-grid">${teams.map(t=>{
+   const rights=rightsFor(t.id),picks=picksFor(t.id);
+   const roster=rosterFor(t.id).filter(r=>!!contractForPlayer(t.id,r.player_key)||rights.some(x=>x.player_key===r.player_key)).slice().sort((a,b)=>String(a.player_name).localeCompare(String(b.player_name)));
+   const rightsOnly=rights.filter(x=>!roster.some(r=>r.player_key===x.player_key));
+   return `<details class="card office-team-card roster-team-card asset-compact-team" ${selected?'open':''}>
+     <summary class="team-summary">
+       <div class="asset-compact-team-name"><strong>${esc(t.name)}</strong><small>${roster.length} players • ${picks.length} picks</small></div>
+       <div class="team-summary-metrics"><span><b>${bidMoney(t.remaining_budget)}</b><small>Bids</small></span><span><b>${capUsed(t.id)}/${state.season?.salary_cap_points||100}</b><small>Cap</small></span><span><b>${rights.length}</b><small>Rights</small></span></div>
+       <span class="asset-compact-chevron" aria-hidden="true">⌄</span>
+     </summary>
+     <div class="team-roster-body asset-compact-body">
+       <div class="asset-compact-section-title"><strong>Owned players</strong><span>${roster.length}</span></div>
+       ${roster.length?roster.map(r=>{
+         const c=contractForPlayer(t.id,r.player_key),hasRights=rights.some(x=>x.player_key===r.player_key);
+         const penalty=c?(contractYear(c)===1?Number(c.cap_cost||0)*2:({2:5,3:10,4:20}[Number(c.length_years)]||0)):0;
+         return `<div class="roster-player-row asset-compact-player">
+           <span class="${rosterPositionClass(r.position)}">${esc(r.position||'—')}</span>
+           <div class="roster-player-main"><strong>${esc(r.player_name)}</strong><small>${esc(r.nfl_team||'FA')} · ${c?esc(contractLabel(c)):hasRights?'Rookie rights':'Uncontracted'}</small></div>
+           <div class="asset-compact-player-actions">${hasRights?'<span class="asset-mini-rights">Rights</span>':''}${myTeam()?.id===t.id&&!state.session?.spectator?`<button class="asset-mini-drop" data-drop-player="${esc(r.player_key)}" data-drop-name="${esc(r.player_name)}" data-drop-penalty="${penalty}">Drop</button>`:''}${commissionerToolsActive()?`<button class="asset-mini-drop" data-exception-drop="${esc(r.player_key)}" data-exception-team="${esc(t.id)}" data-drop-name="${esc(r.player_name)}">Retire/Ban</button>`:''}</div>
+         </div>`;
+       }).join(''):'<div class="asset-compact-empty">No current contracted or rookie-rights players.</div>'}
+       ${rightsOnly.length?`<div class="asset-compact-section-title"><strong>Additional rookie rights</strong><span>${rightsOnly.length}</span></div>${rightsOnly.map(r=>`<div class="asset-compact-extra"><strong>${esc(r.player_name)}</strong><small>${esc(r.rookie_draft_year)} Rookie Draft</small></div>`).join('')}`:''}
+       <div class="asset-compact-section-title"><strong>Draft picks</strong><span>${picks.length}</span></div>
+       ${picks.length?picks.map(pk=>`<div class="asset-compact-extra">${esc(pickLabel(pk))}</div>`).join(''):'<div class="asset-compact-empty">No active draft picks.</div>'}
+     </div>
+   </details>`;
  }).join('')}</div>`;
 }
 function assetMarketTable(players,all,me,settings){return `<section class="fa-player-browser"><input id="fa-search" class="input fa-big-search" aria-label="Search player by name" placeholder="Search player by name" value="${esc(state.waiverSearch)}"><div class="fa-position-pills">${['ALL','QB','RB','WR','TE','K','DST'].map(pos=>`<button data-fa-position="${pos}" aria-pressed="${state.waiverPosition===pos}">${pos==='ALL'?'All Positions':pos}</button>`).join('')}<label><input id="fa-show-mine" type="checkbox" ${state.faShowMine?'checked':''}> Show my team</label></div><div class="fa-browser-filters"><label>Status<select id="fa-status" class="input">${[['ALL','Available Players'],['free_agent','Free Agents'],['waivers','Waivers'],['EVERYONE','All Players'],['rostered','Owned Players']].map(([v,label])=>`<option value="${v}" ${state.waiverStatus===v?'selected':''}>${label}</option>`).join('')}</select></label><label>NFL Team<select id="fa-nfl" class="input"><option value="">All Teams</option>${[...new Set(all.map(p=>p.nfl_team).filter(Boolean))].sort().map(v=>`<option ${v===state.faNfl?'selected':''}>${esc(v)}</option>`).join('')}</select></label><label>Owner<select id="fa-fantasy" class="input"><option value="">All Owners</option>${state.teams.map(t=>`<option value="${esc(t.id)}" ${t.id===state.faFantasy?'selected':''}>${esc(t.name)}</option>`).join('')}</select></label></div><p class="small muted">${players.length} players. Player directory and NFL team labels are saved records, not a live feed.</p>${players.map(p=>`<div class="roster-player-row"><div class="roster-player-main"><button class="fa-player-link" data-profile-key="${esc(p.player_key)}">${esc(p.player_name)}</button><div>${esc(p.position||'')} • ${esc(p.nfl_team||'')} • ${p.availability==='rostered'?esc(teamById(p.owner_team_id)?.name||'Owned'):p.availability==='waivers'?'Waivers':'Free agent'}</div></div><button class="btn btn-sm btn-outline" data-fa-select="${esc(p.player_key)}" ${!['free_agent','waivers'].includes(p.availability)||settings.enabled===false?'disabled':''}>${p.availability==='waivers'?'Claim':'Select'}</button></div>`).join('')||'<p>No players match these filters.</p>'}</section>`;}
