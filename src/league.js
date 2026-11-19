@@ -690,7 +690,7 @@ function hubCard(tab,icon,title,body,badge='',href=''){
 function teamHubView(){
  if(assetMode())return assetTeamHub();
   const me=myTeam();
-  return `${pageHeading('My Team','Everything directly related to managing your franchise.','Team Management')}
+  return `${pageHeading('Assets','Review your team, league rosters and eligible player assets.','Team Management')}
     ${me?`<section class="card nav-hub-summary">
       <div><span>${esc(me.name)}</span><strong>${activeRosterFor(me.id).length}/${state.season?.roster_limit||18} active${irRosterFor(me.id).length?` + ${irRosterFor(me.id).length} IR`:''}</strong></div>
       <div><span>Bid Dollars</span><strong>${bidMoney(me.remaining_budget)}</strong></div>
@@ -700,6 +700,8 @@ function teamHubView(){
       ${hubCard('lineup','☑','Lineup','Set starters, bench and weekly lineup decisions.')}
       ${hubCard('contracts','▤','Contracts','Contract years, salary-cap usage and contract actions.')}
       ${hubCard('trades','⇄','Trades','Build, send and review player, pick and bid-dollar trades.')}
+      ${hubCard('teams',navIcon('teamhub'),'League Rosters','Browse all teams and player holdings.')}
+      ${hubCard('freeagents','+','Free Agents','Browse free agents and waiver claims.')}
     </section>`;
 }
 function communicationsHubView(){
