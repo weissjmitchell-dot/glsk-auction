@@ -2938,7 +2938,7 @@ function assetDashboard(){
 }
 function assetTeamsView(teamId=null){
  const selected=teamId==null?null:teamById(teamId),teams=selected?[selected]:state.teams;
- return `${pageHeading(selected?selected.name:'League Team Assets',selected?'Contracts, rookie rights and draft picks for this franchise.':'Browse each team’s current contractual assets and rookie rights.','League Assets')}${commissionerAddPlayerForm()}<div class="team-office-grid roster-team-grid asset-compact-grid">${teams.map(t=>{
+ return `${state.tab==='teamhub'?'':pageHeading(selected?selected.name:'League Team Assets',selected?'Contracts, rookie rights and draft picks for this franchise.':'Browse each team’s current contractual assets and rookie rights.','League Assets')}${commissionerAddPlayerForm()}<div class="team-office-grid roster-team-grid asset-compact-grid">${teams.map(t=>{
    const rights=rightsFor(t.id),picks=picksFor(t.id);
    const roster=rosterFor(t.id).filter(r=>!!contractForPlayer(t.id,r.player_key)||rights.some(x=>x.player_key===r.player_key)).slice().sort((a,b)=>String(a.player_name).localeCompare(String(b.player_name)));
    const rightsOnly=rights.filter(x=>!roster.some(r=>r.player_key===x.player_key));
