@@ -633,7 +633,7 @@ function topBar(){
  const t=myTeam();
  return `<header class="topbar office-topbar"><div class="topbar-inner office-topbar-inner">
    <button class="office-brand-button" data-tab="home" aria-label="League Office home">
-     <div class="office-mark">GL</div>
+     <div class="office-mark"><img src="/glsk-brand-mark.svg" class="office-brand-image" alt="" /></div>
      <div class="brand"><div class="brand-kicker">${state.season?.season_year||2026} • League Office</div><div class="brand-title">${esc(LEAGUE_NAME)}</div></div>
    </button>
    <div class="office-user-area">
@@ -652,18 +652,30 @@ function navGroupForTab(tab){
   if(tab==='home')return 'home';
   return '';
 }
+function navIcon(tab){
+ const paths={
+  home:'<path d="m3 10 9-7 9 7v10a1 1 0 0 1-1 1h-5v-7H9v7H4a1 1 0 0 1-1-1z"/>',
+  leaguehub:'<rect x="3" y="4" width="18" height="16" rx="2"/><path d="M7 8h10M7 12h10M7 16h6"/>',
+  teamhub:'<path d="M8 4h8l2 3v14H6V7z"/><path d="M9 4v4h6V4M9 12h6M9 16h4"/>',
+  freeagents:'<circle cx="10" cy="8" r="3"/><path d="M3 20v-2a7 7 0 0 1 14 0v2M20 8v6M17 11h6"/>',
+  communications:'<path d="M20 11a7 7 0 0 1-7 7H8l-4 3v-6a7 7 0 1 1 16-4z"/><path d="M8 10h8M8 13h5"/>',
+  draft:'<path d="M7 3v16M3 15l4 4 4-4M17 21V5m-4 4 4-4 4 4"/>',
+  settingshub:'<circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3M4.9 4.9 7 7M17 17l2.1 2.1M19.1 4.9 17 7M7 17l-2.1 2.1"/>'
+ };
+ return '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false">'+(paths[tab]||paths.leaguehub)+'</svg>';
+}
 function bottomNav(){
  const active=navGroupForTab(state.tab);
  const items=[
    ['home','⌂','Home'],
    ['leaguehub','☷','League'],
    ['teamhub','♟',assetMode()?'Assets':'Team'],
-   ...(!assetMode()?[['freeagents','+','Free Agents']]:[]),
-   ['communications','💬','Communication'],
+   ...(!assetMode()?[['freeagents','+','Agents']]:[]),
+   ['communications','💬','Comms'],
    ['draft','⇅','Draft'],
    ['settingshub','⚙','Settings']
  ];
- return `<nav class="bottom-nav office-bottom-nav consolidated-nav"><div class="bottom-nav-inner" style="grid-template-columns:repeat(${items.length},minmax(0,1fr))">${items.map(([t,i,l])=>`<button class="nav-btn ${active===t?'active':''}" data-tab="${t}"><span class="nav-icon-wrap">${i}${t==='communications'&&state.chatUnread?`<b class="chat-nav-badge">${state.chatUnread>99?'99+':state.chatUnread}</b>`:''}</span>${l}</button>`).join('')}</div></nav>`;
+ return `<nav class="bottom-nav office-bottom-nav consolidated-nav"><div class="bottom-nav-inner" style="grid-template-columns:repeat(${items.length},minmax(0,1fr))">${items.map(([t,i,l])=>`<button class="nav-btn ${active===t?'active':''}" data-tab="${t}"><span class="nav-icon-wrap">${navIcon(t)}${t==='communications'&&state.chatUnread?`<b class="chat-nav-badge">${state.chatUnread>99?'99+':state.chatUnread}</b>`:''}</span>${l}</button>`).join('')}</div></nav>`;
 }
 
 function hubCard(tab,icon,title,body,badge='',href=''){
@@ -811,7 +823,7 @@ function dashboard(){
  const rosterLimit=state.season?.roster_limit||18,full=state.teams.filter(t=>activeRosterFor(t.id).length>=rosterLimit).length,totalBids=state.teams.reduce((s,t)=>s+Number(t.remaining_budget||0),0),open=state.deadlines.filter(d=>d.status==='open').length;
  const next=state.deadlines.find(d=>d.status==='open'&&new Date(d.due_at)>new Date());
  const me=myTeam();
- return `<section class="office-hero office-home-hero"><div><div class="office-kicker">${state.season?.season_year||2026} League Year</div><h1>League Office</h1><p>Your GLSK home base. Manage your team, browse the league and stay connected from the tabs below.</p></div>${me?`<div class="home-team-summary"><span>Your Team</span><strong>${homeTeamLink(me)}</strong><div>${activeRosterFor(me.id).length}/${rosterLimit} roster${irRosterFor(me.id).length?` + ${irRosterFor(me.id).length} IR`:''} • ${bidMoney(me.remaining_budget)} bids • ${capUsed(me.id)}/100 cap</div></div>`:''}</section>
+ return `<section class="office-hero office-home-hero"><div><div class="office-kicker">${state.season?.season_year||2026} League Year</div><h1>League Office</h1><p>Your franchise. Your moves. Your league. Everything that matters, all in one place.</p><div class="home-quick-actions"><button class="home-quick-action" data-tab="teamhub">My Assets</button><button class="home-quick-action" data-tab="trades">Trade Center</button><button class="home-quick-action" data-tab="draft">Draft Room</button></div></div>${me?`<div class="home-team-summary"><span>Your Team</span><strong>${homeTeamLink(me)}</strong><div>${activeRosterFor(me.id).length}/${rosterLimit} roster${irRosterFor(me.id).length?` + ${irRosterFor(me.id).length} IR`:''} • ${bidMoney(me.remaining_budget)} bids • ${capUsed(me.id)}/100 cap</div></div>`:''}</section>
  <div class="kpi-grid office-kpi-grid"><div class="card kpi"><div class="kpi-label">Full Rosters</div><div class="kpi-value">${full}<span class="kpi-denom">/12</span></div><div class="kpi-sub">${rosterLimit}-player limit</div></div><div class="card kpi"><div class="kpi-label">Bid Dollars</div><div class="kpi-value">${totalBids}</div><div class="kpi-sub">remaining league-wide</div></div><div class="card kpi"><div class="kpi-label">Contracts</div><div class="kpi-value">${state.contracts.filter(c=>c.status==='active').length}</div><div class="kpi-sub">active contracts</div></div><div class="card kpi"><div class="kpi-label">Open Deadlines</div><div class="kpi-value">${open}</div><div class="kpi-sub">need attention</div></div></div>
  ${next?`<div class="owner-banner office-deadline-banner"><div><span class="banner-label">NEXT DEADLINE</span><strong>${esc(next.title)}</strong></div><div>${fmtDate(next.due_at)}</div></div>`:''}
  <div class="office-home-grid"><section class="office-section"><div class="office-section-head"><div><h2>League Snapshot</h2><div class="section-caption">Roster, bid and cap status at a glance</div></div><button class="btn btn-sm btn-outline" data-tab="teams">View Rosters</button></div>${teamCards()}</section></div>`;
