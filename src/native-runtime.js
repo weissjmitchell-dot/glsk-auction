@@ -62,7 +62,7 @@ if (Capacitor.isNativePlatform()) {
   const refresh = document.createElement('button');
   refresh.textContent = 'Refresh GLSK'; refresh.type = 'button';
   refresh.setAttribute('aria-label', 'Refresh GLSK');
-  refresh.style.cssText = 'position:fixed;right:12px;bottom:calc(84px + env(safe-area-inset-bottom));z-index:1000;border:1px solid #ccd5e0;border-radius:20px;padding:8px 12px;background:#fff;color:#17263f;font:600 12px system-ui;box-shadow:0 2px 8px #0002';
+  refresh.style.cssText = 'position:fixed;right:12px;bottom:calc(84px + env(safe-area-inset-bottom));z-index:1000;border:1px solid #87cafa;border-radius:20px;padding:8px 12px;background:#f4f9ff;color:#103e73;font:600 12px system-ui;box-shadow:0 2px 8px #0002';
   refresh.onclick = () => { if (confirm('Reload GLSK? Any unsaved entries on this screen will be lost.')) location.reload(); };
   document.body.appendChild(refresh);
 }
