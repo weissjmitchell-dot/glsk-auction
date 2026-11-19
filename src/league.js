@@ -633,7 +633,7 @@ function topBar(){
  const t=myTeam();
  return `<header class="topbar office-topbar"><div class="topbar-inner office-topbar-inner">
    <button class="office-brand-button" data-tab="home" aria-label="League Office home">
-     <div class="office-mark"><img src="/glsk-brand-mark.svg" class="office-brand-image" alt="" /></div>
+     <div class="office-mark"><img src="/glsk-logo.png" class="office-brand-image" alt="" /></div>
      <div class="brand"><div class="brand-kicker">${state.season?.season_year||2026} • League Office</div><div class="brand-title">${esc(LEAGUE_NAME)}</div></div>
    </button>
    <div class="office-user-area">
@@ -656,7 +656,7 @@ function navIcon(tab){
  const paths={
   home:'<path d="m3 10 9-7 9 7v10a1 1 0 0 1-1 1h-5v-7H9v7H4a1 1 0 0 1-1-1z"/>',
   leaguehub:'<rect x="3" y="4" width="18" height="16" rx="2"/><path d="M7 8h10M7 12h10M7 16h6"/>',
-  teamhub:'<path d="M8 4h8l2 3v14H6V7z"/><path d="M9 4v4h6V4M9 12h6M9 16h4"/>',
+  teamhub:'<path d="M5 3h3v3h3V3h2v3h3V3h3v7l-2 2v6H7v-6l-2-2z"/><path d="M6 10h12M7 18h10M5 21h14"/>',
   freeagents:'<circle cx="10" cy="8" r="3"/><path d="M3 20v-2a7 7 0 0 1 14 0v2M20 8v6M17 11h6"/>',
   communications:'<path d="M20 11a7 7 0 0 1-7 7H8l-4 3v-6a7 7 0 1 1 16-4z"/><path d="M8 10h8M8 13h5"/>',
   draft:'<path d="M7 3v16M3 15l4 4 4-4M17 21V5m-4 4 4-4 4 4"/>',
@@ -716,7 +716,7 @@ function leagueHubView(){
   const week=Number(state.gameSettings?.current_week||1);
   return `${pageHeading('League','League-wide competition, rosters, activity and history.','League Information')}
     <section class="nav-hub-grid">
-      ${hubCard('teams','♟','Teams & Rosters','View every franchise roster, IR, bids and ownership.')}
+      ${hubCard('teams',navIcon('teamhub'),'Teams & Rosters','View every franchise roster, IR, bids and ownership.')}
       ${hubCard('matchups','VS','Matchups',`Week ${week} scores, projections and starting lineups.`)}
       ${hubCard('schedule','◫','Schedule','Full regular-season schedule and team-by-team results.')}
       ${hubCard('standings','≡','Standings','League records, rankings and playoff positioning.')}
@@ -2273,7 +2273,7 @@ function historyView(){
   `;
 }
 
-function loginView(){return `<div class="login-wrap"><div class="login-card"><div class="login-head"><img src="/glsk-brand-mark.svg" alt="" class="auth-brand-mark" /><h1>${esc(LEAGUE_NAME)}</h1><p>Private League Access</p></div><div class="login-body"><div class="notice">A signed-in GLSK owner account is required. Public and spectator views are disabled.</div></div></div></div>`;}
+function loginView(){return `<div class="login-wrap"><div class="login-card"><div class="login-head"><img src="/glsk-logo.png" alt="" class="auth-brand-mark" /><h1>${esc(LEAGUE_NAME)}</h1><p>Private League Access</p></div><div class="login-body"><div class="notice">A signed-in GLSK owner account is required. Public and spectator views are disabled.</div></div></div></div>`;}
 
 function accountView(){
  const t=myTeam(),email=state.authUser?.email||state.session?.email||'—';
@@ -2889,9 +2889,9 @@ init();
 function assetMode(){return state.appMode!=='full';}
 function availableCommissionerSections(){return commissionerSections.filter(([key])=>!assetMode()||!['msf','yahoo','lineup','matchups','reconcile','freeagents'].includes(key)).map(([key,title,description])=>[key,key==='teams'&&assetMode()?'Team Assets':title,description]);}
 function appModeView(){return `<section class="card card-pad"><h2>App Mode</h2><p>Asset Management keeps ownership, contracts, rookie rights, bids, picks, releases, trades and drafts available. Acquisitions, waivers, weekly lineups, scoring and feed tools are hidden.</p><p>Full Fantasy restores those screens. Reconnecting a licensed data feed and preparing a new season are separate steps.</p>${state.appModeReady?'':'<p class="error">Install the Asset Management SQL migration before changing modes.</p>'}<label>League-wide mode <select id="app-mode" class="input"><option value="assets" ${assetMode()?'selected':''}>Asset Management</option><option value="full" ${!assetMode()?'selected':''}>Full Fantasy</option></select></label><button id="save-app-mode" class="btn btn-primary" ${state.appModeReady?'':'disabled'}>Save Mode</button><p class="small muted">Owners should refresh after a mode change. Changing modes does not delete records or reset drafts.</p></section>`;}
-function assetTeamHub(){const me=myTeam();return `${pageHeading('My Assets','Manage ownership, contracts, rookie rights and transactions.','Team Management')}<section class="nav-hub-grid">${me?hubCard('team','♟','My Team Assets','Owned players, rookie rights, draft picks and bid dollars.','','?tab=team&team='+encodeURIComponent(me.id)):hubCard('teams','♟','Team Assets','Browse league ownership.')}${hubCard('contracts','▤','Contracts','Review contracts, cap usage and extensions.')}${hubCard('trades','⇄','Trades','Propose and accept trades using existing league rules.')}</section>${me?assetTeamsView(me.id):''}`;}
-function assetLeagueHub(){return `${pageHeading('League','League assets, transactions and historical records.','League Information')}<section class="nav-hub-grid">${hubCard('teams','♟','Team Assets','Players, contracts, rookie rights, bids and draft picks.')}${hubCard('transactions','☷','Transactions','Acquisitions, releases, trades and draft activity.')}${hubCard('history','★','History','Preserved season records and franchise accomplishments.')}</section>`;}
-function assetDashboard(){return `${pageHeading('League Office','Asset Management • Contracts, rookie rights, bids, trades and drafts.','GLSK')}<section class="nav-hub-grid">${hubCard('teamhub','♟','My Assets','Review ownership and manage contracts.')}${hubCard('trades','⇄','Trades','Propose, accept and review trades.')}${hubCard('draft','⇅','Draft Rooms','Auction, supplemental and roster-fill drafts.')}${hubCard('transactions','☷','Transactions','Review league activity.')}${hubCard('deadlines','◷','Deadlines','Track contract and league deadlines.')}</section>${assetTeamsView()}`;}
+function assetTeamHub(){const me=myTeam();return `${pageHeading('My Assets','Manage ownership, contracts, rookie rights and transactions.','Team Management')}<section class="nav-hub-grid">${me?hubCard('team',navIcon('teamhub'),'My Team Assets','Owned players, rookie rights, draft picks and bid dollars.','','?tab=team&team='+encodeURIComponent(me.id)):hubCard('teams',navIcon('teamhub'),'Team Assets','Browse league ownership.')}${hubCard('contracts','▤','Contracts','Review contracts, cap usage and extensions.')}${hubCard('trades','⇄','Trades','Propose and accept trades using existing league rules.')}</section>${me?assetTeamsView(me.id):''}`;}
+function assetLeagueHub(){return `${pageHeading('League','League assets, transactions and historical records.','League Information')}<section class="nav-hub-grid">${hubCard('teams',navIcon('teamhub'),'Team Assets','Players, contracts, rookie rights, bids and draft picks.')}${hubCard('transactions','☷','Transactions','Acquisitions, releases, trades and draft activity.')}${hubCard('history','★','History','Preserved season records and franchise accomplishments.')}</section>`;}
+function assetDashboard(){return `${pageHeading('League Office','Asset Management • Contracts, rookie rights, bids, trades and drafts.','GLSK')}<section class="nav-hub-grid">${hubCard('teamhub',navIcon('teamhub'),'My Assets','Review ownership and manage contracts.')}${hubCard('trades','⇄','Trades','Propose, accept and review trades.')}${hubCard('draft','⇅','Draft Rooms','Auction, supplemental and roster-fill drafts.')}${hubCard('transactions','☷','Transactions','Review league activity.')}${hubCard('deadlines','◷','Deadlines','Track contract and league deadlines.')}</section>${assetTeamsView()}`;}
 function assetTeamsView(teamId=null){
  const selected=teamId==null?null:teamById(teamId),teams=selected?[selected]:state.teams;
  return `${pageHeading(selected?selected.name:'Team Assets','Manage player ownership, releases and trades.','League Assets')}${commissionerAddPlayerForm()}<div class="team-office-grid roster-team-grid">${teams.map(t=>{
