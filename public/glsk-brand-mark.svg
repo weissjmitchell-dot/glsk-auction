@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" role="img" aria-label="Great Lake State Keepers football crest">
+<defs>
+ <linearGradient id="bg" x1="0" y1="0" x2=".95" y2="1"><stop stop-color="#051532"/><stop offset=".55" stop-color="#07458F"/><stop offset="1" stop-color="#011B54"/></linearGradient>
+ <linearGradient id="ball" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#BEEFFF"/><stop offset=".5" stop-color="#319CD9"/><stop offset="1" stop-color="#063269"/></linearGradient>
+</defs>
+<rect x="3" y="3" width="250" height="250" rx="52" fill="url(#bg)" stroke="#83DBFF" stroke-width="5"/>
+<path d="M34 99 Q56 42 130 36 Q194 27 219 70 Q198 49 165 50 Q80 43 40 104 Z" fill="none" stroke="#EAFBFF" stroke-width="8" stroke-linecap="round"/>
+<path d="M37 77l17-9 22 2 13-12 19-4 17 8-7 10-20-2-11 9-18-3-16 10z" fill="#5DD5FF"/>
+<path d="M139 69l17-8 12 6 16-6 10 17-5 21 10 12-13 22-9 20-20-5-10-20-6-15-15-9 11-16z" fill="#5DD5FF"/>
+<path d="M25 179 Q129 114 231 178" fill="none" stroke="#82DFFF" stroke-width="8" opacity=".65"/>
+<g transform="rotate(-5 129 157)">
+ <path d="M54 159 Q122 94 206 156 Q136 225 54 159Z" fill="url(#ball)" stroke="#F8FCFF" stroke-width="8"/>
+ <path d="M60 159 Q127 108 201 157" fill="none" stroke="#D8F4FF" stroke-width="3" opacity=".7"/>
+ <path d="M111 144l36 28M116 137l-7 15M125 143l-7 15M134 151l-7 15M143 157l-7 15" stroke="#FDFEFF" stroke-width="5" stroke-linecap="round"/>
+</g>
+<path d="M36 212 Q84 204 126 213 T222 210M69 225 Q128 218 190 226" fill="none" stroke="#38C5F5" stroke-width="5" stroke-linecap="round"/>
+</svg>
