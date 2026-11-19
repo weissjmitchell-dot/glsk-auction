@@ -162,7 +162,7 @@ function rightsFor(id){
   const contracted=new Set(state.contracts.filter(c=>c.status==='active').map(c=>c.player_key));
   return state.rookieRights.filter(r=>r.owner_team_id===id&&r.status==='active'&&Number(r.rookie_draft_year)>=Number(state.season?.season_year||new Date().getFullYear())&&!contracted.has(r.player_key));
  }
-function picksFor(id){return state.futurePicks.filter(p=>p.owner_team_id===id&&p.status==='active').sort((a,b)=>a.draft_year-b.draft_year||a.draft_type.localeCompare(b.draft_type)||a.round-b.round);}
+function picksFor(id){return state.futurePicks.filter(p=>p.owner_team_id===id&&p.status==='active'&&p.draft_type==='rookie').sort((a,b)=>a.draft_year-b.draft_year||a.round-b.round);}
 function extensionEligibilityFor(id){return state.extensionEligibility.filter(e=>e.team_id===id&&e.status==='eligible');}
 function pickLabel(p){const o=teamById(p.original_team_id);return `${p.draft_year} ${p.draft_type==='rookie'?'Rookie':'Supplemental'} R${p.round}${o?` • orig. ${o.name}`:''}`;}
 function myDeadlineStatus(deadlineId){const t=myTeam();if(!t||!deadlineId)return null;return state.deadlineStatus.find(s=>s.deadline_id===deadlineId&&s.team_id===t.id)||null;}
@@ -2929,7 +2929,7 @@ function assetDashboard(){
      <div><span>Cap used</span><strong>${cap}<small> / ${state.season?.salary_cap_points||100}</small></strong></div>
      <div><span>Rookie rights</span><strong>${rights.length}</strong></div>
      <div><span>Bid dollars</span><strong>${bidMoney(me.remaining_budget)}</strong></div>
-     <div><span>Draft picks</span><strong>${picks.length}</strong></div>
+     <div><span>Rookie picks</span><strong>${picks.length}</strong></div>
    </section>`:''}
    <section class="glsk-home-section">
      <div class="glsk-home-section-title"><h2>Quick access</h2><span>Pick up where you left off</span></div>
@@ -2962,7 +2962,7 @@ function assetTeamsView(teamId=null){
    const rightsOnly=rights.filter(x=>!roster.some(r=>r.player_key===x.player_key));
    return `<details class="card office-team-card roster-team-card asset-compact-team" ${selected?'open':''}>
      <summary class="team-summary">
-       <div class="asset-compact-team-name"><strong>${esc(t.name)}</strong><small>${roster.length} players • ${picks.length} picks</small></div>
+       <div class="asset-compact-team-name"><strong>${esc(t.name)}</strong><small>${roster.length} players • ${picks.length} rookie picks</small></div>
        <div class="team-summary-metrics"><span><b>${bidMoney(t.remaining_budget)}</b><small>Bids</small></span><span><b>${capUsed(t.id)}/${state.season?.salary_cap_points||100}</b><small>Cap</small></span><span><b>${rights.length}</b><small>Rights</small></span></div>
        <span class="asset-compact-chevron" aria-hidden="true">⌄</span>
      </summary>
@@ -2978,8 +2978,8 @@ function assetTeamsView(teamId=null){
          </div>`;
        }).join(''):'<div class="asset-compact-empty">No current contracted or rookie-rights players.</div>'}
        ${rightsOnly.length?`<div class="asset-compact-section-title"><strong>Additional rookie rights</strong><span>${rightsOnly.length}</span></div>${rightsOnly.map(r=>`<div class="asset-compact-extra"><strong>${esc(r.player_name)}</strong><small>${esc(r.rookie_draft_year)} Rookie Draft</small></div>`).join('')}`:''}
-       <div class="asset-compact-section-title"><strong>Draft picks</strong><span>${picks.length}</span></div>
-       ${picks.length?picks.map(pk=>`<div class="asset-compact-extra">${esc(pickLabel(pk))}</div>`).join(''):'<div class="asset-compact-empty">No active draft picks.</div>'}
+       <div class="asset-compact-section-title"><strong>Rookie Draft picks</strong><span>${picks.length}</span></div>
+       ${picks.length?picks.map(pk=>`<div class="asset-compact-extra">${esc(pickLabel(pk))}</div>`).join(''):'<div class="asset-compact-empty">No active Rookie Draft picks.</div>'}
      </div>
    </details>`;
  }).join('')}</div>`;
