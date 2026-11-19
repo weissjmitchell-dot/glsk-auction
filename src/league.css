@@ -4344,3 +4344,53 @@ textarea:focus-visible {outline:3px solid #38c5f5;outline-offset:2px}
  .glsk-home-metrics>div{padding:8px 7px}
  .glsk-home-actions button{grid-template-columns:24px minmax(0,1fr) 8px;gap:6px}
 }
+
+
+/* GLSK 8.3 — streamlined five-tab navigation, owner assets and league history */
+.office-bottom-nav.consolidated-nav .bottom-nav-inner {
+  max-width:760px;
+  gap:6px;
+}
+.office-bottom-nav.consolidated-nav .nav-btn {
+  min-height:58px;
+  font-size:11px;
+  padding:7px 5px;
+}
+.office-bottom-nav.consolidated-nav .nav-btn .nav-icon-wrap {
+  width:24px;
+  height:24px;
+  margin-bottom:4px;
+}
+.office-bottom-nav.consolidated-nav .nav-btn .nav-icon-wrap svg {
+  width:22px;
+  height:22px;
+}
+.assets-owner-heading {
+  display:flex;
+  align-items:baseline;
+  flex-wrap:wrap;
+  gap:8px;
+  margin:22px 2px 9px;
+  color:#133561;
+}
+.assets-owner-heading strong {
+  font-size:13px;
+  font-weight:850;
+}
+.assets-owner-heading span {
+  color:#70839d;
+  font-size:12px;
+  font-weight:650;
+}
+@media(max-width:620px){
+ .office-bottom-nav.consolidated-nav .bottom-nav-inner{gap:3px}
+ .office-bottom-nav.consolidated-nav .nav-btn{
+   min-height:57px;
+   font-size:10px;
+   padding:6px 2px;
+ }
+ .office-bottom-nav.consolidated-nav .nav-btn .nav-icon-wrap{
+   margin-bottom:4px;
+ }
+ .assets-owner-heading{margin-top:19px;}
+}
