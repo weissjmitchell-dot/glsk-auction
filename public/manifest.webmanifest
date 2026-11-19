@@ -9,6 +9,12 @@
   "theme_color": "#0b1220",
   "icons": [
     {
+      "src": "/glsk-logo.png",
+      "sizes": "1024x1024",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
       "src": "/glsk-brand-mark.svg",
       "sizes": "any",
       "type": "image/svg+xml",
