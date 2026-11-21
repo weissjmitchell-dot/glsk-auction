@@ -94,11 +94,30 @@ begin
  join public.league_owner_accounts a on a.room_id=s.room_id
    and a.user_id=s.user_id and a.team_id=s.team_id and a.active=true
  left join public.league_notification_preferences np on np.season_id=v_event.season_id
-   and np.team_id=s.team_id and np.category=v_event.category
+   and np.user_id=s.user_id and np.category=v_event.category
  where s.room_id=v_event.room_id and s.enabled
    and (v_event.visibility='league' or
         (v_event.visibility='team' and v_event.target_team_id=s.team_id))
-   and coalesce(np.enabled,true);
+   and coalesce(np.enabled,true)
+   and (v_event.category<>'injuries'
+     or exists(
+       select 1 from public.league_roster_entries re
+       where re.room_id=v_event.room_id and re.team_id=s.team_id
+         and re.player_key=v_event.player_key and re.active=true
+     )
+     or exists(
+       select 1 from public.league_player_watches w
+       where w.season_id=v_event.season_id and w.user_id=s.user_id
+         and w.player_key=v_event.player_key and w.injury_alerts=true
+     )
+   )
+   and (v_event.category<>'player_availability'
+     or exists(
+       select 1 from public.league_player_watches w
+       where w.season_id=v_event.season_id and w.user_id=s.user_id
+         and w.player_key=v_event.player_key and w.availability_alerts=true
+     )
+   );
  return jsonb_build_object('ok',true,'event',v_base->'event','subscriptions',v_tokens);
 end $$;
 revoke all on function public.league_native_push_delivery_payload(bigint,text) from public,authenticated;
