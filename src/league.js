@@ -1255,13 +1255,13 @@ function notificationView(){
 
    <div class="notification-settings-column">
      <section class="card card-pad office-section push-device-card">
-       <div class="office-section-head"><div><h2>Phone & Browser Push</h2><div class="section-caption">Receive selected GLSK alerts even when the site is closed.</div></div></div>
+       <div class="office-section-head"><div><h2>${nativePushAvailable()?'iPhone Push Notifications':'Phone & Browser Push'}</h2><div class="section-caption">Receive selected GLSK alerts even when ${nativePushAvailable()?'the app':'the site'} is closed.</div></div></div>
        <div class="push-device-status ${state.pushPermission==='denied'?'permission-blocked':''}">
          <div class="push-status-copy">
            <span class="push-status-dot ${state.pushSubscribed?'on':state.pushPermission==='denied'?'blocked':'off'}"></span>
            <div>
-             <strong>${state.pushSubscribed?'Push enabled on this device':state.pushPermission==='denied'?'Push blocked in browser settings':state.pushSupported?'Push not enabled':'Push unsupported'}</strong>
-             <span>${state.pushSubscribed?'This device is registered for background notifications.':state.pushPermission==='denied'?'Chrome, Safari, or a browser extension is currently blocking GLSK notifications.':isIOSDevice()&&!state.pushStandalone?'On iPhone/iPad: add GLSK to the Home Screen, open it there, then enable push.':'Enable this device to receive Lock Screen / system notifications.'}</span>
+             <strong>${state.pushSubscribed?'Push enabled on this device':state.pushPermission==='denied'?(nativePushAvailable()?'iPhone notifications disabled':'Push blocked in browser settings'):state.pushSupported?'Push not enabled':'Push unsupported'}</strong>
+             <span>${state.pushSubscribed?'This device is registered for background notifications.':state.pushPermission==='denied'?(nativePushAvailable()?'Open iPhone Settings → Notifications → GLSK and enable Allow Notifications.':'Chrome, Safari, or a browser extension is currently blocking GLSK notifications.'):isIOSDevice()&&!state.pushStandalone?'On iPhone/iPad: add GLSK to the Home Screen, open it there, then enable push.':'Enable this device to receive Lock Screen / system notifications.'}</span>
            </div>
          </div>
          ${state.pushSupported
@@ -1270,7 +1270,7 @@ function notificationView(){
              : `<div class="push-device-actions">${state.pushSubscribed?'<button class="btn btn-outline" data-action="push-test">Send Test Push</button>':''}<button class="btn ${state.pushSubscribed?'btn-reset':'btn-primary'}" data-action="${state.pushSubscribed?'push-disable':'push-enable'}" ${state.pushBusy?'disabled':''}>${state.pushBusy?'Working…':state.pushSubscribed?'Disable on This Device':'Enable Push Notifications'}</button></div>`
            : ''}
        </div>
-       ${state.pushPermission==='denied'?'<div class="push-denied-note"><strong>Browser permission blocked.</strong><span>Allow notifications for <b>glsk-auction.vercel.app</b> in browser/site settings—or disable the extension blocking them—then tap <b>Refresh Status</b>.</span></div>':''}
+       ${state.pushPermission==='denied'?(nativePushAvailable()?'<div class="push-denied-note"><strong>iPhone notification permission disabled.</strong><span>Open iPhone <b>Settings → Notifications → GLSK</b>, turn on <b>Allow Notifications</b>, then tap <b>Refresh Status</b>.</span></div>':'<div class="push-denied-note"><strong>Browser permission blocked.</strong><span>Allow notifications for <b>glsk-auction.vercel.app</b> in browser/site settings—or disable the extension blocking them—then tap <b>Refresh Status</b>.</span></div>'):''}
        <div class="notification-delivery-note"><strong>How settings work</strong><span>The category switches below control both the in-app feed and phone push. Each owner can enable GLSK on multiple phones/computers independently.</span></div>
      </section>
 
@@ -2813,8 +2813,8 @@ function bind(){
    state.pushBusy=true;render();
    await refreshPushState();
    state.pushBusy=false;render();
-   if(state.pushPermission==='granted'&&!state.pushSubscribed)toast('Browser permission is allowed. You can now enable GLSK push notifications.');
-   else if(state.pushPermission==='denied')toast('Notifications are still blocked in browser or extension settings.','error');
+   if(state.pushPermission==='granted'&&!state.pushSubscribed)toast((nativePushAvailable()?'iPhone':'Browser')+' permission is allowed. You can now enable GLSK push notifications.');
+   else if(state.pushPermission==='denied')toast(nativePushAvailable()?'Open iPhone Settings → Notifications → GLSK and allow notifications.':'Notifications are still blocked in browser or extension settings.','error');
  });
  app.querySelector('[data-action="push-test"]')?.addEventListener('click',async()=>{
    const t=myTeam();if(!t)return;
