@@ -282,6 +282,8 @@ async function enableNativePushNotifications(){
     if(status!=='granted')throw new Error('Allow notifications in iPhone Settings → Notifications → GLSK.');
     await registerNativePush();
     // The registration callback saves the new token for the logged-in owner.
+    // Do not leave the button permanently busy if iOS delays its callback.
+    state.pushBusy=false;render();
   } catch(error) {
     state.pushBusy=false;render();toast(error.message,'error');
   }
