@@ -9,7 +9,7 @@ create table if not exists public.league_native_push_subscriptions (
   user_id uuid not null references auth.users(id) on delete cascade,
   team_id uuid not null references public.teams(id) on delete cascade,
   device_token text not null unique
-    check(device_token ~ '^[a-fA-F0-9]{64,400}$'),
+    check(char_length(device_token) between 64 and 400 and device_token ~ '^[a-fA-F0-9]+$'),
   device_label text not null default 'iPhone',
   environment text not null default 'production'
     check(environment in ('production','sandbox')),
@@ -40,7 +40,7 @@ begin
  if v_team is null then
   return jsonb_build_object('ok',false,'error','An active GLSK owner account is required.');
  end if;
- if p_device_token is null or p_device_token !~ '^[a-fA-F0-9]{64,400}$' then
+ if p_device_token is null or char_length(p_device_token) not between 64 and 400 or p_device_token !~ '^[a-fA-F0-9]+$' then
   return jsonb_build_object('ok',false,'error','Invalid iPhone notification token.');
  end if;
  insert into public.league_native_push_subscriptions(
