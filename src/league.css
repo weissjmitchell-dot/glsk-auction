@@ -4394,3 +4394,12 @@ textarea:focus-visible {outline:3px solid #38c5f5;outline-offset:2px}
  }
  .assets-owner-heading{margin-top:19px;}
 }
+
+/* Pending trade reservation: do not let locked assets look selectable. */
+.trade-asset-reserved{opacity:.62;background:#f0f3f7!important;cursor:not-allowed!important;}
+.trade-asset-reserved input[type=checkbox]{cursor:not-allowed;}
+.trade-asset-reserved .trade-player-info small{color:#815b1a;font-weight:700;}
+.trade-asset-reserved .draft-pick-origin{color:#956417;font-weight:800;}
+.trade-bid-row input:disabled{opacity:.55;cursor:not-allowed;}
+.chat-row.mine .chat-avatar{background:#d8f0ff;border:1px solid #78c5f2;color:#0659a2;}
+.chat-row.mine .chat-author-line strong{color:#0c549c;font-size:11px;}
