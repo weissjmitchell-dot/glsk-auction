@@ -4403,3 +4403,16 @@ textarea:focus-visible {outline:3px solid #38c5f5;outline-offset:2px}
 .trade-bid-row input:disabled{opacity:.55;cursor:not-allowed;}
 .chat-row.mine .chat-avatar{background:#d8f0ff;border:1px solid #78c5f2;color:#0659a2;}
 .chat-row.mine .chat-author-line strong{color:#0c549c;font-size:11px;}
+
+
+/* Notification center: activity stays in Comms, personal preferences in Settings. */
+.notification-feed-page{display:grid;gap:12px;max-width:1020px;margin-inline:auto;}
+.notification-page-tools{display:flex;justify-content:flex-end;gap:10px;}
+.notification-page-tools .btn{min-height:38px;}
+.notification-settings-page{max-width:1020px;margin-inline:auto;display:grid;gap:14px;}
+.notification-settings-back{justify-self:start;}
+.notification-settings-page .notification-settings-column{display:grid;grid-template-columns:minmax(0,1fr);gap:14px;width:100%;}
+.notification-settings-page .notification-settings-column>.card{width:100%;}
+@media(min-width:850px){
+  .notification-settings-page .notification-settings-column{grid-template-columns:repeat(2,minmax(0,1fr));align-items:start;}
+}
