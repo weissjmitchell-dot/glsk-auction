@@ -317,6 +317,7 @@ function setTab(tab){
   if(state.tab==='home')u.searchParams.delete('tab');else u.searchParams.set('tab',state.tab);
   history.replaceState(null,'',u.pathname+(u.search?u.search:'')+u.hash);
   render();
+  if(state.tab==='notification-settings')window.scrollTo?.({top:0,behavior:'instant'});
   if(state.tab==='chat')setTimeout(()=>markChatRead(),60);
 }
 
@@ -650,7 +651,7 @@ function navGroupForTab(tab){
   if(['teamhub','lineup','contracts','trades','freeagents','teams','team'].includes(tab))return 'teamhub';
   if(['communications','chat','board','notifications'].includes(tab))return 'communications';
   if(['transactions','leaguehub'].includes(tab))return 'home';
-  if(['settingshub','commissioner','reconcile','rules','deadlines','finances','history','matchups','schedule','standings'].includes(tab))return 'settingshub';
+  if(['settingshub','notification-settings','commissioner','reconcile','rules','deadlines','finances','history','matchups','schedule','standings'].includes(tab))return 'settingshub';
   if(['draft','draftresults','auctionresults','supplementalresults','snakeresults','biddollars','bidbank','bidhistory'].includes(tab))return 'draft';
   if(tab==='home')return 'home';
   return '';
@@ -711,7 +712,7 @@ function communicationsHubView(){
     <section class="nav-hub-grid nav-hub-grid-three">
       ${hubCard('chat','💬','League Chat','Fast, realtime group conversation.',state.chatUnread?`${state.chatUnread} unread`:'')}
       ${hubCard('board','✎','Message Board','Longer-form discussions plus the Google Groups archive.',boardCurrent?`${boardCurrent} current`:'')}
-      ${hubCard('notifications','♢','Notifications','League alerts, player watches and push preferences.',unread?`${unread} unread`:'')}
+      ${hubCard('notifications','♢','Activity Feed','Recent league alerts and activity.',unread?`${unread} unread`:'')}
     </section>`;
 }
 function leagueHubView(){
@@ -731,7 +732,7 @@ function settingsHubView(){
   const open=state.deadlines.filter(d=>d.status==='open').length;
   return `${pageHeading('Settings','League rules, deadlines and financial administration.','League Administration')}
     <section class="nav-hub-grid nav-hub-grid-three">
-      ${hubCard('notifications','♢','Notification Settings','Manage email alerts, push notifications and player watches.')}
+      ${hubCard('notification-settings','♢','Notification Settings','Manage email alerts, push notifications and player watches.')}
       <a class="nav-hub-card" href="/install.html" style="text-decoration:none;color:inherit"><div class="nav-hub-copy"><strong>Install &amp; Share GLSK</strong><span>Add GLSK to your iPhone home screen and invite league owners.</span></div><div class="nav-hub-arrow">›</div></a>
       ${hubCard('rules','⚙','Rules','Constitution, league settings and season configuration.')}
       ${hubCard('deadlines','◷','Deadlines','Contract, extension and commissioner deadlines.',open?`${open} open`:'')}
@@ -1154,10 +1155,9 @@ function notificationRelatedTab(e){
 function notificationView(){
  const t=myTeam();
  if(!t)return `${pageHeading('Notifications','Owner-specific GLSK alerts.','League Activity')}<div class="card empty">Sign in as a team owner to use notifications.</div>`;
- const categories=['roster_moves','trades','drafts','contracts','rookie_rights','league_chat','message_board','matchups','deadlines','injuries','player_availability','other_activity'];
- const rosterKeys=new Set(rosterFor(t.id).map(r=>r.player_key));
- return `${pageHeading('Notifications','Choose what you want to hear about and follow league activity in realtime.','League Activity')}
- <div class="notifications-layout">
+ return `${pageHeading('Notifications','Recent league alerts and activity.','League Activity')}
+ <div class="notification-feed-page">
+   <div class="notification-page-tools"><button class="btn btn-outline" data-tab="notification-settings">Manage Notification Settings</button></div>
    <section class="card notification-feed-card">
      <div class="notification-feed-head"><div><h2>Activity Feed</h2><span>${state.notificationUnread} unread</span></div>${state.notificationUnread?'<button class="btn btn-sm notification-mark-read" data-action="notifications-mark-read">Mark All Read</button>':''}</div>
      <div class="notification-feed">${state.notifications.length?state.notifications.map(e=>{
@@ -1168,7 +1168,16 @@ function notificationView(){
        </button>`;
      }).join(''):'<div class="board-empty"><strong>No notifications yet.</strong><span>New league activity will appear here automatically.</span></div>'}</div>
    </section>
+ </div>`;
+}
 
+function notificationSettingsView(){
+ const t=myTeam();
+ if(!t)return `${pageHeading('Notification Settings','Owner-specific GLSK alerts.','Settings')}<div class="card empty">Sign in as a team owner to manage notifications.</div>`;
+ const categories=['roster_moves','trades','drafts','contracts','rookie_rights','league_chat','message_board','matchups','deadlines','injuries','player_availability','other_activity'];
+ return `${pageHeading('Notification Settings','Control your iPhone push, email alerts, categories and player watches.','Settings')}
+ <div class="notification-settings-page">
+   <button class="btn btn-outline notification-settings-back" data-tab="settingshub">‹ Back to Settings</button>
    <div class="notification-settings-column">
      <section class="card card-pad office-section push-device-card">
        <div class="office-section-head"><div><h2>Phone & Browser Push</h2><div class="section-caption">Receive selected GLSK alerts even when the site is closed.</div></div></div>
@@ -2333,7 +2342,7 @@ function accountView(){
 }
 
 function setupError(){return `<div class="login-wrap"><div class="login-card"><div class="login-head"><h1>League Office Ready</h1><p>Database connection is missing.</p></div></div></div>`;}
-function render(){if(state.tab==='leaguehub')state.tab=assetMode()?'teamhub':'settingshub';if(assetMode()&&['lineup','matchups','schedule','standings','reconcile','freeagents'].includes(state.tab))state.tab='teamhub';if(!configured){app.innerHTML=setupError();return;}if(state.loading){app.innerHTML='<div class="login-wrap"><div style="color:white;font-weight:900">Loading League Office…</div></div>';return;}if(!state.session){app.innerHTML=loginView();bind();return;}if(state.tab==='reconcile'){state.commissionerSection='reconcile';state.tab='commissioner';}let content=state.tab==='team'?teamPageView():state.tab==='biddollars'?bidDollarsView():state.tab==='bidbank'?bidBankPage():state.tab==='bidhistory'?bidHistoryPage():state.tab==='draft'?draftHubView():state.tab==='draftresults'?draftResultsHubView():draftResultPhases[state.tab]?draftResultsView():state.tab==='teamhub'?teamHubView():state.tab==='communications'?communicationsHubView():state.tab==='leaguehub'?leagueHubView():state.tab==='settingshub'?settingsHubView():state.tab==='commissioner'?commissionerHubView():state.tab==='lineup'?lineupView():state.tab==='freeagents'?freeAgencyView():state.tab==='chat'?chatView():state.tab==='matchups'?matchupsView():state.tab==='schedule'?scheduleView():state.tab==='standings'?standingsView():state.tab==='board'?boardView():state.tab==='notifications'?notificationView():state.tab==='teams'?teamsView():state.tab==='contracts'?contractsView():state.tab==='trades'?tradesView():state.tab==='transactions'?transactionsView():state.tab==='history'?historyView():state.tab==='rules'?rulesView():state.tab==='deadlines'?deadlinesView():state.tab==='finances'?financesView():state.tab==='account'?accountView():state.tab==='reconcile'?reconcileView():dashboard();app.innerHTML=`<div class="office-shell">${topBar()}<main class="main">${content}</main>${bottomNav()}</div>`;bind();}
+function render(){if(state.tab==='leaguehub')state.tab=assetMode()?'teamhub':'settingshub';if(assetMode()&&['lineup','matchups','schedule','standings','reconcile','freeagents'].includes(state.tab))state.tab='teamhub';if(!configured){app.innerHTML=setupError();return;}if(state.loading){app.innerHTML='<div class="login-wrap"><div style="color:white;font-weight:900">Loading League Office…</div></div>';return;}if(!state.session){app.innerHTML=loginView();bind();return;}if(state.tab==='reconcile'){state.commissionerSection='reconcile';state.tab='commissioner';}let content=state.tab==='team'?teamPageView():state.tab==='biddollars'?bidDollarsView():state.tab==='bidbank'?bidBankPage():state.tab==='bidhistory'?bidHistoryPage():state.tab==='draft'?draftHubView():state.tab==='draftresults'?draftResultsHubView():draftResultPhases[state.tab]?draftResultsView():state.tab==='teamhub'?teamHubView():state.tab==='communications'?communicationsHubView():state.tab==='leaguehub'?leagueHubView():state.tab==='settingshub'?settingsHubView():state.tab==='commissioner'?commissionerHubView():state.tab==='lineup'?lineupView():state.tab==='freeagents'?freeAgencyView():state.tab==='chat'?chatView():state.tab==='matchups'?matchupsView():state.tab==='schedule'?scheduleView():state.tab==='standings'?standingsView():state.tab==='board'?boardView():state.tab==='notifications'?notificationView():state.tab==='notification-settings'?notificationSettingsView():state.tab==='teams'?teamsView():state.tab==='contracts'?contractsView():state.tab==='trades'?tradesView():state.tab==='transactions'?transactionsView():state.tab==='history'?historyView():state.tab==='rules'?rulesView():state.tab==='deadlines'?deadlinesView():state.tab==='finances'?financesView():state.tab==='account'?accountView():state.tab==='reconcile'?reconcileView():dashboard();app.innerHTML=`<div class="office-shell">${topBar()}<main class="main">${content}</main>${bottomNav()}</div>`;bind();}
 
 async function logout(){const t=myTeam();await signOutOwner({roomCode:ROOM_CODE,teamId:t?.id||null,legacyStorageKey:STORAGE_KEY});location.reload();}
 async function commish(name,args={},msg='Saved.'){try{await rpc(name,{p_room_code:ROOM_CODE,p_commish_pin:state.session.commishPin,...args});toast(msg);await loadData();render();}catch(e){toast(e.message,'error');}}
