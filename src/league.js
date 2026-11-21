@@ -2422,7 +2422,7 @@ function accountView(){
        <span class="push-status-dot ${state.pushSubscribed?'on':'off'}"></span>
        <div><strong>${state.pushSubscribed?'Push enabled on this device':'Push not enabled on this device'}</strong><span>${state.pushSubscribed?'GLSK can alert this device while the app is closed.':'Open Notifications to enable background alerts.'}</span></div>
      </div>
-     <button class="btn btn-primary" data-tab="notifications">Open Notification Settings</button>
+     <button class="btn btn-primary" data-tab="notification-settings">Open Notification Settings</button>
    </section>
  </div>`;
 }
