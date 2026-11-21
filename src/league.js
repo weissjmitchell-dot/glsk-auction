@@ -1631,12 +1631,17 @@ function tradeSummary(tr){
  const give=assets.filter(a=>a.direction==='proposer_to_partner'),recv=assets.filter(a=>a.direction==='partner_to_proposer');
  return `<div class="trade-columns"><div><div class="asset-title">${esc(p?.name||'Proposer')} sends</div>${give.map(a=>`<div class="trade-line">${esc(tradeAssetLabel(a))}</div>`).join('')||'<div class="small muted">Nothing</div>'}</div><div><div class="asset-title">${esc(q?.name||'Partner')} sends</div>${recv.map(a=>`<div class="trade-line">${esc(tradeAssetLabel(a))}</div>`).join('')||'<div class="small muted">Nothing</div>'}</div></div>`;
 }
+function canShowTrade(tr){
+ const myId=state.session?.teamId;
+ if(myId&&(tr.proposer_team_id===myId||tr.partner_team_id===myId))return true;
+ return isCommish()&&(tr.status==='pending_commish'||tr.status==='approved'||tr.status==='denied'||(tr.status==='cancelled'&&Boolean(tr.accepted_at)));
+}
 function tradesView(){
  const me=myTeam();
  const others=me?state.teams.filter(t=>t.id!==me.id):[];
  const partnerId=state.tradePartner&&others.some(t=>t.id===state.tradePartner)?state.tradePartner:others[0]?.id;
  const partner=teamById(partnerId);
- const visible=state.trades.filter(tr=>isCommish()||!me||tr.proposer_team_id===me.id||tr.partner_team_id===me.id);
+ const visible=state.trades.filter(canShowTrade);
  return `${pageHeading('Trades','Select a partner, choose assets from each roster, then submit the deal for owner and commissioner approval.','Transactions')}
  ${me&&!state.session?.spectator?`<section class="trade-workspace">
    <div class="trade-toolbar card">
@@ -2946,7 +2951,7 @@ function assetDashboard(){
  const picks=me?picksFor(me.id):[];
  const cap=me?capUsed(me.id):0;
  const next=state.deadlines.filter(d=>d.status==='open'&&d.due_at&&new Date(d.due_at)>new Date()).sort((a,b)=>new Date(a.due_at)-new Date(b.due_at))[0];
- const visibleTrades=state.trades.filter(tr=>isCommish()||!!me&&(tr.proposer_team_id===me.id||tr.partner_team_id===me.id)).sort((a,b)=>new Date(b.proposed_at||0)-new Date(a.proposed_at||0));
+ const visibleTrades=state.trades.filter(canShowTrade).sort((a,b)=>new Date(b.proposed_at||0)-new Date(a.proposed_at||0));
  const recent=visibleTrades.slice(0,3);
  const pending=visibleTrades.filter(tr=>['proposed','pending_commish'].includes(tr.status)).length;
  return `<section class="glsk-home">
