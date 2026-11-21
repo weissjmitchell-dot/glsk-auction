@@ -28,6 +28,9 @@ assert.equal(createApnsProviderToken(env,1795260000000+60_000),value,'APNs JWT r
 const sql=read('supabase/glsk-native-apns-v1.sql');
 assert.match(sql,/auth\.uid\(\)/,'Native subscription registration must authenticate owners');
 assert.match(sql,/league_native_push_delivery_payload/);
+assert.match(sql,/np\.user_id=s\.user_id/,'Native push must honor per-owner preferences');
+assert.match(sql,/w\.injury_alerts=true/,'Injury watches must be filtered');
+assert.match(sql,/w\.availability_alerts=true/,'Availability watches must be filtered');
 assert.match(sql,/league_push_delivery_payload\(p_event_id,p_webhook_secret\)/,
   'Native event delivery must reuse the existing authenticated webhook');
 assert.match(sql,/row level security/);
