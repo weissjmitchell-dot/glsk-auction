@@ -1,4 +1,5 @@
 import crypto from 'node:crypto';
+import { sendNativePushBatch, apnsConfigured } from './_apns.js';
 
 const SUPABASE_URL = process.env.SUPABASE_URL || 'https://vavzeyewfipswyxeqdht.supabase.co';
 const SUPABASE_KEY = process.env.SUPABASE_PUBLISHABLE_KEY || 'sb_publishable_vFPh7D0LYQ0n66n_jbBOKA_qTvpXsPq';
@@ -202,6 +203,34 @@ export default async function handler(req, res) {
     }));
 
     const sent = results.filter(x => x.status === 'fulfilled' && x.value.ok).length;
+    // Native iOS is separate from browser Web Push and email. A missing APNs
+    // credential or unapplied database migration never interrupts either.
+    let nativeRecipients = 0, nativeSent = 0;
+    if (apnsConfigured()) {
+      try {
+        const nativeJob = await rpc('league_native_push_delivery_payload', {
+          p_event_id: eventId,
+          p_webhook_secret: req.body.secret
+        });
+        if (nativeJob?.ok) {
+          const targets = nativeJob.subscriptions || [];
+          nativeRecipients = targets.length;
+          const batch = await sendNativePushBatch(targets,event,destination(event));
+          nativeSent = batch.results.filter(x => x.ok).length;
+          await Promise.allSettled(batch.results.map(entry => rpc(
+            'league_native_push_report_delivery', {
+              p_event_id: eventId,
+              p_webhook_secret: req.body.secret,
+              p_subscription_id: entry.subscription_id,
+              p_success: entry.ok,
+              p_gone: entry.gone
+            }
+          )));
+        }
+      } catch (error) {
+        console.error('GLSK native APNs dispatch unavailable:', error?.message);
+      }
+    }
     let emailRecipients = 0, emailSent = 0, emailFailed = 0;
     // Email delivery is opt-in only. No provider credentials => no send attempts.
     if (process.env.RESEND_API_KEY && process.env.GLSK_EMAIL_FROM && process.env.GLSK_EMAIL_ENABLED === 'true') {
@@ -233,7 +262,7 @@ export default async function handler(req, res) {
     }
     return res.status(200).json({
       ok:true,eventId,recipients:subscriptions.length,sent,
-      failed:subscriptions.length-sent,emailRecipients,emailSent,emailFailed
+      failed:subscriptions.length-sent,nativeRecipients,nativeSent,emailRecipients,emailSent,emailFailed
     });
   } catch (error) {
     console.error('GLSK push event failed', error);
