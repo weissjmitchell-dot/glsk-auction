@@ -733,7 +733,6 @@ function settingsHubView(){
   return `${pageHeading('Settings','League rules, deadlines and financial administration.','League Administration')}
     <section class="nav-hub-grid nav-hub-grid-three">
       ${hubCard('notification-settings','♢','Notification Settings','Manage email alerts, push notifications and player watches.')}
-      <a class="nav-hub-card" href="/install.html" style="text-decoration:none;color:inherit"><div class="nav-hub-copy"><strong>Install &amp; Share GLSK</strong><span>Add GLSK to your iPhone home screen and invite league owners.</span></div><div class="nav-hub-arrow">›</div></a>
       ${hubCard('rules','⚙','Rules','Constitution, league settings and season configuration.')}
       ${hubCard('deadlines','◷','Deadlines','Contract, extension and commissioner deadlines.',open?`${open} open`:'')}
       ${hubCard('finances','$','Finances','League financial ledger and bid-dollar accounting.')}
