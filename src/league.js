@@ -1558,29 +1558,51 @@ function tradeAssetLabel(a){
  if(a.asset_type==='rookie_rights')return `Rookie rights: ${a.player_name||a.asset_key}`;
  return a.player_name||a.asset_key||a.asset_type;
 }
+function tradeReservations(){
+ // Source of truth is the database guard. This UI disables already reserved
+ // assets immediately for clarity; the server still rejects raced submissions.
+ const openIds=new Set(state.trades.filter(tr=>['proposed','pending_commish'].includes(tr.status)).map(tr=>String(tr.id)));
+ const allTrades=new Map(state.trades.map(tr=>[String(tr.id),tr]));
+ const players=new Map(),picks=new Map(),bids=new Map();
+ for(const a of state.tradeAssets){
+   if(!openIds.has(String(a.trade_id)))continue;
+   if(a.asset_type==='player'&&a.asset_key)players.set(String(a.asset_key).toLowerCase(),String(a.trade_id));
+   if(a.asset_type==='rookie_pick'&&a.pick_id)picks.set(String(a.pick_id),String(a.trade_id));
+   if(a.asset_type==='bid_dollars'&&Number(a.bid_amount)>0){
+     const tr=allTrades.get(String(a.trade_id));
+     if(!tr)continue;
+     const from=a.direction==='proposer_to_partner'?tr.proposer_team_id:tr.partner_team_id;
+     bids.set(String(from),(bids.get(String(from))||0)+Number(a.bid_amount));
+   }
+ }
+ return {players,picks,bids};
+}
 function tradeSide(teamId,cls,sideLabel='Assets'){
  const team=teamById(teamId),roster=rosterFor(teamId).filter(r=>!assetMode()||!!contractForPlayer(teamId,r.player_key)||rightsFor(teamId).some(x=>x.player_key===r.player_key)).slice().sort((a,b)=>{
    const posOrder={QB:1,RB:2,WR:3,TE:4,K:5,DST:6};
    return (posOrder[a.position]||9)-(posOrder[b.position]||9)||a.player_name.localeCompare(b.player_name);
  });
  const rights=rightsFor(teamId);
+ const reserved=tradeReservations();
+ const availableBidDollars=Math.max(0,Number(team?.remaining_budget||0)-Number(reserved.bids.get(String(teamId))||0));
  const nextYear=Number(state.season?.season_year||2026)+1;
  const rookiePicks=picksFor(teamId)
    .filter(p=>p.draft_year===nextYear&&p.draft_type==='rookie')
    .sort((a,b)=>Number(a.round)-Number(b.round)||String(a.id).localeCompare(String(b.id)));
  const playerRows=roster.map(r=>{
    const c=contractForPlayer(teamId,r.player_key),hasRights=rights.some(x=>x.player_key===r.player_key);
-   return `<label class="trade-player-row">
-     <span class="trade-check-cell"><input type="checkbox" class="${cls}" data-type="player" data-key="${esc(r.player_key)}" data-name="${esc(r.player_name)}"></span>
+   const isReserved=reserved.players.has(String(r.player_key).toLowerCase());
+   return `<label class="trade-player-row ${isReserved?'trade-asset-reserved':''}">
+     <span class="trade-check-cell"><input type="checkbox" class="${cls}" data-type="player" data-key="${esc(r.player_key)}" data-name="${esc(r.player_name)}" ${isReserved?'disabled title="Already in an open trade"':''}></span>
      <span class="${rosterPositionClass(r.position)} trade-pos">${esc(r.position||'—')}</span>
-     <span class="trade-player-info"><strong>${esc(r.player_name)}</strong><small>${esc(r.nfl_team||'')} • ${c?esc(contractLabel(c)):hasRights?'Rookie rights':'Uncontracted'}</small>${playerStatLine(r,true)}</span>
+     <span class="trade-player-info"><strong>${esc(r.player_name)}</strong><small>${isReserved?'Reserved in an open trade • ':''}${esc(r.nfl_team||'')} • ${c?esc(contractLabel(c)):hasRights?'Rookie rights':'Uncontracted'}</small>${isReserved?'':playerStatLine(r,true)}</span>
      <span class="trade-cap-cell">${c?`${c.cap_cost} pts`:'—'}</span>
    </label>`;
  }).join('');
- const pickRow=(pk)=>`<label class="draft-pick-option">
-   <input type="checkbox" class="${cls}" data-type="rookie_pick" data-pick-id="${pk.id}">
+ const pickRow=(pk)=>`<label class="draft-pick-option ${reserved.picks.has(String(pk.id))?'trade-asset-reserved':''}">
+   <input type="checkbox" class="${cls}" data-type="rookie_pick" data-pick-id="${pk.id}" ${reserved.picks.has(String(pk.id))?'disabled title="Already in an open trade"':''}>
    <span class="draft-pick-round">Round ${Number(pk.round)}</span>
-   ${pk.original_team_id&&pk.original_team_id!==teamId?`<span class="draft-pick-origin">from ${esc(teamById(pk.original_team_id)?.name||'another team')}</span>`:''}
+   ${reserved.picks.has(String(pk.id))?'<span class="draft-pick-origin">Reserved</span>':pk.original_team_id&&pk.original_team_id!==teamId?`<span class="draft-pick-origin">from ${esc(teamById(pk.original_team_id)?.name||'another team')}</span>`:''}
  </label>`;
  return `<div class="trade-team-panel">
    <div class="trade-team-panel-head">
@@ -1593,7 +1615,7 @@ function tradeSide(teamId,cls,sideLabel='Assets'){
      <div class="trade-picks-header"><div><strong>${nextYear} Rookie Draft Picks</strong><span>Only next year's Rookie Draft picks are tradable. Supplemental picks cannot be traded.</span></div></div>
      <div class="draft-pick-grid rookie-only-picks">${rookiePicks.length?rookiePicks.map(pickRow).join(''):'<div class="small muted trade-no-picks">No rookie picks owned.</div>'}</div>
    </div>
-   <div class="trade-bid-row"><label>Bid dollars</label><input id="${cls==='trade-give'?'trade-give-bids':'trade-receive-bids'}" class="input" type="number" min="0" max="${team?.remaining_budget||0}" value="0"><span>max ${bidMoney(team?.remaining_budget||0)}</span></div>
+   <div class="trade-bid-row"><label>Bid dollars</label><input id="${cls==='trade-give'?'trade-give-bids':'trade-receive-bids'}" class="input" type="number" min="0" max="${availableBidDollars}" value="0" ${availableBidDollars===0?'disabled':''}><span>${reserved.bids.get(String(teamId))?'Reserved in other trades · ':''}max ${bidMoney(availableBidDollars)}</span></div>
  </div>`;
 }
 function tradeSummary(tr){
