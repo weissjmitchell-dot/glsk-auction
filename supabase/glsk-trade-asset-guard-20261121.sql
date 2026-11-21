@@ -15,7 +15,9 @@ declare
   v_previous uuid;
   v_budget integer;
   v_reserved bigint;
+  v_old_id bigint;
 begin
+  if tg_op='UPDATE' then v_old_id:=old.id; end if;
   select * into v_trade from public.league_trades where id=new.trade_id;
   if v_trade.id is null then raise exception 'Trade not found.'; end if;
   if v_trade.status not in ('proposed','pending_commish') then
@@ -48,7 +50,7 @@ begin
         and a.asset_type='bid_dollars'
         and (case when a.direction='proposer_to_partner'
                   then t.proposer_team_id else t.partner_team_id end)=v_owner
-        and (tg_op='INSERT' or a.id<>old.id);
+        and (v_old_id is null or a.id<>v_old_id);
     if v_reserved+new.bid_amount>coalesce(v_budget,0) then
       raise exception 'Only % bid dollars remain available after amounts reserved by pending trades.',
         greatest(0,coalesce(v_budget,0)-v_reserved);
@@ -64,7 +66,7 @@ begin
     join public.league_trades t on t.id=a.trade_id
     where t.season_id=v_season
       and t.status in ('proposed','pending_commish')
-      and (tg_op='INSERT' or a.id<>old.id)
+      and (v_old_id is null or a.id<>v_old_id)
       and a.asset_type=new.asset_type
       and ( (new.asset_type='player' and lower(btrim(a.asset_key))=lower(btrim(new.asset_key)))
          or (new.asset_type='rookie_pick' and a.pick_id=new.pick_id))
@@ -97,7 +99,7 @@ declare
  v_budget integer;
  v_reserved bigint;
 begin
- if new.status not in ('pending_commish','approved')
+ if new.status <> 'pending_commish'
     or new.status=old.status then return new; end if;
 
  for a in select * from public.league_trade_assets where trade_id=new.id order by id loop
