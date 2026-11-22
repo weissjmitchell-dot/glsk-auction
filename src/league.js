@@ -1634,7 +1634,9 @@ function tradeSummary(tr){
 function canShowTrade(tr){
  const myId=state.session?.teamId;
  if(myId&&(tr.proposer_team_id===myId||tr.partner_team_id===myId))return true;
- return isCommish()&&(tr.status==='pending_commish'||tr.status==='approved'||tr.status==='denied'||(tr.status==='cancelled'&&Boolean(tr.accepted_at)));
+ // League members may see completed trades, but not other teams' unaccepted offers.
+ if(myId&&tr.status==='approved')return true;
+ return isCommish()&&(tr.status==='pending_commish'||tr.status==='denied'||(tr.status==='cancelled'&&Boolean(tr.accepted_at)));
 }
 function tradesView(){
  const me=myTeam();
