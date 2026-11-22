@@ -21,7 +21,9 @@ workflows:
           export BUILD_NUMBER=$((PROJECT_BUILD_NUMBER + 1))
           npm run sync:ios
       - name: Validate package
-        script: node tests/ios-package.test.mjs
+        script: |
+          node tests/native-push.test.mjs
+          node tests/ios-package.test.mjs
       - name: Apply signing profiles
         script: xcode-project use-profiles
       - name: Archive and export iPhone app

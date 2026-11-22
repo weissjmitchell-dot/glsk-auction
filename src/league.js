@@ -9,6 +9,10 @@ import './auth.css';
 import { supabase, configured } from './supabase.js';
 import { ROOM_CODE, LEAGUE_NAME } from './config.js';
 import { requireOwnerAccount, legacySessionFromAccount, signOutOwner, sendPasswordResetEmail, promptOwnerPush } from './auth.js';
+import {
+  nativePushAvailable, listenNativePush, nativePushPermission,
+  requestNativePushPermission, registerNativePush, unregisterNativePush
+} from './native-push.js';
 
 // Keep the interaction styles with the controls so a stale stylesheet cannot
 // expose the transparent native selectors as duplicate dropdowns.
@@ -224,7 +228,87 @@ async function getPushRegistration(){
     return await navigator.serviceWorker.ready;
   }catch(e){console.warn('service worker',e.message);return null;}
 }
+
+const nativePushTokenStorageKey = 'glsk-native-push-token-' + ROOM_CODE;
+let nativePushAutoRegistered = false;
+async function initializeNativePushListeners() {
+  await listenNativePush({
+    onToken: async token => {
+      if(!state.session?.teamId || !token) return;
+      try {
+        await rpc('league_owner_save_native_push_token', {
+          p_room_code: ROOM_CODE, p_device_token: token,
+          p_device_label: 'GLSK iPhone'
+        });
+        localStorage.setItem(nativePushTokenStorageKey,token);
+        state.pushSubscribed = true;
+        state.pushPermission = 'granted';
+        toast('iPhone notifications enabled.');
+      } catch(error) {
+        state.pushSubscribed = false;
+        toast('Could not register GLSK with the notification server. '+error.message,'error');
+      } finally {state.pushBusy=false;render();}
+    },
+    onError: message => {state.pushBusy=false;render();toast(String(message),'error');},
+    onReceive: async () => {await loadNotifications();render();},
+    onAction: notification => {
+      if(!state.session) return;
+      const path=String(notification?.data?.url||'');
+      const target=path.match(/[?&]tab=([a-z0-9_-]+)/i)?.[1]||'notifications';
+      setTab(target);
+    }
+  });
+}
+async function refreshNativePushState() {
+  await initializeNativePushListeners();
+  const status=await nativePushPermission();
+  state.pushSupported = true;
+  state.pushPermission = status==='granted'?'granted':status==='denied'?'denied':'default';
+  state.pushStandalone = true;
+  state.pushSubscribed = state.pushPermission==='granted' &&
+    Boolean(localStorage.getItem(nativePushTokenStorageKey));
+  if(state.pushSubscribed && !nativePushAutoRegistered){
+    nativePushAutoRegistered=true;
+    // Re-register to recover from APNs token rotation or a new owner session.
+    void registerNativePush().catch(error=>console.warn('APNs token renewal',error?.message));
+  }
+}
+async function enableNativePushNotifications(){
+  if(state.pushBusy)return;
+  state.pushBusy=true;render();
+  try {
+    await initializeNativePushListeners();
+    const status=await requestNativePushPermission();
+    if(status!=='granted')throw new Error('Allow notifications in iPhone Settings → Notifications → GLSK.');
+    await registerNativePush();
+    // The registration callback saves the new token for the logged-in owner.
+    // Do not leave the button permanently busy if iOS delays its callback.
+    state.pushBusy=false;render();
+  } catch(error) {
+    state.pushBusy=false;render();toast(error.message,'error');
+  }
+}
+async function disableNativePushNotifications(){
+  if(state.pushBusy)return;
+  state.pushBusy=true;render();
+  try {
+    const token=localStorage.getItem(nativePushTokenStorageKey);
+    if(token)await rpc('league_owner_remove_native_push_token',{
+      p_room_code:ROOM_CODE,p_device_token:token
+    });
+    await unregisterNativePush();
+    localStorage.removeItem(nativePushTokenStorageKey);
+    state.pushSubscribed=false;
+    toast('iPhone notifications disabled for this device.');
+  }catch(error){toast(error.message,'error');}
+  finally{state.pushBusy=false;render();}
+}
 async function refreshPushState(){
+  if(nativePushAvailable()) {
+    try {await refreshNativePushState();}
+    catch(error){state.pushSupported=false;state.pushPermission='default';state.pushSubscribed=false;console.warn('Native push initialization',error?.message);}
+    return;
+  }
   state.pushSupported=Boolean((location.protocol!=='capacitor:'&&'serviceWorker' in navigator)&&'PushManager' in window&&'Notification' in window);
   state.pushPermission=('Notification' in window)?Notification.permission:'denied';
   state.pushStandalone=isStandaloneApp();
@@ -235,6 +319,7 @@ async function refreshPushState(){
 }
 async function enablePushNotifications(){
   const t=myTeam();if(!t)return;
+  if(nativePushAvailable())return enableNativePushNotifications();
   if(!state.pushSupported)return toast('Push notifications are not supported in this browser.','error');
   if(isIOSDevice()&&!isStandaloneApp())return toast('On iPhone/iPad, add GLSK to your Home Screen first, then enable notifications from the Home Screen app.','error');
   if(state.pushBusy)return;
@@ -279,6 +364,7 @@ async function enablePushNotifications(){
 }
 async function disablePushNotifications(){
   const t=myTeam();if(!t||state.pushBusy)return;
+  if(nativePushAvailable())return disableNativePushNotifications();
   state.pushBusy=true;render();
   try{
     const reg=await getPushRegistration();
@@ -1179,13 +1265,13 @@ function notificationSettingsView(){
    <button class="btn btn-outline notification-settings-back" data-tab="settingshub">‹ Back to Settings</button>
    <div class="notification-settings-column">
      <section class="card card-pad office-section push-device-card">
-       <div class="office-section-head"><div><h2>Phone & Browser Push</h2><div class="section-caption">Receive selected GLSK alerts even when the site is closed.</div></div></div>
+       <div class="office-section-head"><div><h2>${nativePushAvailable()?'iPhone Push Notifications':'Phone & Browser Push'}</h2><div class="section-caption">Receive selected GLSK alerts even when ${nativePushAvailable()?'the app':'the site'} is closed.</div></div></div>
        <div class="push-device-status ${state.pushPermission==='denied'?'permission-blocked':''}">
          <div class="push-status-copy">
            <span class="push-status-dot ${state.pushSubscribed?'on':state.pushPermission==='denied'?'blocked':'off'}"></span>
            <div>
-             <strong>${state.pushSubscribed?'Push enabled on this device':state.pushPermission==='denied'?'Push blocked in browser settings':state.pushSupported?'Push not enabled':'Push unsupported'}</strong>
-             <span>${state.pushSubscribed?'This device is registered for background notifications.':state.pushPermission==='denied'?'Chrome, Safari, or a browser extension is currently blocking GLSK notifications.':isIOSDevice()&&!state.pushStandalone?'On iPhone/iPad: add GLSK to the Home Screen, open it there, then enable push.':'Enable this device to receive Lock Screen / system notifications.'}</span>
+             <strong>${state.pushSubscribed?'Push enabled on this device':state.pushPermission==='denied'?(nativePushAvailable()?'iPhone notifications disabled':'Push blocked in browser settings'):state.pushSupported?'Push not enabled':'Push unsupported'}</strong>
+             <span>${state.pushSubscribed?'This device is registered for background notifications.':state.pushPermission==='denied'?(nativePushAvailable()?'Open iPhone Settings → Notifications → GLSK and enable Allow Notifications.':'Chrome, Safari, or a browser extension is currently blocking GLSK notifications.'):isIOSDevice()&&!state.pushStandalone?'On iPhone/iPad: add GLSK to the Home Screen, open it there, then enable push.':'Enable this device to receive Lock Screen / system notifications.'}</span>
            </div>
          </div>
          ${state.pushSupported
@@ -1194,7 +1280,7 @@ function notificationSettingsView(){
              : `<div class="push-device-actions">${state.pushSubscribed?'<button class="btn btn-outline" data-action="push-test">Send Test Push</button>':''}<button class="btn ${state.pushSubscribed?'btn-reset':'btn-primary'}" data-action="${state.pushSubscribed?'push-disable':'push-enable'}" ${state.pushBusy?'disabled':''}>${state.pushBusy?'Working…':state.pushSubscribed?'Disable on This Device':'Enable Push Notifications'}</button></div>`
            : ''}
        </div>
-       ${state.pushPermission==='denied'?'<div class="push-denied-note"><strong>Browser permission blocked.</strong><span>Allow notifications for <b>glsk-auction.vercel.app</b> in browser/site settings—or disable the extension blocking them—then tap <b>Refresh Status</b>.</span></div>':''}
+       ${state.pushPermission==='denied'?(nativePushAvailable()?'<div class="push-denied-note"><strong>iPhone notification permission disabled.</strong><span>Open iPhone <b>Settings → Notifications → GLSK</b>, turn on <b>Allow Notifications</b>, then tap <b>Refresh Status</b>.</span></div>':'<div class="push-denied-note"><strong>Browser permission blocked.</strong><span>Allow notifications for <b>glsk-auction.vercel.app</b> in browser/site settings—or disable the extension blocking them—then tap <b>Refresh Status</b>.</span></div>'):''}
        <div class="notification-delivery-note"><strong>How settings work</strong><span>The category switches below control both the in-app feed and phone push. Each owner can enable GLSK on multiple phones/computers independently.</span></div>
      </section>
 
@@ -2342,7 +2428,7 @@ function accountView(){
        <span class="push-status-dot ${state.pushSubscribed?'on':'off'}"></span>
        <div><strong>${state.pushSubscribed?'Push enabled on this device':'Push not enabled on this device'}</strong><span>${state.pushSubscribed?'GLSK can alert this device while the app is closed.':'Open Notifications to enable background alerts.'}</span></div>
      </div>
-     <button class="btn btn-primary" data-tab="notifications">Open Notification Settings</button>
+     <button class="btn btn-primary" data-tab="notification-settings">Open Notification Settings</button>
    </section>
  </div>`;
 }
@@ -2350,7 +2436,20 @@ function accountView(){
 function setupError(){return `<div class="login-wrap"><div class="login-card"><div class="login-head"><h1>League Office Ready</h1><p>Database connection is missing.</p></div></div></div>`;}
 function render(){if(state.tab==='leaguehub')state.tab=assetMode()?'teamhub':'settingshub';if(assetMode()&&['lineup','matchups','schedule','standings','reconcile','freeagents'].includes(state.tab))state.tab='teamhub';if(!configured){app.innerHTML=setupError();return;}if(state.loading){app.innerHTML='<div class="login-wrap"><div style="color:white;font-weight:900">Loading League Office…</div></div>';return;}if(!state.session){app.innerHTML=loginView();bind();return;}if(state.tab==='reconcile'){state.commissionerSection='reconcile';state.tab='commissioner';}let content=state.tab==='team'?teamPageView():state.tab==='biddollars'?bidDollarsView():state.tab==='bidbank'?bidBankPage():state.tab==='bidhistory'?bidHistoryPage():state.tab==='draft'?draftHubView():state.tab==='draftresults'?draftResultsHubView():draftResultPhases[state.tab]?draftResultsView():state.tab==='teamhub'?teamHubView():state.tab==='communications'?communicationsHubView():state.tab==='leaguehub'?leagueHubView():state.tab==='settingshub'?settingsHubView():state.tab==='commissioner'?commissionerHubView():state.tab==='lineup'?lineupView():state.tab==='freeagents'?freeAgencyView():state.tab==='chat'?chatView():state.tab==='matchups'?matchupsView():state.tab==='schedule'?scheduleView():state.tab==='standings'?standingsView():state.tab==='board'?boardView():state.tab==='notifications'?notificationView():state.tab==='notification-settings'?notificationSettingsView():state.tab==='teams'?teamsView():state.tab==='contracts'?contractsView():state.tab==='trades'?tradesView():state.tab==='transactions'?transactionsView():state.tab==='history'?historyView():state.tab==='rules'?rulesView():state.tab==='deadlines'?deadlinesView():state.tab==='finances'?financesView():state.tab==='account'?accountView():state.tab==='reconcile'?reconcileView():dashboard();app.innerHTML=`<div class="office-shell">${topBar()}<main class="main">${content}</main>${bottomNav()}</div>`;bind();}
 
-async function logout(){const t=myTeam();await signOutOwner({roomCode:ROOM_CODE,teamId:t?.id||null,legacyStorageKey:STORAGE_KEY});location.reload();}
+async function logout(){
+ if(nativePushAvailable()){
+   const token=localStorage.getItem(nativePushTokenStorageKey);
+   if(token){
+     try{await rpc('league_owner_remove_native_push_token',{p_room_code:ROOM_CODE,p_device_token:token});}
+     catch(error){toast('Could not unregister iPhone push: '+error.message,'error');return;}
+     await unregisterNativePush().catch(()=>{});
+     localStorage.removeItem(nativePushTokenStorageKey);
+   }
+ }
+ const t=myTeam();
+ await signOutOwner({roomCode:ROOM_CODE,teamId:t?.id||null,legacyStorageKey:STORAGE_KEY});
+ location.reload();
+}
 async function commish(name,args={},msg='Saved.'){try{await rpc(name,{p_room_code:ROOM_CODE,p_commish_pin:state.session.commishPin,...args});toast(msg);await loadData();render();}catch(e){toast(e.message,'error');}}
 
 function bind(){
@@ -2753,8 +2852,8 @@ function bind(){
    state.pushBusy=true;render();
    await refreshPushState();
    state.pushBusy=false;render();
-   if(state.pushPermission==='granted'&&!state.pushSubscribed)toast('Browser permission is allowed. You can now enable GLSK push notifications.');
-   else if(state.pushPermission==='denied')toast('Notifications are still blocked in browser or extension settings.','error');
+   if(state.pushPermission==='granted'&&!state.pushSubscribed)toast((nativePushAvailable()?'iPhone':'Browser')+' permission is allowed. You can now enable GLSK push notifications.');
+   else if(state.pushPermission==='denied')toast(nativePushAvailable()?'Open iPhone Settings → Notifications → GLSK and allow notifications.':'Notifications are still blocked in browser or extension settings.','error');
  });
  app.querySelector('[data-action="push-test"]')?.addEventListener('click',async()=>{
    const t=myTeam();if(!t)return;

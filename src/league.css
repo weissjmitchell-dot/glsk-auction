@@ -4404,7 +4404,6 @@ textarea:focus-visible {outline:3px solid #38c5f5;outline-offset:2px}
 .chat-row.mine .chat-avatar{background:#d8f0ff;border:1px solid #78c5f2;color:#0659a2;}
 .chat-row.mine .chat-author-line strong{color:#0c549c;font-size:11px;}
 
-
 /* Notification center: activity stays in Comms, personal preferences in Settings. */
 .notification-feed-page{display:grid;gap:12px;max-width:1020px;margin-inline:auto;}
 .notification-page-tools{display:flex;justify-content:flex-end;gap:10px;}

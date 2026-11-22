@@ -4,11 +4,18 @@
   "webDir": "dist-ios",
   "ios": {
     "contentInset": "automatic",
-    "backgroundColor": "#17263f"
+    "backgroundColor": "#0b1220"
   },
   "plugins": {
     "CapacitorHttp": {
       "enabled": true
+    },
+    "PushNotifications": {
+      "presentationOptions": [
+        "badge",
+        "sound",
+        "alert"
+      ]
     }
   },
   "server": {
